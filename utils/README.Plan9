@@ -1,0 +1,37 @@
+* The NSLOG macro is redefined to addhere to Plan9's
+preprocessor (cpp). See also the README in libnslog.
+
+Here the last parameter of the macro is removed, so
+that __VA_ARGS__ always gets at least one argument.
+
+* libdom includes 'dom/bindings/hubbub/parser.h'
+and 'dom/bindings/hubbub/errors.h' but it is not clear
+how the compiler is going to find those files, as there
+is no directory that matches 'dom/bindings'. The
+bindings directory is directly in the libdom-x.y.z
+directory. My temporary solution is to change the
+include and see, other alternatives would be to use
+some bind-magic, or some copying, alternatively to
+ask the Netsurf developers.
+
+* Added inclusion of <string.h> in 'talloc.c' if
+__plan9ape__ is defined. (maybe just change, instead
+of adding an #ifdef. A lot of ifdefs would probably
+be needed if the port ever get merged into the
+official source tree.
+
+* I have (for now) supplied an iconv() implementation
+in the posix directory, that really does not do anything,
+but makes utils compile. I am not sure iconv is needed
+for simple browsing, but if so, debug messages will
+tell. The rational thing would be to drop in some
+portable 'iconv' implementation, e.g. from APR
+(Apache Portable Runtime), musl libc or from the
+libiconv for Riscos in netsurf. An alternative to
+my dummy would be a rountine that pretends to
+convert, but does nothing, or one that converts
+only from some charsets (e.g. iso-8859-* and utf-8).
+Or to use the tools/commands supplied in Plan 9 standard.
+
+* adding timercmp() function macro to sys_time.h
+(direcly copied from implementation in Linux glibc).

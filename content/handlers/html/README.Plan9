@@ -1,0 +1,20 @@
+* The construction in dump_box in box.c:
+((const char *[]) {"UNKNOWN", "FIXED", "AUTO", "PERCENT", "RELATIVE"})[x]
+Does not work in the Plan 9 C compiler. It has been replaced with
+global vectors char *boxvector1[] and char *boxvector[].
+
+Same for layout.c (layoutvector1[]).
+
+* in 'html.c' html_set_file_gadget_filename() returns the value of
+a function with a void return. Took away the explicit return statement
+(As running gcc in pedantic mode suggests: "ISO C forbids ‘return’ with
+expression, in function returning void").
+
+* form_internal had an forward declared 'enum browser_mouse_state;'
+that was replaced with an inclue of "netsurf/mouse.h".
+
+* In html_redraw, 'float ceilf(float)' is called, but there is only
+a 'double ceil(double)' in Plan 9 APE libraries. So I added a ceilf()
+function in my 'posix' directory, and included 'math9.h' in html_redraw.c.
+An alternative would be to supply APE with a ceilf() properly, or to
+define a macro.

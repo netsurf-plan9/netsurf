@@ -1,0 +1,5 @@
+Had to uncomment an 'enum content_debug' in 'browser_window.h',
+to avoid double declaration.
+
+Had to inlcude 'netsurf/mouse.'h and comment out 'gui_pointer_shape'
+in 'window.c', in order to avoid a double declaration of that enum.

@@ -1,0 +1,12 @@
+*Had to add a casts from pointers to bool in textarea.c line 2463--2464.
+
+* frames.c: Plan 9 does not support VLA (Variable Length Arrays)
+so the arrays widths[][] and heights[][[] are replaced with
+'int *widtdhs' and 'int *heights', and memory is allocated using malloc().
+The accesses to the arrays are also changed from widths[row][col] to
+*(widths+col*rowbytes+row), where rowbytes are precalculated to
+keep the stride (bytes of each row). In the end both arrays are free()'d.
+
+TODO: Should test that the change in Linux, to see that they are identical,
+but tests suggests that it at least for the moment is not the problem
+(with drawing errors) as this code doesn't seem to exectute at all.
