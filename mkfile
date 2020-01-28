@@ -171,18 +171,18 @@ OBJ=\
 
 # Be sure to compile the libraries first
 LIBS=\
-	../libnsfb-0.2.1/src/libnsfb.$O.a \
-	../libnspsl-0.1.5/src/libnspsl.$O.a \
-	../libdom-0.4.0/src/libdom.$O.a \
-	../libcss-0.9.0/src/libcss.$O.a \
-	../libhubbub-0.3.5/src/libhubbub.$O.a \
-	../libparserutils-0.2.4/src/libparserutils.$O.a \
-	../libwapcaplet-0.4.1/src/libwapcaplet.$O.a \
-	../libnsutils-0.0.5/src/libnsutils.$O.a \
-	../libnslog-0.1.2/src/libnslog.$O.a \
-	../libnsbmp-0.1.5/src/libnsbmp.$O.a \
-	../libnsgif-0.2.1/src/libnsgif.$O.a \
-	../libutf8proc-2.4.0-1/src/libutf8proc.$O.a \
+	../libnsfb/src/libnsfb.$O.a \
+	../libnspsl/src/libnspsl.$O.a \
+	../libdom/src/libdom.$O.a \
+	../libcss/src/libcss.$O.a \
+	../libhubbub/src/libhubbub.$O.a \
+	../libparserutils/src/libparserutils.$O.a \
+	../libwapcaplet/src/libwapcaplet.$O.a \
+	../libnsutils/src/libnsutils.$O.a \
+	../libnslog/src/libnslog.$O.a \
+	../libnsbmp/src/libnsbmp.$O.a \
+	../libnsgif/src/libnsgif.$O.a \
+	../libutf8proc/src/libutf8proc.$O.a \
 
 # See to that these are also complied before, along with the libraries
 EXTRA=../posix/src/iconv.$O ../posix/src/preadwrite.$O ../posix/src/math9.$O
@@ -191,17 +191,17 @@ HFILES=
 
 CFLAGS=\
 	-I . -I include -I ../posix/include \
-	-I ../libparserutils-0.2.4/include \
-	-I ../libdom-0.4.0/include \
-	-I ../libwapcaplet-0.4.1/include \
-	-I ../libutf8proc-2.4.0-1/include \
-	-I ../libhubbub-0.3.5/include \
-	-I ../libnslog-0.1.2/include \
-	-I ../libnsutils-0.0.5/include \
-	-I ../libnsbmp-0.1.5/include \
-	-I ../libnsgif-0.2.1/include \
-	-I ../libcss-0.9.0/include \
-	-I ../libnsfb-0.2.1/include \
+	-I ../libparserutils/include \
+	-I ../libdom/include \
+	-I ../libwapcaplet/include \
+	-I ../libutf8proc/include \
+	-I ../libhubbub/include \
+	-I ../libnslog/include \
+	-I ../libnsutils/include \
+	-I ../libnsbmp/include \
+	-I ../libnsgif/include \
+	-I ../libcss/include \
+	-I ../libnsfb/include \
 	-I libinclude \
 	-I content/handlers \
 	-I frontends \
