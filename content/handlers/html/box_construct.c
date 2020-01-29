@@ -1981,7 +1981,7 @@ box_parse_multi_lengths(const dom_string *ds, unsigned int *count)
 		while (ascii_is_space(*s)) {
 			s++;
 		}
-		length[i].value = strtof(s, &end);
+		length[i].value = strtod(s, &end);
 		if (length[i].value <= 0) {
 			length[i].value = 1;
 		}

@@ -50,4 +50,15 @@
 	} while (0)
 #endif
 
+#ifndef timercmp
+#define timercmp(a, b, CMP)						\
+	(((a)->tv_sec == (b)->tv_sec) ?					\
+	((a)->tv_usec CMP (b)->tv_usec) :				\
+	((a)->tv_sec CMP (b)->tv_sec))
+#endif
+
+#ifndef timerisset
+#define timerisset(tvp)	((tvp)->tv_sec || (tvp)->tv_usec)
+#endif
+
 #endif

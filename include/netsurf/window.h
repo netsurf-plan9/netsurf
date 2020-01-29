@@ -27,6 +27,8 @@
 #define NETSURF_WINDOW_H
 
 #include "netsurf/console.h"
+#include "netsurf/mouse.h"
+
 
 typedef enum gui_save_type {
 	GUI_SAVE_SOURCE,
@@ -67,7 +69,7 @@ struct rect;
 struct hlcache_handle;
 struct nsurl;
 
-enum gui_pointer_shape;
+//enum gui_pointer_shape;
 
 /**
  * Graphical user interface window function table.

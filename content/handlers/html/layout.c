@@ -79,6 +79,8 @@ typedef uint8_t (*css_border_color_func)(
 		const css_computed_style *style,
 		css_color *color);
 
+static char *layoutvector1[] = { "UNKNOWN", "FIXED", "AUTO","PERCENT","RELATIVE"};
+
 /** Array of per-side access functions for computed style margins. */
 static const css_len_func margin_funcs[4] = {
 	[TOP]    = css_computed_margin_top,
@@ -2194,13 +2196,13 @@ static bool layout_table(struct box *table, int available_width,
 		      "table %p, column %u: type %s, width %i, min %i, max %i",
 		      table,
 		      i,
-		      ((const char *[]){
+		      /*((const char *[]){
 			      "UNKNOWN",
 				      "FIXED",
 				      "AUTO",
 				      "PERCENT",
 				      "RELATIVE",
-				      })[col[i].type],
+				      })*/layoutvector1[col[i].type],
 		      col[i].width,
 		      col[i].min,
 		      col[i].max);

@@ -193,6 +193,7 @@ CFLAGS=\
 	-I . -I include -I ../posix/include \
 	-I ../libparserutils/include \
 	-I ../libdom/include \
+	-I ../libdom/ \
 	-I ../libwapcaplet/include \
 	-I ../libutf8proc/include \
 	-I ../libhubbub/include \

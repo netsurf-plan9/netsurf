@@ -98,7 +98,7 @@ enum nslog_level {
 	NSLOG_LEVEL_CRITICAL = 6
 };
 
-extern void nslog_log(const char *file, const char *func, int ln, const char *format, ...) __attribute__ ((format (printf, 4, 5)));
+extern void nslog_log(const char *file, const char *func, int ln, const char *format, ...);
 
 #  ifdef __GNUC__
 #    define LOG_FN __PRETTY_FUNCTION__
@@ -111,10 +111,10 @@ extern void nslog_log(const char *file, const char *func, int ln, const char *fo
 #    define LOG_LN __LINE__
 #  endif
 
-#define NSLOG(catname, level, logmsg, args...)				\
+#define NSLOG(catname, level, ...)				\
 	do {								\
 		if (NSLOG_LEVEL_##level >= NSLOG_COMPILED_MIN_LEVEL) {	\
-			nslog_log(__FILE__, LOG_FN, LOG_LN, logmsg , ##args); \
+			nslog_log(__FILE__, LOG_FN, LOG_LN, __VA_ARGS__); \
 		}							\
 	} while(0)
 

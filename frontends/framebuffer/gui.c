@@ -96,6 +96,17 @@ static struct gui_drag {
 } gui_drag;
 
 
+extern void ram_register_surface(void);
+extern void plan9_register_surface(void);
+
+void
+init_libs(void)
+{
+	ram_register_surface();
+	plan9_register_surface();	
+}
+
+
 /**
  * Cause an abnormal program termination.
  *
@@ -462,13 +473,13 @@ process_cmdline(int argc, char** argv)
 {
 	int opt;
 	int option_index;
-	static struct option long_options[] = {
-		{0, 0, 0,  0 }
-	}; /* no long options */
+//	static struct option long_options[] = {
+//		{0, 0, 0,  0 }
+//	}; /* no long options */
 
 	NSLOG(netsurf, INFO, "argc %d, argv %p", argc, argv);
 
-	fename = "sdl";
+	fename = "plan9";
 	febpp = 32;
 
 	fewidth = nsoption_int(window_width);
@@ -486,7 +497,7 @@ process_cmdline(int argc, char** argv)
 	} else {
 		feurl = NETSURF_HOMEPAGE;
 	}
-
+/*
 	while((opt = getopt_long(argc, argv, "f:b:w:h:",
 				 long_options, &option_index)) != -1) {
 		switch (opt) {
@@ -516,6 +527,10 @@ process_cmdline(int argc, char** argv)
 
 	if (optind < argc) {
 		feurl = argv[optind];
+	}
+*/
+	if (argc > 1) {
+		feurl = argv[1];
 	}
 
 	return true;
@@ -2129,6 +2144,8 @@ main(int argc, char** argv)
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
 	};
+
+	init_libs(); /* simulate ELF binary format automatic library initialisation */
 
         ret = netsurf_register(&framebuffer_table);
         if (ret != NSERROR_OK) {

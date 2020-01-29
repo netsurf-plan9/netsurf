@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <math9.h>
 #include <dom/dom.h>
 
 #include "utils/log.h"

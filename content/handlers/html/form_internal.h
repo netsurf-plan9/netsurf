@@ -27,6 +27,7 @@
 #include <stdbool.h>
 
 #include "netsurf/form.h"
+#include "netsurf/mouse.h"
 
 struct box;
 struct form_control;
@@ -41,7 +42,7 @@ struct fetch_multipart_data;
 struct redraw_context;
 struct browser_window;
 
-enum browser_mouse_state;
+/* enum browser_mouse_state; */
 
 /** Type of a struct form_control. */
 typedef enum {

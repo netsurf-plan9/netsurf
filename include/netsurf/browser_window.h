@@ -31,6 +31,7 @@
 #include "utils/errors.h"
 #include "netsurf/mouse.h"
 #include "netsurf/console.h"
+#include "netsurf/content_type.h"
 
 struct browser_window;
 struct hlcache_handle;
@@ -42,7 +43,8 @@ struct form_control;
 struct nsurl;
 struct rect;
 struct redraw_context;
-enum content_debug;
+//enum content_debug;
+//typedef int content_debug;
 
 /**
  * type of browser window drag in progess

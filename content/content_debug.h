@@ -25,6 +25,7 @@
 #define _NETSURF_CONTENT_CONTENT_DEBUG_H_
 
 #include <stdio.h>
+#include <netsurf/content_type.h>
 
 /**
  * Dump debug information to file.

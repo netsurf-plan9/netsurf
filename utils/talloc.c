@@ -60,6 +60,9 @@
 #define HAVE_VA_COPY
 #include <string.h>
 #endif
+#if defined(__plan9ape__)
+#include <string.h>
+#endif
 #endif
 #include "talloc.h"
 #endif /* not _TALLOC_SAMBA3 */

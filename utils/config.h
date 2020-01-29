@@ -78,7 +78,7 @@ char *strchrnul(const char *s, int c);
 #endif
 
 #define HAVE_REALPATH
-#if (defined(_WIN32))
+#if (defined(_WIN32) || defined(__plan9ape__))
 #undef HAVE_REALPATH
 char *realpath(const char *path, char *resolved_path);
 #endif
@@ -89,7 +89,7 @@ char *realpath(const char *path, char *resolved_path);
 #endif
 
 #define HAVE_SIGPIPE
-#if (defined(_WIN32))
+#if (defined(_WIN32) || defined(__plan9ape__))
 #undef HAVE_SIGPIPE
 #endif
 
@@ -99,12 +99,12 @@ char *realpath(const char *path, char *resolved_path);
 #endif
 
 #define HAVE_MMAP
-#if (defined(_WIN32) || defined(__riscos__) || defined(__HAIKU__) || defined(__BEOS__) || defined(__amigaos4__) || defined(__AMIGA__) || defined(__MINT__))
+#if (defined(_WIN32) || defined(__riscos__) || defined(__HAIKU__) || defined(__BEOS__) || defined(__amigaos4__) || defined(__AMIGA__) || defined(__MINT__) || defined(__plan9ape__))
 #undef HAVE_MMAP
 #endif
 
 #define HAVE_SCANDIR
-#if (defined(_WIN32))
+#if (defined(_WIN32) || defined(__plan9ape__))
 #undef HAVE_SCANDIR
 #endif
 
