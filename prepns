@@ -1,0 +1,9 @@
+#!/bin/rc
+# Prepare the namespace for running netsurf without installing
+# 
+# The runtime is expected to be installed in /sys/lib/netsurf,
+# but if you want to run it from where you compiled it,
+# you can bind the runtime resource directory 9res over that directory.
+
+aux/stub -d /sys/lib/netsurf
+bind 9res /sys/lib/netsurf
