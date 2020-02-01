@@ -232,4 +232,19 @@ clean:V:
 	rm -f $OBJ $O.nsfb
 
 
+# copy resource files into the directory 9res, that
+# is used for install. Run befefore 'mk install'
 
+9res:V:
+	dircp resources 9res
+	dircp resources/en 9res
+	mkdir -p 9res/fonts
+	mkdir -p 9res/pointers
+	dircp frontends/framebuffer/res/fonts 9res/fonts
+	dircp frontends/framebuffer/res/icons 9res/icons
+	dircp frontends/framebuffer/res/pointers 9res/pointers
+
+install:V:
+	mkdir -p /sys/lib/netsurf/res
+	dircp 9res /sys/lib/netsurf/res
+	cp $O.nsfb /$objtype/bin/nsfb
