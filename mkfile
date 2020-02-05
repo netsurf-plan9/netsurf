@@ -40,6 +40,7 @@ OBJ=\
 	content/fetch.$O \
 	content/hlcache.$O \
 	content/llcache.$O \
+	content/webfs.$O \
 	content/mimesniff.$O \
 	content/urldb.$O \
 	content/no_backing_store.$O \

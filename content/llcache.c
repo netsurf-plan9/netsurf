@@ -52,6 +52,7 @@
 #include "content/fetch.h"
 #include "content/backing_store.h"
 #include "content/urldb.h"
+#include "content/webfs.h"
 
 /**
  * State of a low-level cache object fetch.
@@ -79,6 +80,8 @@ struct llcache_handle {
 
 	llcache_fetch_state state;	/**< Last known state of object fetch */
 	size_t bytes;			/**< Last reported byte count */
+
+	webfs_handle *wh;  /**< Holds a webfs handle if this is a webfs request. */
 };
 
 /**
@@ -3326,6 +3329,8 @@ void llcache_clean(bool purge)
 
 	NSLOG(llcache, DEBUG, "Attempting cache clean");
 
+	webfs_clean(purge);
+
 	/* If the cache is being purged set the size limit to zero. */
 	if (purge) {
 		limit = 0;
@@ -3490,6 +3495,11 @@ void llcache_clean(bool purge)
 nserror
 llcache_initialise(const struct llcache_parameters *prm)
 {
+	nserror err = webfs_initialise(prm);
+	if(err != NSERROR_OK) {
+		return err;
+	}
+
 	llcache = calloc(1, sizeof(struct llcache_s));
 	if (llcache == NULL) {
 		return NSERROR_NOMEM;
@@ -3519,6 +3529,8 @@ void llcache_finalise(void)
 {
 	llcache_object *object, *next;
 	uint64_t total_bandwidth = 0; /* total bandwidth */
+
+	webfs_finalise();
 
 	/* Clean uncached objects */
 	for (object = llcache->uncached_objects; object != NULL; object = next) {
@@ -3632,14 +3644,17 @@ nserror llcache_handle_retrieve(nsurl *url, uint32_t flags,
 	nsurl *hsts_url;
 	bool hsts_in_use;
 
+	fprintf(stderr, "[DBG]: FETCHING URL: %s\n", nsurl_access(url));
+
 	/* Perform HSTS transform */
 	error = llcache_hsts_transform_url(url, &hsts_url, &hsts_in_use);
 	if (error != NSERROR_OK) {
 		return error;
 	}
 
+	char *scheme = lwc_string_data(nsurl_get_component(hsts_url, NSURL_SCHEME));
 	/* Can we fetch this URL at all? */
-	if (fetch_can_fetch(hsts_url) == false) {
+	if (fetch_can_fetch(hsts_url) == false && (strcmp("http", scheme) != 0 && strcmp("https", scheme) != 0)) {
 		nsurl_unref(hsts_url);
 		return NSERROR_NO_FETCH_HANDLER;
 	}
@@ -3649,6 +3664,17 @@ nserror llcache_handle_retrieve(nsurl *url, uint32_t flags,
 	if (error != NSERROR_OK) {
 		nsurl_unref(hsts_url);
 		return error;
+	}
+
+	if(strcmp("http", scheme) == 0 || strcmp("https", scheme) == 0) {
+		// THIS IS A WEBFS REQUEST!
+		nserror err = webfs_handle_retrieve(hsts_url, flags, referer, post, cb, pw, user->handle, &user->handle->wh);
+		if(err != NSERROR_OK) {
+			nsurl_unref(hsts_url);
+			return error;
+		}
+		*result = user->handle;
+		return err;
 	}
 
 	/* Retrieve a suitable object from the cache,
@@ -3682,6 +3708,10 @@ nserror llcache_handle_change_callback(llcache_handle *handle,
 	handle->cb = cb;
 	handle->pw = pw;
 
+	if(handle->wh != NULL) {
+		return webfs_handle_change_callback(handle->wh, cb, pw);
+	}
+
 	return NSERROR_OK;
 }
 
@@ -3689,6 +3719,9 @@ nserror llcache_handle_change_callback(llcache_handle *handle,
 /* Exported interface documented in content/llcache.h */
 nserror llcache_handle_release(llcache_handle *handle)
 {
+	if(handle->wh != NULL) {
+		return webfs_handle_release(handle->wh);
+	}
 	nserror error = NSERROR_OK;
 	llcache_object *object = handle->object;
 	llcache_object_user *user = llcache_object_find_user(handle);
@@ -3723,12 +3756,20 @@ nserror llcache_handle_clone(llcache_handle *handle, llcache_handle **result)
 		*result = newuser->handle;
 	}
 
+	if(handle->wh != NULL) {
+		return webfs_handle_clone(newuser->handle, handle->wh, &newuser->handle->wh);
+	}
+
 	return error;
 }
 
 /* See llcache.h for documentation */
 nserror llcache_handle_abort(llcache_handle *handle)
 {
+	if(handle->wh != NULL) {
+		return webfs_handle_abort(handle->wh);
+	}
+
 	llcache_object_user *user = llcache_object_find_user(handle);
 	llcache_object *object = handle->object, *newobject;
 	nserror error = NSERROR_OK;
@@ -3791,6 +3832,10 @@ nserror llcache_handle_abort(llcache_handle *handle)
 /* See llcache.h for documentation */
 nserror llcache_handle_force_stream(llcache_handle *handle)
 {
+	if(handle->wh != NULL) {
+		return webfs_handle_force_stream(handle->wh);
+	}
+
 	llcache_object_user *user = llcache_object_find_user(handle);
 	llcache_object *object = handle->object;
 
@@ -3813,6 +3858,10 @@ nserror llcache_handle_force_stream(llcache_handle *handle)
 /* See llcache.h for documentation */
 nserror llcache_handle_invalidate_cache_data(llcache_handle *handle)
 {
+	if(handle->wh != NULL) {
+		webfs_handle_invalidate_cache_data(handle->wh);
+	}
+
 	if ((handle->object != NULL) &&
 	    (handle->object->fetch.fetch == NULL) &&
 	    (handle->object->cache.no_cache == LLCACHE_VALIDATE_FRESH)) {
@@ -3826,6 +3875,9 @@ nserror llcache_handle_invalidate_cache_data(llcache_handle *handle)
 /* See llcache.h for documentation */
 nsurl *llcache_handle_get_url(const llcache_handle *handle)
 {
+	if(handle->wh != NULL) {
+		return webfs_handle_get_url(handle->wh);
+	}
 	return handle->object != NULL ? handle->object->url : NULL;
 }
 
@@ -3833,6 +3885,10 @@ nsurl *llcache_handle_get_url(const llcache_handle *handle)
 const uint8_t *llcache_handle_get_source_data(const llcache_handle *handle,
 		size_t *size)
 {
+	if(handle->wh != NULL) {
+		return webfs_handle_get_source_data(handle->wh, size);
+	}
+
 	*size = handle->object != NULL ? handle->object->source_len : 0;
 
 	return handle->object != NULL ? handle->object->source_data : NULL;
@@ -3842,6 +3898,10 @@ const uint8_t *llcache_handle_get_source_data(const llcache_handle *handle,
 const char *llcache_handle_get_header(const llcache_handle *handle,
 		const char *key)
 {
+	if(handle->wh != NULL) {
+		return webfs_handle_get_header(handle->wh, key);
+	}
+
 	const llcache_object *object = handle->object;
 	size_t i;
 
@@ -3861,5 +3921,14 @@ const char *llcache_handle_get_header(const llcache_handle *handle,
 bool llcache_handle_references_same_object(const llcache_handle *a,
 		const llcache_handle *b)
 {
+	if(a->wh != NULL) {
+		if(b->wh != NULL) {
+			return webfs_handle_references_same_object(a->wh, b->wh);
+		}
+		return false;
+	} else if(b->wh != NULL) {
+		return false;
+	}
+
 	return a->object == b->object;
 }
