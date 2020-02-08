@@ -218,6 +218,7 @@ CFLAGS=\
 	-DNETSURF_FB_RESPATH="/sys/lib/netsurf" \
 	-DNETSURF_FB_FONTPATH="/sys/lib/netsurf/fonts" \
 	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF \
+	-DNDEBUG \
 	-DNETSURF_CONTENT_FETCHERS_FETCH_CURL_H # prevent linking of curl (tmp)
 
 # To add later: -DWITH_CURL
