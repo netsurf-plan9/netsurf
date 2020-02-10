@@ -404,9 +404,9 @@ void send_request(struct webfs_data *d) {
 }
 
 void start_body(struct webfs_data *d) {
-	char bodystr[1024];
-	sprintf(bodystr, "%sbody", d->webdir);
-	int bodyfd = open(bodystr, O_RDONLY);
+	char fname[1024];
+	sprintf(fname, "%sbody", d->webdir);
+	int bodyfd = open(fname, O_RDONLY);
 	if(bodyfd < 0) {
 		char *e = strerror(errno);
 		fprintf(stderr, "[DBG]: [%s] Failed to read body. Error: %s\n", d->urls, e);
@@ -418,6 +418,27 @@ void start_body(struct webfs_data *d) {
 	d->ctlfd = -1;
 	d->bodyfd = bodyfd;
 	d->state = DATA_STATE_DATA_READY;
+
+	// Check if our URL has been redirected.
+	sprintf(fname, "%sparsed/url", d->webdir);
+	int urlfd = open(fname, O_RDONLY);
+	if(urlfd < 0) {
+		char *e = strerror(errno);
+		fprintf(stderr, "[DBG]: [%s] Failed to read body. Error: %s\n", d->urls, e);
+		d->state = DATA_STATE_ERROR;
+		d->err = "Failed to read parsed URL.";
+		return;
+	}
+	char urlbuf[1024];
+	int n = read(urlfd, urlbuf, 1023);
+	urlbuf[n] = 0;
+	if(strcmp(urlbuf, d->urls) != 0) {
+		char *newUrls = calloc(1, strlen(urlbuf) + 1);
+		strcpy(newUrls, urlbuf);
+		free(d->urls);
+		d->urls = newUrls;
+	}
+	close(urlfd);
 }
 
 void read_data(struct webfs_data *d) {
