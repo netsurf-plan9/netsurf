@@ -52,6 +52,8 @@ struct webfs_handle {
 	llcache_handle_callback cb;
 	void *pw;
 	bool aborted;
+	bool released;
+	bool removed;
 	int sendindex;
 
 	struct webfs_data *data;
@@ -79,6 +81,41 @@ void add_node(struct webfs_handle *n) {
 	}
 }
 
+void webfs_data_release(struct webfs_data *d) {
+	if(d->urls != NULL) {
+		free(d->urls);
+	}
+	if(d->pdat != NULL) {
+		free(d->pdat);
+	}
+	if(d->ctlfd != -1) {
+		close(d->ctlfd);
+		d->ctlfd = -1;
+	}
+	if(d->bodyfd != -1) {
+		close(d->bodyfd);
+		d->bodyfd = -1;
+	}
+	if(d->webdir != NULL) {
+		free(d->webdir);
+	}
+	if(d->data != NULL) {
+		free(d->data);
+	}
+	free(d);
+}
+
+void try_release_node(webfs_handle *wh) {
+	if(wh->released && wh->removed) {
+		wh->data->handle_refcount-=1;
+		if(wh->data->handle_refcount <= 0) {
+			webfs_data_release(wh->data);
+			wh->data = NULL;
+		}
+		free(wh);
+	}
+}
+
 void remove_node(struct webfs_handle *n) {
 	if(n->prev) {
 		n->prev->next = n->next;
@@ -91,6 +128,8 @@ void remove_node(struct webfs_handle *n) {
 	}
 	n->prev = NULL;
 	n->next = NULL;
+	n->removed = true;
+	try_release_node(n);
 }
 
 void webfs_send_data(llcache_handle *handle, webfs_handle *wh) {
@@ -173,30 +212,6 @@ const uint8_t *webfs_handle_get_source_data(const webfs_handle *wh,
 	return NULL;
 }
 
-void webfs_data_release(struct webfs_data *d) {
-	if(d->urls != NULL) {
-		free(d->urls);
-	}
-	if(d->pdat != NULL) {
-		free(d->pdat);
-	}
-	if(d->ctlfd != -1) {
-		close(d->ctlfd);
-		d->ctlfd = -1;
-	}
-	if(d->bodyfd != -1) {
-		close(d->bodyfd);
-		d->bodyfd = -1;
-	}
-	if(d->webdir != NULL) {
-		free(d->webdir);
-	}
-	if(d->data != NULL) {
-		free(d->data);
-	}
-	free(d);
-}
-
 /**
  * Release a low-level cache handle
  *
@@ -204,14 +219,8 @@ void webfs_data_release(struct webfs_data *d) {
  * \return NSERROR_OK on success, appropriate error otherwise
  */
 nserror webfs_handle_release(webfs_handle *wh) {
-	wh->aborted=true;
-	wh->data->handle_refcount-=1;
-	if(wh->data->handle_refcount <= 0) {
-		webfs_data_release(wh->data);
-		wh->data = NULL;
-	}
-	remove_node(wh);
-	free(wh);
+	wh->released = true;
+	try_release_node(wh);
 	return NSERROR_OK;
 }
 
@@ -493,7 +502,7 @@ bool llcache_progress(void *h) {
 	llcache_event ev;
 
 	// This handle is done. Do nothing.
-	if(wh->state == HANDLE_STATE_DONE || wh->aborted) {
+	if(wh->state == HANDLE_STATE_DONE || wh->aborted || wh->released) {
 		return false;
 	}
 
@@ -600,6 +609,8 @@ nserror webfs_handle_retrieve(nsurl *url, uint32_t flags,
 	wh->cb = cb;
 	wh->pw = pw;
 	wh->aborted = false;
+	wh->released = false;
+	wh->removed = false;
 	wh->sendindex = 0;
 	wh->handle = handle;
 	wh->next = NULL;
