@@ -394,6 +394,17 @@ ro_local_history_open(struct ro_local_history_window *lhw, wimp_w parent)
 
 	ro_gui_dialog_open_persistent(parent, lhw->core.wh, true);
 
+	/* Give the window focus. */
+	error = xwimp_set_caret_position(lhw->core.wh, -1, 0, 0, -1, 0);
+	if (error) {
+		NSLOG(netsurf, INFO,
+		      "xwimp_set_caret_position: 0x%x : %s",
+		      error->errnum,
+		      error->errmess);
+	}
+
+	local_history_scroll_to_cursor(lhw->session);
+
 	return NSERROR_OK;
 }
 

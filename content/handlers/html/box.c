@@ -33,6 +33,7 @@
 #include "utils/nsoption.h"
 #include "utils/log.h"
 #include "utils/talloc.h"
+#include "utils/nsurl.h"
 #include "netsurf/misc.h"
 #include "netsurf/content.h"
 #include "netsurf/mouse.h"
@@ -40,10 +41,12 @@
 #include "css/dump.h"
 #include "desktop/scrollbar.h"
 #include "desktop/gui_internal.h"
+#include "desktop/search.h"
 
 #include "html/box.h"
 #include "html/form_internal.h"
 #include "html/html_internal.h"
+#include "html/interaction.h"
 
 #define box_is_float(box) (box->type == BOX_FLOAT_LEFT || \
 		box->type == BOX_FLOAT_RIGHT)
@@ -312,11 +315,11 @@ void box_coords(struct box *box, int *x, int *y)
 	*y = box->y;
 	while (box->parent) {
 		if (box_is_float(box)) {
-			do {
-				box = box->parent;
-			} while (!box->float_children);
-		} else
+			assert(box->float_container);
+			box = box->float_container;
+		} else {
 			box = box->parent;
+		}
 		*x += box->x - scrollbar_get_offset(box->scroll_x);
 		*y += box->y - scrollbar_get_offset(box->scroll_y);
 	}
@@ -1119,22 +1122,18 @@ void box_dump(FILE *stream, struct box *box, unsigned int depth, bool style)
 	}
 }
 
-/**
- * Applies the given scroll setup to a box. This includes scroll
- * creation/deletion as well as scroll dimension updates.
- *
- * \param c		content in which the box is located
- * \param box		the box to handle the scrolls for
- * \param bottom	whether the horizontal scrollbar should be present
- * \param right		whether the vertical scrollbar should be present
- * \return		true on success false otherwise
- */
-bool box_handle_scrollbars(struct content *c, struct box *box,
-		bool bottom, bool right)
+
+/* exported interface documented in html/box.h */
+nserror
+box_handle_scrollbars(struct content *c,
+		      struct box *box,
+		      bool bottom,
+		      bool right)
 {
 	struct html_scrollbar_data *data;
 	int visible_width, visible_height;
 	int full_width, full_height;
+	nserror res;
 
 	if (!bottom && box->scroll_x != NULL) {
 		data = scrollbar_get_data(box->scroll_x);
@@ -1150,8 +1149,9 @@ bool box_handle_scrollbars(struct content *c, struct box *box,
 		box->scroll_y = NULL;
 	}
 
-	if (!bottom && !right)
-		return true;
+	if (!bottom && !right) {
+		return NSERROR_OK;
+	}
 
 	visible_width = box->width + box->padding[RIGHT] + box->padding[LEFT];
 	visible_height = box->height + box->padding[TOP] + box->padding[BOTTOM];
@@ -1169,40 +1169,44 @@ bool box_handle_scrollbars(struct content *c, struct box *box,
 		if (box->scroll_y == NULL) {
 			data = malloc(sizeof(struct html_scrollbar_data));
 			if (data == NULL) {
-				NSLOG(netsurf, INFO, "malloc failed");
-				guit->misc->warning("NoMemory", 0);
-				return false;
+				return NSERROR_NOMEM;
 			}
 			data->c = c;
 			data->box = box;
-			if (scrollbar_create(false, visible_height,
-					full_height, visible_height,
-					data, html_overflow_scroll_callback,
-					     &(box->scroll_y)) != NSERROR_OK) {
-				return false;
+			res = scrollbar_create(false,
+					       visible_height,
+					       full_height,
+					       visible_height,
+					       data,
+					       html_overflow_scroll_callback,
+					       &(box->scroll_y));
+			if (res != NSERROR_OK) {
+				return res;
 			}
 		} else  {
-			scrollbar_set_extents(box->scroll_y, visible_height,
-					visible_height, full_height);
+			scrollbar_set_extents(box->scroll_y,
+					      visible_height,
+					      visible_height,
+					      full_height);
 		}
 	}
 	if (bottom) {
 		if (box->scroll_x == NULL) {
 			data = malloc(sizeof(struct html_scrollbar_data));
 			if (data == NULL) {
-				NSLOG(netsurf, INFO, "malloc failed");
-				guit->misc->warning("NoMemory", 0);
-				return false;
+				return NSERROR_OK;
 			}
 			data->c = c;
 			data->box = box;
-			if (scrollbar_create(true,
-					visible_width -
-					(right ? SCROLLBAR_WIDTH : 0),
-					full_width, visible_width,
-					data, html_overflow_scroll_callback,
-					     &box->scroll_x) != NSERROR_OK) {
-				return false;
+			res = scrollbar_create(true,
+					       visible_width - (right ? SCROLLBAR_WIDTH : 0),
+					       full_width,
+					       visible_width,
+					       data,
+					       html_overflow_scroll_callback,
+					       &box->scroll_x);
+			if (res != NSERROR_OK) {
+				return res;
 			}
 		} else {
 			scrollbar_set_extents(box->scroll_x,
@@ -1212,10 +1216,11 @@ bool box_handle_scrollbars(struct content *c, struct box *box,
 		}
 	}
 
-	if (right && bottom)
+	if (right && bottom) {
 		scrollbar_make_pair(box->scroll_x, box->scroll_y);
+	}
 
-	return true;
+	return NSERROR_OK;
 }
 
 /**

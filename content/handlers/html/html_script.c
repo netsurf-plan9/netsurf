@@ -42,7 +42,7 @@
 #include "html/html.h"
 #include "html/html_internal.h"
 
-typedef bool (script_handler_t)(struct jscontext *jscontext, const uint8_t *data, size_t size, const char *name);
+typedef bool (script_handler_t)(struct jsthread *jsthread, const uint8_t *data, size_t size, const char *name);
 
 
 static script_handler_t *select_script_handler(content_type ctype)
@@ -60,8 +60,9 @@ nserror html_script_exec(html_content *c, bool allow_defer)
 	unsigned int i;
 	struct html_script *s;
 	script_handler_t *script_handler;
+	bool have_run_something = false;
 
-	if (c->jscontext == NULL) {
+	if (c->jsthread == NULL) {
 		return NSERROR_BAD_PARAMETER;
 	}
 
@@ -94,8 +95,9 @@ nserror html_script_exec(html_content *c, bool allow_defer)
 				size_t size;
 				data = content_get_source_data(
 						s->data.handle, &size );
-				script_handler(c->jscontext, data, size,
+				script_handler(c->jsthread, data, size,
 					       nsurl_access(hlcache_handle_get_url(s->data.handle)));
+				have_run_something = true;
 				/* We have to re-acquire this here since the
 				 * c->scripts array may have been reallocated
 				 * as a result of executing this script.
@@ -106,6 +108,10 @@ nserror html_script_exec(html_content *c, bool allow_defer)
 
 			}
 		}
+	}
+
+	if (have_run_something) {
+		return html_proceed_to_done(c);
 	}
 
 	return NSERROR_OK;
@@ -183,10 +189,8 @@ convert_script_async_cb(hlcache_handle *script,
 	case CONTENT_MSG_ERROR:
 		NSLOG(netsurf, INFO, "script %s failed: %s",
 		      nsurl_access(hlcache_handle_get_url(script)),
-		      event->data.error);
-		/* fall through */
+		      event->data.errordata.errormsg);
 
-	case CONTENT_MSG_ERRORCODE:
 		hlcache_handle_release(script);
 		s->data.handle = NULL;
 		parent->base.active--;
@@ -210,7 +214,7 @@ convert_script_async_cb(hlcache_handle *script,
 	 * scripts as they come in.
 	 */
 	else if (parent->conversion_begun) {
-		html_script_exec(parent, false);
+		return html_script_exec(parent, false);
 	}
 
 	return NSERROR_OK;
@@ -249,10 +253,8 @@ convert_script_defer_cb(hlcache_handle *script,
 	case CONTENT_MSG_ERROR:
 		NSLOG(netsurf, INFO, "script %s failed: %s",
 		      nsurl_access(hlcache_handle_get_url(script)),
-		      event->data.error);
-		/* fall through */
+		      event->data.errordata.errormsg);
 
-	case CONTENT_MSG_ERRORCODE:
 		hlcache_handle_release(script);
 		s->data.handle = NULL;
 		parent->base.active--;
@@ -288,6 +290,15 @@ convert_script_sync_cb(hlcache_handle *script,
 	struct html_script *s;
 	script_handler_t *script_handler;
 	dom_hubbub_error err;
+	unsigned int active_sync_scripts = 0;
+
+	/* Count sync scripts which have yet to complete (other than us) */
+	for (i = 0, s = parent->scripts; i != parent->scripts_count; i++, s++) {
+		if (s->type == HTML_SCRIPT_SYNC &&
+		    s->data.handle != script && s->already_started == false) {
+			active_sync_scripts++;
+		}
+	}
 
 	/* Find script */
 	for (i = 0, s = parent->scripts; i != parent->scripts_count; i++, s++) {
@@ -308,17 +319,17 @@ convert_script_sync_cb(hlcache_handle *script,
 
 		/* attempt to execute script */
 		script_handler = select_script_handler(content_get_type(s->data.handle));
-		if (script_handler != NULL && parent->jscontext != NULL) {
+		if (script_handler != NULL && parent->jsthread != NULL) {
 			/* script has a handler */
 			const uint8_t *data;
 			size_t size;
 			data = content_get_source_data(s->data.handle, &size );
-			script_handler(parent->jscontext, data, size,
+			script_handler(parent->jsthread, data, size,
 				       nsurl_access(hlcache_handle_get_url(s->data.handle)));
 		}
 
 		/* continue parse */
-		if (parent->parser != NULL) {
+		if (parent->parser != NULL && active_sync_scripts == 0) {
 			err = dom_hubbub_parser_pause(parent->parser, false);
 			if (err != DOM_HUBBUB_OK) {
 				NSLOG(netsurf, INFO, "unpause returned 0x%x", err);
@@ -330,10 +341,8 @@ convert_script_sync_cb(hlcache_handle *script,
 	case CONTENT_MSG_ERROR:
 		NSLOG(netsurf, INFO, "script %s failed: %s",
 		      nsurl_access(hlcache_handle_get_url(script)),
-		      event->data.error);
-		/* fall through */
+		      event->data.errordata.errormsg);
 
-	case CONTENT_MSG_ERRORCODE:
 		hlcache_handle_release(script);
 		s->data.handle = NULL;
 		parent->base.active--;
@@ -344,7 +353,7 @@ convert_script_sync_cb(hlcache_handle *script,
 		s->already_started = true;
 
 		/* continue parse */
-		if (parent->parser != NULL) {
+		if (parent->parser != NULL && active_sync_scripts == 0) {
 			err = dom_hubbub_parser_pause(parent->parser, false);
 			if (err != DOM_HUBBUB_OK) {
 				NSLOG(netsurf, INFO, "unpause returned 0x%x", err);
@@ -390,7 +399,7 @@ exec_src_script(html_content *c,
 	/* src url */
 	ns_error = nsurl_join(c->base_url, dom_string_data(src), &joined);
 	if (ns_error != NSERROR_OK) {
-		content_broadcast_errorcode(&c->base, NSERROR_NOMEM);
+		content_broadcast_error(&c->base, NSERROR_NOMEM, NULL);
 		return DOM_HUBBUB_NOMEM;
 	}
 
@@ -452,7 +461,7 @@ exec_src_script(html_content *c,
 	nscript = html_process_new_script(c, mimetype, script_type);
 	if (nscript == NULL) {
 		nsurl_unref(joined);
-		content_broadcast_errorcode(&c->base, NSERROR_NOMEM);
+		content_broadcast_error(&c->base, NSERROR_NOMEM, NULL);
 		return DOM_HUBBUB_NOMEM;
 	}
 
@@ -522,7 +531,7 @@ exec_inline_script(html_content *c, dom_node *node, dom_string *mimetype)
 	if (nscript == NULL) {
 		dom_string_unref(script);
 
-		content_broadcast_errorcode(&c->base, NSERROR_NOMEM);
+		content_broadcast_error(&c->base, NSERROR_NOMEM, NULL);
 		return DOM_HUBBUB_NOMEM;
 
 	}
@@ -531,12 +540,16 @@ exec_inline_script(html_content *c, dom_node *node, dom_string *mimetype)
 	nscript->already_started = true;
 
 	/* ensure script handler for content type */
-	dom_string_intern(mimetype, &lwcmimetype);
+	exc = dom_string_intern(mimetype, &lwcmimetype);
+	if (exc != DOM_NO_ERR) {
+		return DOM_HUBBUB_DOM;
+	}
+
 	script_handler = select_script_handler(content_factory_type_from_mime_type(lwcmimetype));
 	lwc_string_unref(lwcmimetype);
 
 	if (script_handler != NULL) {
-		script_handler(c->jscontext,
+		script_handler(c->jsthread,
 			       (const uint8_t *)dom_string_data(script),
 			       dom_string_byte_length(script),
 			       "?inline script?");
@@ -562,13 +575,13 @@ html_process_script(void *ctx, dom_node *node)
 	/* We should only ever be here if scripting was enabled for this
 	 * content so it's correct to make a javascript context if there
 	 * isn't one already. */
-	if (c->jscontext == NULL) {
+	if (c->jsthread == NULL) {
 		union content_msg_data msg_data;
 
-		msg_data.jscontext = &c->jscontext;
-		content_broadcast(&c->base, CONTENT_MSG_GETCTX, &msg_data);
-		NSLOG(netsurf, INFO, "javascript context %p ", c->jscontext);
-		if (c->jscontext == NULL) {
+		msg_data.jsthread = &c->jsthread;
+		content_broadcast(&c->base, CONTENT_MSG_GETTHREAD, &msg_data);
+		NSLOG(netsurf, INFO, "javascript context %p ", c->jsthread);
+		if (c->jsthread == NULL) {
 			/* no context and it could not be created, abort */
 			return DOM_HUBBUB_OK;
 		}
@@ -593,6 +606,31 @@ html_process_script(void *ctx, dom_node *node)
 	dom_string_unref(mimetype);
 
 	return err;
+}
+
+/* exported internal interface documented in html/html_internal.h */
+bool html_saw_insecure_scripts(html_content *htmlc)
+{
+	struct html_script *s;
+	unsigned int i;
+
+	for (i = 0, s = htmlc->scripts; i != htmlc->scripts_count; i++, s++) {
+		if (s->type == HTML_SCRIPT_INLINE) {
+			/* Inline scripts are no less secure than their
+			 * containing HTML content
+			 */
+			continue;
+		}
+		if (s->data.handle == NULL) {
+			/* We've not begun loading this? */
+			continue;
+		}
+		if (content_saw_insecure_objects(s->data.handle)) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /* exported internal interface documented in html/html_internal.h */
@@ -624,12 +662,5 @@ nserror html_script_free(html_content *html)
 	}
 	free(html->scripts);
 
-	return NSERROR_OK;
-}
-
-/* exported internal interface documented in html/html_internal.h */
-nserror html_script_invalidate_ctx(html_content *htmlc)
-{
-	htmlc->jscontext = NULL;
 	return NSERROR_OK;
 }

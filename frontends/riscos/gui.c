@@ -2427,12 +2427,9 @@ static struct gui_fetch_table riscos_fetch_table = {
 
 static struct gui_misc_table riscos_misc_table = {
 	.schedule = riscos_schedule,
-	.warning = ro_warn_user,
 
 	.quit = gui_quit,
 	.launch_url = gui_launch_url,
-	.cert_verify = gui_cert_verify,
-	.login = gui_401login_open,
 };
 
 

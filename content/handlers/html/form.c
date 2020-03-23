@@ -223,6 +223,9 @@ void form_free_control(struct form_control *control)
 	free(control->name);
 	free(control->value);
 	free(control->initial_value);
+	if (control->last_synced_value != NULL) {
+		free(control->last_synced_value);
+	}
 
 	if (control->type == GADGET_SELECT) {
 		struct form_option *option, *next;
@@ -273,6 +276,10 @@ void form_free_control(struct form_control *control)
 				break;
 			}
 		}
+	}
+
+	if (control->node_value != NULL) {
+		dom_string_unref(control->node_value);
 	}
 
 	free(control);
@@ -1479,10 +1486,11 @@ form_encode_item(const char *item,
 }
 
 /* exported interface documented in html/form_internal.h */
-bool form_open_select_menu(void *client_data,
-		struct form_control *control,
-		select_menu_redraw_callback callback,
-		struct content *c)
+nserror
+form_open_select_menu(void *client_data,
+		      struct form_control *control,
+		      select_menu_redraw_callback callback,
+		      struct content *c)
 {
 	int line_height_with_spacing;
 	struct box *box;
@@ -1490,15 +1498,14 @@ bool form_open_select_menu(void *client_data,
 	int total_height;
 	struct form_select_menu *menu;
 	html_content *html = (html_content *)c;
-
+	nserror res;
 
 	/* if the menu is opened for the first time */
 	if (control->data.select.menu == NULL) {
 
 		menu = calloc(1, sizeof (struct form_select_menu));
 		if (menu == NULL) {
-			guit->misc->warning("NoMemory", 0);
-			return false;
+			return NSERROR_NOMEM;
 		}
 
 		control->data.select.menu = menu;
@@ -1506,9 +1513,8 @@ bool form_open_select_menu(void *client_data,
 		box = control->box;
 
 		menu->width = box->width +
-				box->border[RIGHT].width +
-				box->border[LEFT].width +
-				box->padding[RIGHT] + box->padding[LEFT];
+			box->border[RIGHT].width + box->padding[RIGHT] +
+			box->border[LEFT].width + box->padding[LEFT];
 
 		font_plot_style_from_css(&html->len_ctx, control->box->style,
 				&fstyle);
@@ -1528,28 +1534,31 @@ bool form_open_select_menu(void *client_data,
 		menu->height = total_height;
 
 		if (menu->height > MAX_SELECT_HEIGHT) {
-
 			menu->height = MAX_SELECT_HEIGHT;
 		}
+
 		menu->client_data = client_data;
 		menu->callback = callback;
-		if (scrollbar_create(false,
-				menu->height,
-				total_height,
-				menu->height,
-				control,
-				form_select_menu_scroll_callback,
-				&(menu->scrollbar)) != NSERROR_OK) {
+		res = scrollbar_create(false,
+				       menu->height,
+				       total_height,
+				       menu->height,
+				       control,
+				       form_select_menu_scroll_callback,
+				       &(menu->scrollbar));
+		if (res != NSERROR_OK) {
+			control->data.select.menu = NULL;
 			free(menu);
-			return false;
+			return res;
 		}
 		menu->c = c;
+	} else {
+		menu = control->data.select.menu;
 	}
-	else menu = control->data.select.menu;
 
 	menu->callback(client_data, 0, 0, menu->width, menu->height);
 
-	return true;
+	return NSERROR_OK;
 }
 
 
@@ -2235,4 +2244,112 @@ void form_gadget_update_value(struct form_control *control, char *value)
 		/* Do nothing */
 		break;
 	}
+
+	/* Finally, sync this with the DOM */
+	form_gadget_sync_with_dom(control);
+}
+
+/* Exported API, see form_internal.h */
+void
+form_gadget_sync_with_dom(struct form_control *control)
+{
+	dom_exception exc;
+	dom_string *value = NULL;
+	bool changed_dom = false;
+
+	if (control->syncing ||
+	    (control->type != GADGET_TEXTBOX &&
+	     control->type != GADGET_PASSWORD &&
+	     control->type != GADGET_HIDDEN &&
+	     control->type != GADGET_TEXTAREA)) {
+		/* Not a control we support, or the control is already
+		 * mid-sync so we don't want to disrupt that
+		 */
+		return;
+	}
+
+	control->syncing = true;
+
+	/* If we've changed value, sync that toward the DOM */
+	if ((control->last_synced_value == NULL &&
+	     control->value != NULL &&
+	     control->value[0] != '\0') ||
+	    (control->last_synced_value != NULL &&
+	     control->value != NULL &&
+	     strcmp(control->value, control->last_synced_value) != 0)) {
+		char *dup = strdup(control->value);
+		if (dup == NULL) {
+			goto out;
+		}
+		if (control->last_synced_value != NULL) {
+			free(control->last_synced_value);
+		}
+		control->last_synced_value = dup;
+		exc = dom_string_create((uint8_t *)(control->value),
+					strlen(control->value), &value);
+		if (exc != DOM_NO_ERR) {
+			goto out;
+		}
+		if (control->node_value != NULL) {
+			dom_string_unref(control->node_value);
+		}
+		control->node_value = value;
+		value = NULL;
+		if (control->type == GADGET_TEXTAREA) {
+			exc = dom_html_text_area_element_set_value(control->node, control->node_value);
+		} else {
+			exc = dom_html_input_element_set_value(control->node, control->node_value);
+		}
+		if (exc != DOM_NO_ERR) {
+			goto out;
+		}
+		changed_dom = true;
+	}
+
+	/* Now check if the DOM has changed since our last go */
+	if (control->type == GADGET_TEXTAREA) {
+		exc = dom_html_text_area_element_get_value(control->node, &value);
+	} else {
+		exc = dom_html_input_element_get_value(control->node, &value);
+	}
+
+	if (exc != DOM_NO_ERR) {
+		/* Nothing much we can do here */
+		goto out;
+	}
+
+	if (!dom_string_isequal(control->node_value, value)) {
+		/* The DOM has changed */
+		if (!changed_dom) {
+			/* And it wasn't us */
+			char *value_s = strndup(
+				dom_string_data(value),
+				dom_string_byte_length(value));
+			char *dup = NULL;
+			if (value_s == NULL) {
+				goto out;
+			}
+			dup = strdup(value_s);
+			if (dup == NULL) {
+				free(value_s);
+				goto out;
+			}
+			free(control->value);
+			control->value = value_s;
+			free(control->last_synced_value);
+			control->last_synced_value = dup;
+			if (control->type != GADGET_HIDDEN &&
+			    control->data.text.ta != NULL) {
+				textarea_set_text(control->data.text.ta,
+						  value_s);
+			}
+		}
+		control->node_value = value;
+		value = NULL;
+	}
+
+out:
+	if (value != NULL)
+		dom_string_unref(value);
+	control->syncing = false;
 }

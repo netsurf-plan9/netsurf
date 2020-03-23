@@ -825,16 +825,18 @@ ami_cw_invalidate_area(struct core_window *cw, const struct rect *r)
 }
 
 
-static void
-ami_cw_get_window_dimensions(struct core_window *cw, int *width, int *height)
+static nserror
+ami_cw_get_window_dimensions(const struct core_window *cw,
+		int *width, int *height)
 {
 	struct ami_corewindow *ami_cw = (struct ami_corewindow *)cw;
 
 	ami_cw_window_size(ami_cw, width, height);
+	return NSERROR_OK;
 }
 
 
-static void
+static nserror
 ami_cw_update_size(struct core_window *cw, int width, int height)
 {
 	struct ami_corewindow *ami_cw = (struct ami_corewindow *)cw;
@@ -861,61 +863,61 @@ ami_cw_update_size(struct core_window *cw, int width, int height)
 			SCROLLER_Visible, win_h,
 		TAG_DONE);		
 	}
+	return NSERROR_OK;
 }
 
 
-static void
-ami_cw_scroll_visible(struct core_window *cw, const struct rect *r)
+static nserror
+ami_cw_get_scroll(const struct core_window *cw, int *x, int *y)
 {
 	struct ami_corewindow *ami_cw = (struct ami_corewindow *)cw;
-
-	int scrollsetx;
-	int scrollsety;
-	int win_w = 0, win_h = 0;
 	ULONG win_x0, win_y0;
-	int win_x1, win_y1;
-
-	ami_cw_window_size(ami_cw, &win_w, &win_h);
 
 	ami_cw_scroller_top(ami_cw, &win_x0, &win_y0);
 
-	win_x1 = win_x0 + win_w;
-	win_y1 = win_y0 + win_h;
+	*x = win_x0;
+	*y = win_y0;
+	return NSERROR_OK;
+}
 
-	if(r->y1 > win_y1) scrollsety = r->y1 - win_h;
-	if(r->y0 < (LONG)win_y0) scrollsety = r->y0;
-	if(r->x1 > win_x1) scrollsetx = r->x1 - win_w;
-	if(r->x0 < (LONG)win_x0) scrollsetx = r->x0;
+
+static nserror
+ami_cw_set_scroll(struct core_window *cw, int x, int y)
+{
+	struct ami_corewindow *ami_cw = (struct ami_corewindow *)cw;
 
 	if(ami_cw->scroll_y_visible == true) {
 		RefreshSetGadgetAttrs((APTR)ami_cw->objects[GID_CW_VSCROLL], ami_cw->win, NULL,
-				SCROLLER_Top, scrollsety,
+				SCROLLER_Top, y,
 				TAG_DONE);
 	}
 
 	if(ami_cw->scroll_x_visible == true) {
 		RefreshSetGadgetAttrs((APTR)ami_cw->objects[GID_CW_HSCROLL], ami_cw->win, NULL,
-				SCROLLER_Top, scrollsetx,
+				SCROLLER_Top, x,
 				TAG_DONE);
 	}
 
 	/* probably need to redraw here */
 	ami_cw_redraw(ami_cw, NULL);
+	return NSERROR_OK;
 }
 
 
-static void
+static nserror
 ami_cw_drag_status(struct core_window *cw, core_window_drag_status ds)
 {
 	struct ami_corewindow *ami_cw = (struct ami_corewindow *)cw;
 	ami_cw->drag_status = ds;
+	return NSERROR_OK;
 }
 
 
 struct core_window_callback_table ami_cw_cb_table = {
         .invalidate = ami_cw_invalidate_area,
         .update_size = ami_cw_update_size,
-        .scroll_visible = ami_cw_scroll_visible,
+        .set_scroll = ami_cw_set_scroll,
+        .get_scroll = ami_cw_get_scroll,
         .get_window_dimensions = ami_cw_get_window_dimensions,
         .drag_status = ami_cw_drag_status
 };

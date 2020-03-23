@@ -16,7 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** \file
+/**
+ * \file
  * Localised message support (interface).
  *
  * The messages module loads a file of keys and associated strings, and
@@ -30,12 +31,13 @@
  * file table.  Use the _ctx versions of the functions to do this.
  */
 
-#ifndef _NETSURF_UTILS_MESSAGES_H_
-#define _NETSURF_UTILS_MESSAGES_H_
+#ifndef NETSURF_UTILS_MESSAGES_H_
+#define NETSURF_UTILS_MESSAGES_H_
 
 #include <stdint.h>
 
 #include "utils/errors.h"
+#include "netsurf/ssl_certs.h"
 
 /**
  * Read keys and values from messages file into the standard Messages hash.
@@ -79,15 +81,22 @@ const char *messages_get(const char *key);
 const char *messages_get_errorcode(nserror code);
 
 /**
+ * lookup of a message by SSL error code from the standard Messages hash.
+ *
+ * \param code ssl error code
+ * \return message text
+ */
+const char *messages_get_sslcode(ssl_cert_err code);
+
+/**
  * Formatted message from a key in the global message hash.
  *
- * \param  key  key of message
+ * \param key key of message
  * \param ... message parameters
- * \return buffer containing formatted message text or NULL if memory
- *         is unavailable. The caller owns the returned buffer and is
- *         responsible for freeing it.
+ * \return buffer containing formatted message text or NULL if key is
+ *         unavailable or memory allocation failed. The caller owns the
+ *         returned buffer and is responsible for freeing it.
  */
-
 char *messages_get_buff(const char *key, ...);
 
 /**

@@ -34,6 +34,7 @@
 #include "utils/nsoption.h"
 #include "netsurf/url_db.h"
 #include "netsurf/cookie_db.h"
+#include "netsurf/browser.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/fetch.h"
 #include "netsurf/misc.h"
@@ -45,7 +46,6 @@
 #include "windows/drawable.h"
 #include "windows/corewindow.h"
 #include "windows/ssl_cert.h"
-#include "windows/login.h"
 #include "windows/download.h"
 #include "windows/local_history.h"
 #include "windows/window.h"
@@ -57,9 +57,26 @@
 #include "windows/clipboard.h"
 #include "windows/gui.h"
 
-char **respaths; /** exported global defined in windows/gui.h */
 
-char *nsw32_config_home; /* exported global defined in windows/gui.h */
+/**
+ * Obtain the DPI of the display.
+ *
+ * \return The DPI of the device the window is displayed on.
+ */
+static int get_screen_dpi(void)
+{
+	HDC screendc = GetDC(0);
+	int dpi = GetDeviceCaps(screendc, LOGPIXELSY);
+	ReleaseDC(0, screendc);
+
+	if (dpi <= 10) {
+		dpi = 96; /* 96DPI is the default */
+	}
+
+	NSLOG(netsurf, INFO, "FIX DPI %d", dpi);
+
+	return dpi;
+}
 
 /**
  * Get the path to the config directory.
@@ -173,6 +190,11 @@ static nserror set_defaults(struct nsoption_s *defaults)
 			      &ptr);
 	if (res_len > 0) {
 		nsoption_setnull_charp(ca_bundle, strdup(buf));
+	} else {
+		ptr = filepath_sfind(G_resource_pathv, buf, "ca-bundle.crt");
+		if (ptr != NULL) {
+			nsoption_setnull_charp(ca_bundle, strdup(buf));
+		}
 	}
 
 
@@ -204,28 +226,28 @@ static nserror set_defaults(struct nsoption_s *defaults)
 
 	/* cookie file default */
 	fname = NULL;
-	netsurf_mkpath(&fname, NULL, 2, nsw32_config_home, "Cookies");
+	netsurf_mkpath(&fname, NULL, 2, G_config_path, "Cookies");
 	if (fname != NULL) {
 		nsoption_setnull_charp(cookie_file, fname);
 	}
 
 	/* cookie jar default */
 	fname = NULL;
-	netsurf_mkpath(&fname, NULL, 2, nsw32_config_home, "Cookies");
+	netsurf_mkpath(&fname, NULL, 2, G_config_path, "Cookies");
 	if (fname != NULL) {
 		nsoption_setnull_charp(cookie_jar, fname);
 	}
 
 	/* url database default */
 	fname = NULL;
-	netsurf_mkpath(&fname, NULL, 2, nsw32_config_home, "URLs");
+	netsurf_mkpath(&fname, NULL, 2, G_config_path, "URLs");
 	if (fname != NULL) {
 		nsoption_setnull_charp(url_file, fname);
 	}
 
 	/* bookmark database default */
 	fname = NULL;
-	netsurf_mkpath(&fname, NULL, 2, nsw32_config_home, "Hotlist");
+	netsurf_mkpath(&fname, NULL, 2, G_config_path, "Hotlist");
 	if (fname != NULL) {
 		nsoption_setnull_charp(hotlist_path, fname);
 	}
@@ -237,10 +259,15 @@ static nserror set_defaults(struct nsoption_s *defaults)
 /**
  * Initialise user options location and contents
  */
-static nserror nsw32_option_init(int *pargc, char** argv)
+static nserror
+nsw32_option_init(int *pargc, char** argv, char **respaths, char *config_path)
 {
 	nserror ret;
 	char *choices = NULL;
+
+	/* set the globals that will be used in the set_defaults() callback */
+	G_resource_pathv = respaths;
+	G_config_path = config_path;
 
 	/* user options setup */
 	ret = nsoption_init(set_defaults, &nsoptions, &nsoptions_default);
@@ -249,7 +276,7 @@ static nserror nsw32_option_init(int *pargc, char** argv)
 	}
 
 	/* Attempt to load the user choices */
-	ret = netsurf_mkpath(&choices, NULL, 2, nsw32_config_home, "Choices");
+	ret = netsurf_mkpath(&choices, NULL, 2, config_path, "Choices");
 	if (ret == NSERROR_OK) {
 		nsoption_read(choices, nsoptions);
 		free(choices);
@@ -288,12 +315,62 @@ static nserror nsw32_messages_init(char **respaths)
 	return res;
 }
 
+
+/**
+ * Construct a unix style argc/argv
+ *
+ * \param argc_out number of commandline arguments
+ * \param argv_out string vector of command line arguments
+ * \return NSERROR_OK on success else error code
+ */
+static nserror win32_to_unix_commandline(int *argc_out, char ***argv_out)
+{
+	int argc = 0;
+	char **argv;
+	int cura;
+	LPWSTR *argvw;
+	size_t len;
+
+	argvw = CommandLineToArgvW(GetCommandLineW(), &argc);
+	if (argvw == NULL) {
+		return NSERROR_INVALID;
+	}
+
+	argv = malloc(sizeof(char *) * argc);
+	if (argv == NULL) {
+		return NSERROR_NOMEM;
+	}
+
+	for (cura = 0; cura < argc; cura++) {
+
+		len = wcstombs(NULL, argvw[cura], 0) + 1;
+		if (len > 0) {
+			argv[cura] = malloc(len);
+			if (argv[cura] == NULL) {
+				free(argv);
+				return NSERROR_NOMEM;
+			}
+		} else {
+			free(argv);
+			return NSERROR_INVALID;
+		}
+
+		wcstombs(argv[cura], argvw[cura], len);
+		/* alter windows-style forward slash flags to hyphen flags. */
+		if (argv[cura][0] == '/') {
+			argv[cura][0] = '-';
+		}
+	}
+
+	*argc_out = argc;
+	*argv_out = argv;
+
+	return NSERROR_OK;
+}
+
+
 static struct gui_misc_table win32_misc_table = {
 	.schedule = win32_schedule,
-	.warning = win32_warning,
-
-	.cert_verify = nsw32_cert_verify,
-	.login = nsw32_401login,
 };
 
 /**
@@ -302,10 +379,10 @@ static struct gui_misc_table win32_misc_table = {
 int WINAPI
 WinMain(HINSTANCE hInstance, HINSTANCE hLastInstance, LPSTR lpcli, int ncmd)
 {
-	char **argv = NULL;
-	int argc = 0, argctemp = 0;
-	size_t len;
-	LPWSTR *argvw;
+	int argc;
+	char **argv;
+	char **respaths;
+	char *nsw32_config_home = NULL;
 	nserror ret;
 	const char *addr;
 	nsurl *url;
@@ -331,27 +408,10 @@ WinMain(HINSTANCE hInstance, HINSTANCE hLastInstance, LPSTR lpcli, int ncmd)
 
 	setbuf(stderr, NULL);
 
-	/* Construct a unix style argc/argv */
-	if (SLEN(lpcli) > 0) {
-		argvw = CommandLineToArgvW(GetCommandLineW(), &argc);
-	}
-
-	argv = malloc(sizeof(char *) * argc);
-	while (argctemp < argc) {
-		len = wcstombs(NULL, argvw[argctemp], 0) + 1;
-		if (len > 0) {
-			argv[argctemp] = malloc(len);
-		}
-
-		if (argv[argctemp] != NULL) {
-			wcstombs(argv[argctemp], argvw[argctemp], len);
-			/* alter windows-style forward slash flags to
-			 * hyphen flags.
-			 */
-			if (argv[argctemp][0] == '/')
-				argv[argctemp][0] = '-';
-		}
-		argctemp++;
+	ret = win32_to_unix_commandline(&argc, &argv);
+	if (ret != NSERROR_OK) {
+		/* no log as logging requires this for initialisation */
+		return 1;
 	}
 
 	/* initialise logging - not fatal if it fails but not much we
@@ -359,23 +419,23 @@ WinMain(HINSTANCE hInstance, HINSTANCE hLastInstance, LPSTR lpcli, int ncmd)
 	 */
 	nslog_init(nslog_ensure, &argc, argv);
 
+	/* build resource path string vector */
+	respaths = nsws_init_resource("${APPDATA}\\NetSurf:${PROGRAMFILES}\\NetSurf\\NetSurf\\:"NETSURF_WINDOWS_RESPATH);
+
 	/* Locate the correct user configuration directory path */
 	ret = get_config_home(&nsw32_config_home);
 	if (ret != NSERROR_OK) {
 		NSLOG(netsurf, INFO,
 		      "Unable to locate a configuration directory.");
-		nsw32_config_home = NULL;
 	}
 
 	/* Initialise user options */
-	ret = nsw32_option_init(&argc, argv);
+	ret = nsw32_option_init(&argc, argv, respaths, nsw32_config_home);
 	if (ret != NSERROR_OK) {
-		NSLOG(netsurf, INFO, "Options failed to initialise (%s)\n",
+		NSLOG(netsurf, ERROR, "Options failed to initialise (%s)\n",
 		      messages_get_errorcode(ret));
 		return 1;
 	}
-
-	respaths = nsws_init_resource("${APPDATA}\\NetSurf:${HOME}\\.netsurf:${NETSURFRES}:${PROGRAMFILES}\\NetSurf\\NetSurf\\:"NETSURF_WINDOWS_RESPATH);
 
 	/* Initialise translated messages */
 	ret = nsw32_messages_init(respaths);
@@ -392,6 +452,8 @@ WinMain(HINSTANCE hInstance, HINSTANCE hLastInstance, LPSTR lpcli, int ncmd)
 		NSLOG(netsurf, INFO, "NetSurf failed to initialise");
 		return 1;
 	}
+
+	browser_set_dpi(get_screen_dpi());
 
 	urldb_load(nsoption_charp(url_file));
 	urldb_load_cookies(nsoption_charp(cookie_file));

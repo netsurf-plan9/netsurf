@@ -22,13 +22,22 @@
 
 struct gui_window;
 
+/**
+ * win32 application instance handle.
+ *
+ * This handle is set in the main windows entry point.
+ */
 extern HINSTANCE hinst;
 
-/** Directory where all configuration files are held. */
-extern char *nsw32_config_home;
+/**
+ * path to where all user config files are held.
+ */
+extern char *G_config_path;
 
-/** resource search path vector. */
-extern char **respaths;
+/**
+ * resource search path vector.
+ */
+extern char **G_resource_pathv;
 
 /* bounding box */
 typedef struct bbox_s {
@@ -57,6 +66,16 @@ void win32_set_quit(bool q);
  *           faliure displaying the message to the user.
  */
 nserror win32_warning(const char *warning, const char *detail);
+
+/**
+ * Warn the user of an unexpected nserror.
+ *
+ * \param[in] error The nserror to report
+ * \param[in] detail Additional text to be displayed or NULL.
+ * \return NSERROR_OK on success or error code if there was a
+ *           faliure displaying the message to the user.
+ */
+nserror win32_report_nserror(nserror error, const char *detail);
 
 /**
  * add a modeless dialog to the special handling list

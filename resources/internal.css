@@ -2,13 +2,17 @@ html, body {
 	margin: 0;
 	padding: 0; }
 
+html {
+	padding: 2em;
+}
+
 body {
-	color: #000;
-	background-color: #fff;
 	font-family: sans-serif;
 	font-size: 94%;
 	margin: 0 auto;
-	position: relative; }
+	position: relative;
+	border-width: 2px;
+	border-style: solid; }
 
 h1, h2, h3, h4, h5, h6, h7, p, ul, dl, ol, table {
 	margin-left: 5mm;
@@ -36,7 +40,8 @@ h1 {
 h2 {
 	font-size: 160%;
 	padding-top: 5mm;
-	border-top: 1px solid black; }
+	border-top-width: 1px;
+	border-top-style: solid; }
 
 h3 {
 	font-size: 140%;
@@ -97,19 +102,24 @@ dd > ul {
 	padding-top: 0.4em;
 	border-top: 2px solid #94adff; }
 
+input.default-action {
+	color: white;
+	background: rgb(0, 96, 223);
+	border-color: rgb(0, 96, 223);
+}
 
 /*
  * Directory Listing Style
  */
 
 body#dirlist {
-	background-color: #abf;
 	padding-bottom: 2em; }
 
 body#dirlist h1 {
 	padding: 5mm;
 	margin: 0;
-	border-bottom: 2px solid #bcf; }
+	border-bottom-width: 2px;
+	border-bottom-style: solid; }
 
 body#dirlist p {
 	padding: 2px 5mm;
@@ -121,26 +131,31 @@ body#dirlist div {
 	margin: 5mm auto 2em auto;
 	padding: 0; }
 
-body#dirlist a, strong {
+body#dirlist strong {
+	display: table-row;
+	margin: 0;
+	padding: 0;
+	font-size: 120%;
+}
+
+body#dirlist a {
 	display: table-row;
 	margin: 0;
 	padding: 0; }
-
-body#dirlist a.odd {
-	background-color: #bcf; }
-
-body#dirlist a.even {
-	background-color: #b2c3ff; }
 
 body#dirlist span {
 	display: table-cell;
 	vertical-align: middle; }
 
+body#dirlist a > span {
+	padding-top: 0.1em; }
+
 body#dirlist em > span {
 	padding-bottom: 1px; }
 
 body#dirlist a + a>span {
-	border-top: 1px solid #9af; }
+	border-top-width: 1px;
+	border-top-style: solid; }
 
 body#dirlist a {
 	background-position: 4px 50%;
@@ -237,3 +252,180 @@ p.imagecachelist span {
 	display: table-cell;
 }
 
+/*
+ * authentication query styling
+ */
+
+body#authentication {
+    max-width: 45em;
+}
+
+body#authentication h1 {
+  padding: 0.8em 0.4em 0.5em 0.4em;
+  border-bottom: 0.1em solid #444;
+  margin: 0 0 1.3em 0;
+  background: #777;
+  color: white;
+}
+
+body#authentication form {
+  /* Just to center the form on the page */
+  margin: 0 auto;
+  /* To see the outline of the form */
+  padding: 1em;
+  border: 1px solid #CCC;
+  border-radius: 1em;
+}
+
+body#authentication table {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 1.5em auto;
+}
+
+body#authentication label {
+  /* To make sure that all labels have the same size and are properly aligned */
+  display: inline-block;
+  text-align: right;
+}
+
+body#authentication table th {
+  text-align: right;
+}
+
+body#authentication table td {
+  text-align: left;
+}
+
+body#authentication table input {
+  /* To give the same size to all text fields */
+  width: 20em;
+  box-sizing: border-box;
+  margin-right: 10%;
+
+  /* To harmonize the look & feel of text field border */
+  border: 1px solid #999;
+}
+
+body#authentication div#buttons {
+  text-align: right;
+  margin-right: 1em;
+}
+
+body#authentication div#buttons input#login {
+  margin-right: 1em;
+}
+
+/*
+ * privacy query styling
+ */
+
+body#privacy {
+  max-width: 45em;
+}
+
+body#privacy h1 {
+  padding: 0.8em 0.4em 0.5em 0.4em;
+  border-bottom: 0.1em solid #444;
+  margin: 0 0 1.3em 0;
+  background: #c55;
+  color: white;
+}
+
+body#privacy form {
+  /* Just to center the form on the page */
+  margin: 0 auto;
+  /* To see the outline of the form */
+  padding: 1em;
+  border: 1px solid #CCC;
+  border-radius: 1em;
+}
+
+body#privacy form div + div {
+  margin-top: 1em;
+}
+
+body#privacy div#buttons {
+    text-align: right;
+    margin-right: 1em;
+}
+
+body#privacy div#buttons input#back {
+  margin-right: 1em;
+}
+
+/*
+ * timeout query styling
+ */
+
+body#timeout {
+  max-width: 45em;
+}
+
+body#timeout h1 {
+  padding: 0.8em 0.4em 0.5em 0.4em;
+  border-bottom: 0.1em solid #444;
+  margin: 0 0 1.3em 0;
+  background: #c55;
+  color: white;
+}
+
+body#timeout form {
+  /* Just to center the form on the page */
+  margin: 0 auto;
+  /* To see the outline of the form */
+  padding: 1em;
+  border: 1px solid #CCC;
+  border-radius: 1em;
+}
+
+body#timeout form div + div {
+  margin-top: 1em;
+}
+
+body#timeout div#buttons {
+    text-align: right;
+    margin-right: 1em;
+}
+
+body#timeout div#buttons input#back {
+  margin-right: 1em;
+}
+
+/*
+ * fetch error query styling
+ */
+
+body#fetcherror {
+  max-width: 45em;
+}
+
+body#fetcherror h1 {
+  padding: 0.8em 0.4em 0.5em 0.4em;
+  border-bottom: 0.1em solid #444;
+  margin: 0 0 1.3em 0;
+  background: #c55;
+  color: white;
+}
+
+body#fetcherror form {
+  /* Just to center the form on the page */
+  margin: 0 auto;
+  /* To see the outline of the form */
+  padding: 1em;
+  border: 1px solid #CCC;
+  border-radius: 1em;
+}
+
+body#fetcherror form div + div {
+  margin-top: 1em;
+}
+
+body#fetcherror div#buttons {
+    text-align: right;
+    margin-right: 1em;
+}
+
+body#fetcherror div#buttons input#back {
+  margin-right: 1em;
+}

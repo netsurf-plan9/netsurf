@@ -33,6 +33,7 @@
 #include "utils/nsurl.h"
 #include "utils/corestrings.h"
 #include "utils/log.h"
+#include "utils/time.h"
 #include "utils/messages.h"
 #include "utils/utils.h"
 #include "utils/ring.h"
@@ -55,7 +56,6 @@ static const char *fetch_resource_paths[] = {
 	"credits.html",
 	"licence.html",
 	"welcome.html",
-	"maps.html",
 	"favicon.ico",
 	"default.ico",
 	"netsurf.png",
@@ -97,7 +97,7 @@ struct fetch_resource_context {
 
 	fetch_resource_handler handler;
 
-	int etag;
+	time_t etag;
 };
 
 static struct fetch_resource_context *ring = NULL;
@@ -121,19 +121,21 @@ static bool fetch_resource_send_header(struct fetch_resource_context *ctx,
 	fetch_msg msg;
 	char header[64];
 	va_list ap;
+	int len;
 
 	va_start(ap, fmt);
-
-	vsnprintf(header, sizeof header, fmt, ap);
-
+	len = vsnprintf(header, sizeof header, fmt, ap);
 	va_end(ap);
+
+	if (len >= (int)sizeof(header) || len < 0) {
+		return false;
+	}
 
 	msg.type = FETCH_HEADER;
 	msg.data.header_or_data.buf = (const uint8_t *) header;
-	msg.data.header_or_data.len = strlen(header);
-	fetch_resource_send_callback(&msg, ctx);
+	msg.data.header_or_data.len = len;
 
-	return ctx->aborted;
+	return fetch_resource_send_callback(&msg, ctx);
 }
 
 
@@ -194,6 +196,11 @@ static bool fetch_resource_data_handler(struct fetch_resource_context *ctx)
 		goto fetch_resource_data_aborted;
 	}
 
+	/* create max-age of 1 year */
+	if (fetch_resource_send_header(ctx,
+			"Cache-Control: max-age=31536000")) {
+		goto fetch_resource_data_aborted;
+	}
 
 	msg.type = FETCH_DATA;
 	msg.data.header_or_data.buf = (const uint8_t *) ctx->entry->data;
@@ -328,6 +335,7 @@ fetch_resource_setup(struct fetch *fetchh,
 {
 	struct fetch_resource_context *ctx;
 	lwc_string *path;
+	nserror ret;
 	uint32_t i;
 
 	ctx = calloc(1, sizeof(*ctx));
@@ -364,17 +372,24 @@ fetch_resource_setup(struct fetch *fetchh,
 	/* Scan request headers looking for If-None-Match */
 	for (i = 0; headers[i] != NULL; i++) {
 		if (strncasecmp(headers[i], "If-None-Match:",
-				SLEN("If-None-Match:")) == 0) {
-			/* If-None-Match: "12345678" */
-			const char *d = headers[i] + SLEN("If-None-Match:");
+				SLEN("If-None-Match:")) != 0) {
+			continue;
+		}
 
-			/* Scan to first digit, if any */
-			while (*d != '\0' && (*d < '0' || '9' < *d))
-				d++;
+		/* If-None-Match: "12345678" */
+		const char *d = headers[i] + SLEN("If-None-Match:");
 
-			/* Convert to time_t */
-			if (*d != '\0')
-				ctx->etag = atoi(d);
+		/* Scan to first digit, if any */
+		while (*d != '\0' && (*d < '0' || '9' < *d))
+			d++;
+
+		/* Convert to time_t */
+		if (*d != '\0') {
+			ret = nsc_snptimet(d, strlen(d), &ctx->etag);
+			if (ret != NSERROR_OK) {
+				NSLOG(fetch, WARNING,
+						"Bad If-None-Match value");
+			}
 		}
 	}
 
@@ -391,7 +406,6 @@ static void fetch_resource_free(void *ctx)
 	struct fetch_resource_context *c = ctx;
 	if (c->url != NULL)
 		nsurl_unref(c->url);
-	RING_REMOVE(ring, c);
 	free(ctx);
 }
 
@@ -417,13 +431,13 @@ static void fetch_resource_abort(void *ctx)
 /** callback to poll for additional resource fetch contents */
 static void fetch_resource_poll(lwc_string *scheme)
 {
-	struct fetch_resource_context *c, *next;
+	struct fetch_resource_context *c, *save_ring = NULL;
 
-	if (ring == NULL) return;
+	while (ring != NULL) {
+		/* Take the first entry from the ring */
+		c = ring;
+		RING_REMOVE(ring, c);
 
-	/* Iterate over ring, processing each pending fetch */
-	c = ring;
-	do {
 		/* Ignore fetches that have been flagged as locked.
 		 * This allows safe re-entrant calls to this function.
 		 * Re-entrancy can occur if, as a result of a callback,
@@ -431,7 +445,7 @@ static void fetch_resource_poll(lwc_string *scheme)
 		 * again.
 		 */
 		if (c->locked == true) {
-			next = c->r_next;
+			RING_INSERT(save_ring, c);
 			continue;
 		}
 
@@ -441,18 +455,15 @@ static void fetch_resource_poll(lwc_string *scheme)
 			c->handler(c);
 		}
 
-		/* Compute next fetch item at the last possible moment
-		 * as processing this item may have added to the ring
-		 */
-		next = c->r_next;
-
+		/* And now finish */
 		fetch_remove_from_queues(c->fetchh);
 		fetch_free(c->fetchh);
+	}
 
-		/* Advance to next ring entry, exiting if we've reached
-		 * the start of the ring or the ring has become empty
-		 */
-	} while ( (c = next) != ring && ring != NULL);
+	/* Finally, if we saved any fetches which were locked, put them back
+	 * into the ring for next time
+	 */
+	ring = save_ring;
 }
 
 nserror fetch_resource_register(void)

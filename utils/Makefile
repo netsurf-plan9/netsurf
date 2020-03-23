@@ -6,6 +6,7 @@ S_UTILS := \
 	file.c \
 	filename.c \
 	filepath.c \
+	hashmap.c \
 	hashtable.c \
 	idna.c \
 	libdom.c \
@@ -13,6 +14,7 @@ S_UTILS := \
 	messages.c \
 	nsoption.c \
 	punycode.c \
+	ssl_certs.c \
 	talloc.c \
 	time.c \
 	url.c \

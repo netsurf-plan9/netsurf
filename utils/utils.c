@@ -24,7 +24,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "utils/messages.h"
 #include "utils/dirent.h"
@@ -172,6 +174,7 @@ nserror vsnstrjoin(char **str, size_t *size, char sep, size_t nelm, va_list ap)
 	return NSERROR_OK;
 }
 
+
 /* exported interface documented in utils/utils.h */
 nserror snstrjoin(char **str, size_t *size, char sep, size_t nelm, ...)
 {
@@ -189,26 +192,43 @@ nserror snstrjoin(char **str, size_t *size, char sep, size_t nelm, ...)
 /**
  * The size of buffers within human_friendly_bytesize.
  *
- * We can have a fairly good estimate of how long the buffer needs to
- * be.	The unsigned long can store a value representing a maximum
- * size of around 4 GB.  Therefore the greatest space required is to
- * represent 1023MB.  Currently that would be represented as "1023MB"
- * so 12 including a null terminator.  Ideally we would be able to
- * know this value for sure, in the mean time the following should
- * suffice.
+ * We can have a fairly good estimate of the output buffers maximum length.
+ *
+ * The unsigned long long int can store a value representing a maximum
+ *   size of 16 EiB (exibytes).  Therefore the greatest space required is to
+ *   represent 1023 PiB.
+ * Currently that would be represented as "1023.00PiBytes" in english
+ *   giving a 15 byte length including a null terminator.
+ * Ideally we would be able to accurately know this length for other
+ *   languages, in the mean time a largeish buffer size is selected
+ *   and should suffice.
  */
-#define BYTESIZE_BUFFER_SIZE 20
+#define BYTESIZE_BUFFER_SIZE 32
 
 /* exported interface documented in utils/string.h */
-char *human_friendly_bytesize(unsigned long bsize) {
+char *human_friendly_bytesize(unsigned long long int bsize) {
 	static char buffer1[BYTESIZE_BUFFER_SIZE];
 	static char buffer2[BYTESIZE_BUFFER_SIZE];
 	static char buffer3[BYTESIZE_BUFFER_SIZE];
 	static char *curbuffer = buffer3;
-	enum {bytes, kilobytes, megabytes, gigabytes} unit = bytes;
-	static char units[][7] = {"Bytes", "kBytes", "MBytes", "GBytes"};
-
-	float bytesize = (float)bsize;
+	enum {
+	      bytes,
+	      kilobytes,
+	      megabytes,
+	      gibibytes,
+	      tebibytes,
+	      pebibytes,
+	      exbibytes	} unit = bytes;
+	static const char *const units[] = {
+		"Bytes",
+		"KiBytes",
+		"MiBytes",
+		"GiBytes",
+		"TiBytes",
+		"PiBytes",
+		"EiBytes" };
+	double bytesize = (double)bsize;
+	const char *fmt;
 
 	if (curbuffer == buffer1)
 		curbuffer = buffer2;
@@ -229,13 +249,53 @@ char *human_friendly_bytesize(unsigned long bsize) {
 
 	if (bytesize > 1024) {
 		bytesize /= 1024;
-		unit = gigabytes;
+		unit = gibibytes;
 	}
 
-	snprintf(curbuffer, BYTESIZE_BUFFER_SIZE, "%3.2f%s", bytesize, messages_get(units[unit]));
+	if (bytesize > 1024) {
+		bytesize /= 1024;
+		unit = tebibytes;
+	}
+
+	if (bytesize > 1024) {
+		bytesize /= 1024;
+		unit = pebibytes;
+	}
+
+	if (bytesize > 1024) {
+		bytesize /= 1024;
+		unit = exbibytes;
+	}
+
+	if (unit == bytes) {
+		fmt = "%.0f%s";
+	} else {
+		fmt = "%3.2f%s";
+	}
+
+	snprintf(curbuffer,
+		 BYTESIZE_BUFFER_SIZE,
+		 fmt,
+		 bytesize,
+		 messages_get(units[unit]));
 
 	return curbuffer;
 }
+
+
+#ifndef HAVE_STRTOULL
+#include <stdlib.h>
+
+/**
+ * string to unsigned long long
+ *
+ */
+unsigned long long int strtoull(const char *nptr, char **endptr, int base)
+{
+	return (unsigned long long int)strtoul(nptr, endptr, base);
+}
+
+#endif
 
 
 #ifndef HAVE_STRCASESTR
@@ -263,12 +323,12 @@ char *strcasestr(const char *haystack, const char *needle)
 
 #endif
 
+
 #ifndef HAVE_STRNDUP
 
 /**
  * Duplicate up to n characters of a string.
  */
-
 char *strndup(const char *s, size_t n)
 {
 	size_t len;
@@ -393,6 +453,7 @@ char *strchrnul (const char *s, int c_in)
 #endif
 
 #ifndef HAVE_UTSNAME
+
 #include "utils/utsname.h"
 
 int uname(struct utsname *buf) {
@@ -404,9 +465,11 @@ int uname(struct utsname *buf) {
 
 	return 0;
 }
+
 #endif
 
 #ifndef HAVE_REALPATH
+
 char *realpath(const char *path, char *resolved_path)
 {
 	char *ret;
@@ -419,8 +482,9 @@ char *realpath(const char *path, char *resolved_path)
 	return ret;
 }
 
-#ifndef HAVE_INETATON
+#endif
 
+#ifndef HAVE_INETATON
 
 int inet_aton(const char *cp, struct in_addr *inp)
 {
@@ -469,5 +533,41 @@ int inet_pton(int af, const char *src, void *dst)
 
 #endif
 
+
+#ifndef HAVE_REGEX
+
+#include "utils/regex.h"
+
+int
+regcomp(regex_t *restrict preg, const char *restrictregex, int cflags)
+{
+	return 0;
+}
+
+size_t
+regerror(int errorcode,
+	 const regex_t *restrict preg,
+	 char *restrict errbuf,
+	 size_t errbuf_size)
+{
+	if ((errbuf != NULL) && (errbuf_size != 0)) {
+		*errbuf = 0;
+	}
+	return 0;
+}
+
+int
+regexec(const regex_t *restrict preg,
+	const char *restrict string,
+	size_t nmatch,
+	regmatch_t pmatch[restrict],
+	int eflags)
+{
+	return REG_NOMATCH;
+}
+
+void regfree(regex_t *preg)
+{
+}
 
 #endif

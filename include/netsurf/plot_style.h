@@ -153,13 +153,16 @@ typedef struct plot_font_style {
 	(((((c0 & 0xff00ff) + (c1 & 0xff00ff)) >> 1) & 0xff00ff) |	\
 	 ((((c0 & 0x00ff00) + (c1 & 0x00ff00)) >> 1) & 0x00ff00))
 
+/* Get the percieved lightness of the supplied colour, c0. */
+#define colour_lightness(c0)						\
+	((((c0 & 0x0000ff) *  77) >>  8) +				\
+	 (((c0 & 0x00ff00) * 151) >> 16) +				\
+	 (((c0 & 0xff0000) *  28) >> 24))
+
 /* Choose either black or white, depending on which is furthest from the
  * percieved lightness of the supplied colour, c0. */
 #define colour_to_bw_furthest(c0)					\
-	((((((c0 & 0x0000ff) *  77) >>  8) +				\
-	   (((c0 & 0x00ff00) * 151) >> 16) +				\
-	   (((c0 & 0xff0000) *  28) >> 24)) >				\
-	  (0xff / 2)) ? 0x000000 : 0xffffff)
+	((colour_lightness(c0) > (0xff / 2)) ? 0x000000 : 0xffffff)
 
 /* Mix two colours according to the proportion given by p, where 0 <= p <= 255
  * p = 0 gives result ==> c1,  p = 255 gives result ==> c0 */
@@ -184,6 +187,45 @@ typedef struct plot_font_style {
 /* Get the blue channel from a colour */
 #define blue_from_colour(c)						\
 	((c >> 16) & 0xff)
+
+/* Swap red and blue channels in a colour */
+#define colour_rb_swap(c)						\
+	(((0x000000ff & c) << 16) |					\
+	 ((0x0000ff00 & c)      ) |					\
+	 ((0x00ff0000 & c) >> 16))
+
+/** Colour components */
+enum plot_colour_component {
+	PLOT_COLOUR_COMPONENT_RED,
+	PLOT_COLOUR_COMPONENT_GREEN,
+	PLOT_COLOUR_COMPONENT_BLUE,
+	PLOT_COLOUR_COMPONENT_ALPHA,
+};
+
+/**
+ * Engorge a particular colour channel.
+ *
+ * \param[in] col   The colour to engorge a component of.
+ * \param[in] dark  Whether col is a dark colour.
+ * \param[in] comp  Colour component to engorge.
+ */
+static inline colour colour_engorge_component(
+		colour col,
+		bool dark,
+		enum plot_colour_component comp)
+{
+	static const colour msk[PLOT_COLOUR_COMPONENT_ALPHA] = {
+		[PLOT_COLOUR_COMPONENT_RED]   = 0x0000ff,
+		[PLOT_COLOUR_COMPONENT_GREEN] = 0x00ff00,
+		[PLOT_COLOUR_COMPONENT_BLUE]  = 0xff0000,
+	};
+	colour d = dark ? darken_colour(col) : double_darken_colour(col);
+	colour l = dark ? double_lighten_colour(col) : lighten_colour(col);
+
+	assert(comp < PLOT_COLOUR_COMPONENT_ALPHA);
+
+	return (msk[comp] & l) | (~msk[comp] & d);
+}
 
 
 /* global fill styles */

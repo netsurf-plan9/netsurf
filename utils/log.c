@@ -94,12 +94,13 @@ static const char *nslog_gettime(void)
 
 NSLOG_DEFINE_CATEGORY(netsurf, "NetSurf default logging");
 NSLOG_DEFINE_CATEGORY(llcache, "Low level cache");
-NSLOG_DEFINE_CATEGORY(fetch, "objet fetching");
-NSLOG_DEFINE_CATEGORY(plot, "rendering system");
-NSLOG_DEFINE_CATEGORY(schedule, "scheduler");
+NSLOG_DEFINE_CATEGORY(fetch, "Object fetching");
+NSLOG_DEFINE_CATEGORY(plot, "Rendering system");
+NSLOG_DEFINE_CATEGORY(schedule, "Scheduler");
 NSLOG_DEFINE_CATEGORY(fbtk, "Framebuffer toolkit");
 NSLOG_DEFINE_CATEGORY(layout, "Layout");
 NSLOG_DEFINE_CATEGORY(dukky, "Duktape JavaScript Binding");
+NSLOG_DEFINE_CATEGORY(jserrors, "JavaScript error messages");
 
 static void
 netsurf_render_log(void *_ctx,
@@ -108,8 +109,11 @@ netsurf_render_log(void *_ctx,
 		   va_list args)
 {
 	fprintf(logfile,
-		"%s %.*s:%i %.*s: ",
+		"%s [%s %.*s] %.*s:%i %.*s: ",
 		nslog_gettime(),
+		nslog_short_level_name(ctx->level),
+		ctx->category->namelen,
+		ctx->category->name,
 		ctx->filenamelen,
 		ctx->filename,
 		ctx->lineno,

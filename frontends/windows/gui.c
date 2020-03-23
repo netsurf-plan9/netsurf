@@ -41,12 +41,14 @@
 #include "windows/window.h"
 #include "windows/gui.h"
 
-/**
- * win32 application instance handle.
- *
- * This handle is set in the main windows entry point.
- */
+/* exported global defined in windows/gui.h */
 HINSTANCE hinst;
+
+/* exported global defined in windows/gui.h */
+char **G_resource_pathv;
+
+/* exported global defined in windows/gui.h */
+char *G_config_path;
 
 static bool win32_quit = false;
 
@@ -179,4 +181,18 @@ nserror win32_warning(const char *warning, const char *detail)
 	return NSERROR_OK;
 }
 
+
+/* exported function documented in windows/gui.h */
+nserror
+win32_report_nserror(nserror error, const char *detail)
+{
+	size_t len = 1 +
+		strlen(messages_get_errorcode(error)) +
+		((detail != 0) ? strlen(detail) : 0);
+	char message[len];
+	snprintf(message, len, messages_get_errorcode(error), detail);
+	MessageBox(NULL, message, "Warning", MB_ICONWARNING);
+
+	return NSERROR_OK;
+}
 

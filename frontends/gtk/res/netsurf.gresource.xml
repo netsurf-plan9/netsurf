@@ -12,20 +12,19 @@
     <file>hotlist.gtk2.ui</file>
     <file>netsurf.gtk3.ui</file>
     <file>ssl.gtk2.ui</file>
+    <file>ssl.gtk3.ui</file>
+    <file>pageinfo.gtk3.ui</file>
     <file>toolbar.gtk3.ui</file>
     <file>downloads.gtk2.ui</file>
     <file>hotlist.gtk3.ui</file>
     <file>options.gtk2.ui</file>
-    <file>ssl.gtk3.ui</file>
     <file>viewdata.gtk2.ui</file>
     <file>downloads.gtk3.ui</file>
-    <file>login.gtk2.ui</file>
     <file>options.gtk3.ui</file>
     <file>tabcontents.gtk2.ui</file>
     <file>viewdata.gtk3.ui</file>
     <file>localhistory.gtk2.ui</file>
     <file>globalhistory.gtk2.ui</file>
-    <file>login.gtk3.ui</file>
     <file>password.gtk2.ui</file>
     <file>tabcontents.gtk3.ui</file>
     <file>warning.gtk2.ui</file>
@@ -52,14 +51,14 @@
     <file>it/welcome.html</file>
     <file>ja/welcome.html</file>
     <file>nl/welcome.html</file>
-    <file>maps.html</file>
     <file>adblock.css</file>
     <file>default.css</file>
     <file>internal.css</file>
     <file>quirks.css</file>
     <file>netsurf.png</file>
     <file>default.ico</file>
-    <file>arrow_down_8x32.png</file>
+    <file>icons/show-cookie.png</file>
+    <file>icons/local-history.png</file>
     <file>icons/arrow-l.png</file>
     <file>icons/content.png</file>
     <file>icons/directory2.png</file>
@@ -67,6 +66,16 @@
     <file>icons/hotlist-add.png</file>
     <file>icons/hotlist-rmv.png</file>
     <file>icons/search.png</file>
+    <file>icons/24x24/actions/page-info-insecure.png</file>
+    <file>icons/24x24/actions/page-info-internal.png</file>
+    <file>icons/24x24/actions/page-info-local.png</file>
+    <file>icons/24x24/actions/page-info-secure.png</file>
+    <file>icons/24x24/actions/page-info-warning.png</file>
+    <file>icons/48x48/actions/page-info-insecure.png</file>
+    <file>icons/48x48/actions/page-info-internal.png</file>
+    <file>icons/48x48/actions/page-info-local.png</file>
+    <file>icons/48x48/actions/page-info-secure.png</file>
+    <file>icons/48x48/actions/page-info-warning.png</file>
     <file>languages</file>
     <file>accelerators</file>
   </gresource>

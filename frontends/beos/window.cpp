@@ -92,8 +92,6 @@ struct gui_window {
 
 	/* Keep gui_windows in a list for cleanup later */
 	struct gui_window	*next, *prev;
-
-	float scale;
 };
 
 
@@ -336,11 +334,6 @@ struct browser_window *nsbeos_get_browser_for_gui(struct gui_window *g)
 	return g->bw;
 }
 
-float nsbeos_get_scale_for_gui(struct gui_window *g)
-{
-	return g->scale;
-}
-
 /* Create a gui_window */
 static struct gui_window *gui_window_create(struct browser_window *bw,
 		struct gui_window *existing,
@@ -360,7 +353,6 @@ static struct gui_window *gui_window_create(struct browser_window *bw,
 	g->bw = bw;
 	g->mouse.state = 0;
 	g->current_pointer = GUI_POINTER_DEFAULT;
-	g->scale = browser_window_get_scale(bw);
 
 	g->careth = 0;
 	g->pending_resizes = 0;
@@ -518,9 +510,10 @@ void nsbeos_dispatch_event(BMessage *message)
 			if (gui->mouse.state & BROWSER_MOUSE_MOD_2 && !ctrl)
 				gui->mouse.state ^= BROWSER_MOUSE_MOD_2;
 
-			browser_window_mouse_track(gui->bw, (browser_mouse_state)gui->mouse.state, 
-					(int)(where.x / gui->scale),
-					(int)(where.y / gui->scale));
+			browser_window_mouse_track(gui->bw,
+                                                   (browser_mouse_state)gui->mouse.state, 
+                                                   (int)(where.x),
+                                                   (int)(where.y));
 
 			gui->last_x = (int)where.x;
 			gui->last_y = (int)where.y;
@@ -562,8 +555,8 @@ void nsbeos_dispatch_event(BMessage *message)
 			if (mods & B_CONTROL_KEY)
 				gui->mouse.state |= BROWSER_MOUSE_MOD_2;
 
-			gui->mouse.pressed_x = where.x / gui->scale;
-			gui->mouse.pressed_y = where.y / gui->scale;
+			gui->mouse.pressed_x = where.x;
+			gui->mouse.pressed_y = where.y;
 
 			// make sure the view is in focus
 			if (view && view->LockLooper()) {
@@ -624,8 +617,8 @@ void nsbeos_dispatch_event(BMessage *message)
 			if (gui->mouse.state & (BROWSER_MOUSE_CLICK_1|BROWSER_MOUSE_CLICK_2))
 				browser_window_mouse_click(gui->bw, 
 					(browser_mouse_state)gui->mouse.state, 
-					where.x / gui->scale,
-					where.y / gui->scale);
+					where.x,
+					where.y);
 			else 
 				browser_window_mouse_track(gui->bw, (browser_mouse_state)0, 
 					where.x, where.y);
@@ -686,7 +679,6 @@ void nsbeos_dispatch_event(BMessage *message)
 void nsbeos_window_expose_event(BView *view, gui_window *g, BMessage *message)
 {
 	BRect updateRect;
-	//float scale = g->scale;
 	struct rect clip;
 
 	struct redraw_context ctx = { true, true, &nsbeos_plotters };
@@ -1341,27 +1333,63 @@ struct gui_clipboard_table *beos_clipboard_table = &clipboard_table;
  * \param g The gui window to measure content area of.
  * \param width receives width of window
  * \param height receives height of window
- * \param scaled whether to return scaled values
  * \return NSERROR_OK on sucess and width and height updated
  *          else error code.
  */
 static nserror
-gui_window_get_dimensions(struct gui_window *g, int *width, int *height,
-                          bool scaled)
+gui_window_get_dimensions(struct gui_window *g, int *width, int *height)
 {
         if (g->view &&
             g->view->LockLooper()) {
                 *width = g->view->Bounds().Width() + 1;
                 *height = g->view->Bounds().Height() + 1;
                 g->view->UnlockLooper();
-
-                if (scaled) {
-                        *width /= g->scale;
-                        *height /= g->scale;
-                }
         }
         return NSERROR_OK;
 }
+
+
+/**
+ * process miscellaneous window events
+ *
+ * \param gw The window receiving the event.
+ * \param event The event code.
+ * \return NSERROR_OK when processed ok
+ */
+static nserror
+gui_window_event(struct gui_window *gw, enum gui_window_event event)
+{
+	switch (event) {
+	case GW_EVENT_UPDATE_EXTENT:
+		gui_window_update_extent(gw);
+		break;
+
+	case GW_EVENT_REMOVE_CARET:
+		gui_window_remove_caret(gw);
+		break;
+
+	case GW_EVENT_NEW_CONTENT:
+		gui_window_new_content(gw);
+		break;
+
+	case GW_EVENT_START_SELECTION:
+		gui_start_selection(gw);
+		break;
+
+	case GW_EVENT_START_THROBBER:
+		gui_window_start_throbber(gw);
+		break;
+
+	case GW_EVENT_STOP_THROBBER:
+		gui_window_stop_throbber(gw);
+		break;
+
+	default:
+		break;
+	}
+	return NSERROR_OK;
+}
+
 
 static struct gui_window_table window_table = {
 	gui_window_create,
@@ -1370,7 +1398,7 @@ static struct gui_window_table window_table = {
 	gui_window_get_scroll,
 	gui_window_set_scroll,
 	gui_window_get_dimensions,
-	gui_window_update_extent,
+	gui_window_event,
 
 	/* from scaffold */
 	gui_window_set_title,
@@ -1379,18 +1407,13 @@ static struct gui_window_table window_table = {
 	gui_window_set_status,
 	gui_window_set_pointer,
 	gui_window_place_caret,
-	gui_window_remove_caret,
-	gui_window_start_throbber,
-	gui_window_stop_throbber,
 	NULL, //drag_start
 	NULL, //save_link
-	NULL, //scroll_start
-	gui_window_new_content,
 	NULL, //create_form_select_menu
 	NULL, //file_gadget_open
 	NULL, //drag_save_object
 	NULL, //drag_save_selection
-	gui_start_selection
+	NULL  //console_log
 };
 
 struct gui_window_table *beos_window_table = &window_table;

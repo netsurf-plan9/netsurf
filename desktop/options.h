@@ -16,7 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** \file
+/**
+ * \file
  * Option available on all platforms
  *
  * Non-platform specific options can be added by editing this file 
@@ -27,8 +28,8 @@
  *   with different macro definitions so there is no guard
  */
 
-#ifndef _NETSURF_DESKTOP_OPTIONS_H_
-#define _NETSURF_DESKTOP_OPTIONS_H_
+#ifndef NETSURF_DESKTOP_OPTIONS_H_
+#define NETSURF_DESKTOP_OPTIONS_H_
 
 #include "netsurf/types.h"
 
@@ -91,6 +92,9 @@ NSOPTION_STRING(accept_charset, NULL)
 /** Preferred maximum size of memory cache / bytes. */
 NSOPTION_INTEGER(memory_cache_size, 12 * 1024 * 1024)
 
+/** Preferred location of disc cache, or NULL for system provided location */
+NSOPTION_STRING(disc_cache_path, NULL)
+
 /** Preferred expiry size of disc cache / bytes. */
 NSOPTION_UINT(disc_cache_size, 1024 * 1024 * 1024)
 
@@ -103,9 +107,6 @@ NSOPTION_BOOL(block_advertisements, false)
 /** Disable website tracking, see	                
  * http://www.w3.org/Submission/2011/SUBM-web-tracking-protection-20110224/#dnt-uas */
 NSOPTION_BOOL(do_not_track, false)
-
-/** Minimum GIF animation delay */
-NSOPTION_INTEGER(minimum_gif_delay, 10)
 
 /** Whether to send the referer HTTP header */
 NSOPTION_BOOL(send_referer, true)
@@ -166,12 +167,6 @@ NSOPTION_INTEGER(window_width, 0)
 
 /** default height of new windows */
 NSOPTION_INTEGER(window_height, 0)
-
-/** width of screen when above options were saved */
-NSOPTION_INTEGER(window_screen_width, 0)
-
-/** height of screen when above options were saved */
-NSOPTION_INTEGER(window_screen_height, 0)
 
 /** default size of status bar vs. h scroll bar */
 NSOPTION_INTEGER(toolbar_status_size, 6667)

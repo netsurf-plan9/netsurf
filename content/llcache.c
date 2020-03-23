@@ -36,6 +36,7 @@
 #include <string.h>
 #include <strings.h>
 #include <nsutils/time.h>
+#include <nsutils/base64.h>
 
 #include "netsurf/inttypes.h"
 #include "utils/config.h"
@@ -119,8 +120,6 @@ typedef struct {
 
 	bool tried_with_tls_downgrade;	/**< Whether we've tried TLS <= 1.0 */
 
-	bool outstanding_query;		/**< Waiting for a query response */
-
 	bool tainted_tls;		/**< Whether the TLS transport is tainted */
 } llcache_fetch_ctx;
 
@@ -180,6 +179,8 @@ struct llcache_object {
 	size_t source_len;	     /**< Byte length of source data */
 	size_t source_alloc;	     /**< Allocated size of source buffer */
 
+	struct cert_chain *chain;    /**< Certificate chain from the fetch */
+
 	llcache_store_state store_state; /**< where the data for the object is stored */
 
 	llcache_object_user *users;  /**< List of users */
@@ -209,12 +210,6 @@ struct llcache_object {
  * Core llcache control context.
  */
 struct llcache_s {
-	/** Handler for fetch-related queries */
-	llcache_query_callback query_cb;
-
-	/** Data for fetch-related query handler */
-	void *query_cb_pw;
-
 	/** Head of the low-level cached object list */
 	llcache_object *cached_objects;
 
@@ -396,6 +391,7 @@ static nserror llcache_send_event_to_users(llcache_object *object,
 
 	user = object->users;
 	while (user != NULL) {
+		bool was_target = user->iterator_target;
 		user->iterator_target = true;
 
 		error = user->handle->cb(user->handle, event,
@@ -403,9 +399,9 @@ static nserror llcache_send_event_to_users(llcache_object *object,
 
 		next_user = user->next;
 
-		user->iterator_target = false;
+		user->iterator_target = was_target;
 
-		if (user->queued_for_delete) {
+		if (user->queued_for_delete && !was_target) {
 			llcache_object_remove_user(object, user);
 			llcache_object_user_destroy(user);
 		}
@@ -863,7 +859,7 @@ static nserror llcache_object_refetch(llcache_object *object)
 		header_idx++;
 	}
 
-	if (object->cache.date != 0) {
+	if (object->cache.last_modified != 0) {
 		/* Maximum length of an RFC 1123 date is 29 bytes */
 		const size_t len = SLEN("If-Modified-Since: ") + 29 + 1;
 
@@ -876,7 +872,7 @@ static nserror llcache_object_refetch(llcache_object *object)
 		}
 
 		snprintf(headers[header_idx], len, "If-Modified-Since: %s",
-				rfc1123_date(object->cache.date));
+				rfc1123_date(object->cache.last_modified));
 
 		header_idx++;
 	}
@@ -975,6 +971,8 @@ static nserror llcache_object_destroy(llcache_object *object)
 
 	NSLOG(llcache, DEBUG, "Destroying object %p, %s", object,
 	      nsurl_access(object->url));
+
+	cert_chain_free(object->chain);
 
 	if (object->source_data != NULL) {
 		if (object->store_state == LLCACHE_STATE_DISC) {
@@ -1241,6 +1239,13 @@ llcache_serialise_metadata(llcache_object *object,
 	char *op;
 	unsigned int hloop;
 	int use;
+	size_t cert_chain_depth;
+
+	if (object->chain != NULL) {
+		cert_chain_depth = object->chain->depth;
+	} else {
+		cert_chain_depth = 0;
+	}
 
 	allocsize = 10 + 1; /* object length */
 
@@ -1252,11 +1257,19 @@ llcache_serialise_metadata(llcache_object *object,
 
 	allocsize += 10 + 1; /* space for number of header entries */
 
-	allocsize += nsurl_length(object->url) + 1;
-
 	for (hloop = 0 ; hloop < object->num_headers ; hloop++) {
 		allocsize += strlen(object->headers[hloop].name) + 1;
 		allocsize += strlen(object->headers[hloop].value) + 1;
+	}
+
+	allocsize += nsurl_length(object->url) + 1;
+
+	/* space for number of DER formatted certificates */
+	allocsize += 10 + 1;
+
+	for (hloop = 0; hloop < cert_chain_depth; hloop++) {
+		allocsize += 10 + 1; /* error status */
+		allocsize += 4 * ((object->chain->certs[hloop].der_length + 2) / 3);
 	}
 
 	data = malloc(allocsize);
@@ -1341,6 +1354,56 @@ llcache_serialise_metadata(llcache_object *object,
 		datasize -= use;
 	}
 
+	/* number of DER formatted ssl certificates */
+	use = snprintf(op, datasize, "%" PRIsizet, cert_chain_depth);
+	if (use < 0) {
+		goto operror;
+	}
+	use++; /* does not count the null */
+	if (use > datasize)
+		goto overflow;
+	op += use;
+	datasize -= use;
+
+	/* SSL certificates */
+	for (hloop = 0; hloop < cert_chain_depth; hloop++) {
+		nsuerror res;
+
+		/* Certificate error code */
+		use = snprintf(op, datasize, "%d",
+			       (int)(object->chain->certs[hloop].err));
+		if (use < 0) {
+			goto operror;
+		}
+		use++; /* does not count the null */
+		if (use > datasize)
+			goto overflow;
+		op += use;
+		datasize -= use;
+
+		/* DER certificate data in base64 encoding */
+		if (object->chain->certs[hloop].der != NULL) {
+			size_t output_length = datasize;
+			res = nsu_base64_encode(
+				object->chain->certs[hloop].der,
+				object->chain->certs[hloop].der_length,
+				(uint8_t *)op,
+				&output_length);
+			if (res != NSUERROR_OK) {
+				goto operror;
+			}
+			use = output_length;
+		} else {
+			use = 0;
+		}
+		use++; /* allow for null */
+		if (use > datasize)
+			goto overflow;
+		op += use;
+		*(op - 1) = 0;
+		datasize -= use;
+	}
+
 	NSLOG(llcache, DEBUG, "Filled buffer with %d spare", datasize);
 
 	*data_out = data;
@@ -1381,6 +1444,7 @@ llcache_process_metadata(llcache_object *object)
 	nserror res;
 	uint8_t *metadata = NULL;
 	size_t metadatalen = 0;
+	size_t remaining = 0;
 	nsurl *metadataurl;
 	unsigned int line;
 	char *ln;
@@ -1392,6 +1456,8 @@ llcache_process_metadata(llcache_object *object)
 	time_t completion_time;
 	size_t num_headers;
 	size_t hloop;
+	size_t ssl_cert_count = 0;
+	struct cert_chain *chain = NULL;
 
 	NSLOG(llcache, INFO, "Retrieving metadata");
 
@@ -1406,10 +1472,20 @@ llcache_process_metadata(llcache_object *object)
 
 	NSLOG(llcache, INFO, "Processing retrieved data");
 
+	/* metadata is stored as a sequence of NULL terminated strings
+	 * which we call 'line's here.
+	 */
+
+	/* We track remaining data because as we extend this data structure
+	 * we need to know if we should continue to parse
+	 */
+	remaining = metadatalen;
+
 	/* metadata line 1 is the url the metadata referrs to */
 	line = 1;
 	ln = (char *)metadata;
 	lnsize = strlen(ln);
+	remaining -= lnsize + 1;
 
 	if (lnsize < 7) {
 		res = NSERROR_INVALID;
@@ -1443,6 +1519,7 @@ llcache_process_metadata(llcache_object *object)
 	line = 2;
 	ln += lnsize + 1;
 	lnsize = strlen(ln);
+	remaining -= lnsize + 1;
 
 	if ((lnsize < 1) || (sscanf(ln, "%" PRIsizet, &source_length) != 1)) {
 		res = NSERROR_INVALID;
@@ -1454,6 +1531,7 @@ llcache_process_metadata(llcache_object *object)
 	line = 3;
 	ln += lnsize + 1;
 	lnsize = strlen(ln);
+	remaining -= lnsize + 1;
 
 	res = nsc_snptimet(ln, lnsize, &request_time);
 	if (res != NSERROR_OK)
@@ -1464,6 +1542,7 @@ llcache_process_metadata(llcache_object *object)
 	line = 4;
 	ln += lnsize + 1;
 	lnsize = strlen(ln);
+	remaining -= lnsize + 1;
 
 	res = nsc_snptimet(ln, lnsize, &response_time);
 	if (res != NSERROR_OK)
@@ -1474,6 +1553,7 @@ llcache_process_metadata(llcache_object *object)
 	line = 5;
 	ln += lnsize + 1;
 	lnsize = strlen(ln);
+	remaining -= lnsize + 1;
 
 	res = nsc_snptimet(ln, lnsize, &completion_time);
 	if (res != NSERROR_OK)
@@ -1484,6 +1564,7 @@ llcache_process_metadata(llcache_object *object)
 	line = 6;
 	ln += lnsize + 1;
 	lnsize = strlen(ln);
+	remaining -= lnsize + 1;
 
 	if ((lnsize < 1) || (sscanf(ln, "%" PRIsizet, &num_headers) != 1)) {
 		res = NSERROR_INVALID;
@@ -1495,6 +1576,7 @@ llcache_process_metadata(llcache_object *object)
 		line++;
 		ln += lnsize + 1;
 		lnsize = strlen(ln);
+		remaining -= lnsize + 1;
 
 		res = llcache_fetch_process_header(object,
 						   (uint8_t *)ln,
@@ -1503,6 +1585,74 @@ llcache_process_metadata(llcache_object *object)
 			goto format_error;
 	}
 
+	if (remaining == 0) {
+		goto skip_ssl_certificates;
+	}
+
+	/* Next line is the number of DER base64 encoded certificates */
+	line++;
+	ln += lnsize + 1;
+	lnsize = strlen(ln);
+	remaining -= lnsize + 1;
+
+	if ((lnsize < 1) || (sscanf(ln, "%" PRIsizet, &ssl_cert_count) != 1)) {
+		res = NSERROR_INVALID;
+		goto format_error;
+	}
+
+	if (ssl_cert_count == 0) {
+		goto skip_ssl_certificates;
+	}
+
+	if (ssl_cert_count > MAX_CERT_DEPTH) {
+		res = NSERROR_INVALID;
+		goto format_error;
+	}
+
+	res = cert_chain_alloc(ssl_cert_count, &chain);
+	if (res != NSERROR_OK) {
+		goto format_error;
+	}
+
+	for (hloop = 0; hloop < ssl_cert_count; hloop++) {
+		int errcode;
+		nsuerror nsures;
+
+		/* Certificate error code */
+		line++;
+		ln += lnsize + 1;
+		lnsize = strlen(ln);
+		remaining -= lnsize + 1;
+		if ((lnsize < 1) || (sscanf(ln, "%d", &errcode) != 1)) {
+			res = NSERROR_INVALID;
+			goto format_error;
+		}
+		if (errcode < SSL_CERT_ERR_OK ||
+		    errcode > SSL_CERT_ERR_MAX_KNOWN) {
+			/* Error with the cert code, assume UNKNOWN */
+			chain->certs[hloop].err = SSL_CERT_ERR_UNKNOWN;
+		} else {
+			chain->certs[hloop].err = (ssl_cert_err)errcode;
+		}
+
+		/* base64 encoded DER certificate data */
+		line++;
+		ln += lnsize + 1;
+		lnsize = strlen(ln);
+		remaining -= lnsize + 1;
+		if (lnsize > 0) {
+			nsures = nsu_base64_decode_alloc((const uint8_t *)ln,
+					lnsize,
+					&chain->certs[hloop].der,
+					&chain->certs[hloop].der_length);
+			if (nsures != NSUERROR_OK) {
+				res = NSERROR_NOMEM;
+				goto format_error;
+			}
+		}
+	}
+
+skip_ssl_certificates:
 	guit->llcache->release(object->url, BACKING_STORE_META);
 
 	/* update object on successful parse of metadata  */
@@ -1515,6 +1665,8 @@ llcache_process_metadata(llcache_object *object)
 	object->cache.res_time = response_time;
 	object->cache.fin_time = completion_time;
 
+	object->chain = chain;
+
 	/* object stored in backing store */
 	object->store_state = LLCACHE_STATE_DISC;
 
@@ -1526,7 +1678,74 @@ format_error:
 	      line, res);
 	guit->llcache->release(object->url, BACKING_STORE_META);
 
+	cert_chain_free(chain);
+
 	return res;
+}
+
+/**
+ * Check whether a scheme is persistable.
+ *
+ * \param url  URL to check.
+ * \return true iff url has a persistable scheme.
+ */
+static inline bool llcache__scheme_is_persistable(const nsurl *url)
+{
+	lwc_string *scheme = nsurl_get_component(url, NSURL_SCHEME);
+	bool persistable = false;
+	bool match;
+
+	/* nsurl ensures lower case schemes, and corestrings are lower
+	 * case, so it's safe to use case-sensitive comparison. */
+	if ((lwc_string_isequal(scheme, corestring_lwc_http,
+			&match) == lwc_error_ok &&
+			(match == true)) ||
+	    (lwc_string_isequal(scheme, corestring_lwc_https,
+			&match) == lwc_error_ok &&
+			(match == true))) {
+		persistable = true;
+	}
+
+	lwc_string_unref(scheme);
+
+	return persistable;
+}
+
+/**
+ * Check whether a scheme is cachable.
+ *
+ * \param url  URL to check.
+ * \return true iff url has a cachable scheme.
+ */
+static inline bool llcache__scheme_is_cachable(const nsurl *url)
+{
+	lwc_string *scheme = nsurl_get_component(url, NSURL_SCHEME);
+	bool cachable = false;
+	bool match;
+
+	/* nsurl ensures lower case schemes, and corestrings are lower
+	 * case, so it's safe to use case-sensitive comparison. */
+	if ((lwc_string_isequal(scheme, corestring_lwc_http,
+			&match) == lwc_error_ok &&
+			(match == true)) ||
+	    (lwc_string_isequal(scheme, corestring_lwc_https,
+			&match) == lwc_error_ok &&
+			(match == true)) ||
+	    (lwc_string_isequal(scheme, corestring_lwc_data,
+			&match) == lwc_error_ok &&
+			(match == true)) ||
+	    (lwc_string_isequal(scheme, corestring_lwc_resource,
+			&match) == lwc_error_ok &&
+			(match == true)) ||
+	    (lwc_string_isequal(scheme, corestring_lwc_file,
+			&match) == lwc_error_ok &&
+			(match == true))) {
+		cachable = true;
+	}
+
+	lwc_string_unref(scheme);
+
+	return cachable;
 }
 
 /**
@@ -1550,6 +1769,12 @@ llcache_object_fetch_persistent(llcache_object *object,
 	nserror error;
 	nsurl *referer_clone = NULL;
 	llcache_post_data *post_clone = NULL;
+
+	if (!llcache__scheme_is_persistable(object->url)) {
+		/* Don't bother looking up non-http(s) stuff; we don't
+		 * persist it. */
+		return NSERROR_NOT_FOUND;
+	}
 
 	object->cache.req_time = time(NULL);
 	object->cache.fin_time = object->cache.req_time;
@@ -1802,25 +2027,8 @@ llcache_object_retrieve(nsurl *url,
 		/* POST requests are never cached */
 		uncachable = true;
 	} else {
-		/* only http and https schemes are cached */
-		lwc_string *scheme;
-		bool match;
-
-		scheme = nsurl_get_component(defragmented_url, NSURL_SCHEME);
-
-		if (lwc_string_caseless_isequal(scheme, corestring_lwc_http,
-				&match) == lwc_error_ok &&
-				(match == false)) {
-			if (lwc_string_caseless_isequal(scheme,
-					corestring_lwc_https, &match) ==
-					lwc_error_ok &&
-					(match == false)) {
-				uncachable = true;
-			}
-		}
-		lwc_string_unref(scheme);
+		uncachable = !llcache__scheme_is_cachable(defragmented_url);
 	}
-
 
 	if (uncachable) {
 		/* Create new object */
@@ -2012,7 +2220,8 @@ static nserror llcache_fetch_redirect(llcache_object *object,
 		NSLOG(llcache, INFO, "Too many nested redirects");
 
 		event.type = LLCACHE_EVENT_ERROR;
-		event.data.msg = messages_get("BadRedirect");
+		event.data.error.code = NSERROR_BAD_REDIRECT;
+		event.data.error.msg = messages_get("BadRedirect");
 
 		return llcache_send_event_to_users(object, &event);
 	}
@@ -2257,37 +2466,6 @@ llcache_fetch_process_data(llcache_object *object,
 	return NSERROR_OK;
 }
 
-/**
- * Handle a query response
- *
- * \param proceed  Whether to proceed with fetch
- * \param cbpw	   Our context for query
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-static nserror llcache_query_handle_response(bool proceed, void *cbpw)
-{
-	llcache_event event;
-	llcache_object *object = cbpw;
-
-	object->fetch.outstanding_query = false;
-
-	/* Refetch, using existing fetch parameters, if client allows us to */
-	if (proceed)
-		return llcache_object_refetch(object);
-
-	/* Invalidate cache-control data */
-	llcache_invalidate_cache_control_data(object);
-
-	/* Mark it complete */
-	object->fetch.state = LLCACHE_FETCH_COMPLETE;
-
-	/* Inform client(s) that object fetch failed */
-	event.type = LLCACHE_EVENT_ERROR;
-	/** \todo More appropriate error message */
-	event.data.msg = messages_get("FetchFailed");
-
-	return llcache_send_event_to_users(object, &event);
-}
 
 /**
  * Handle an authentication request
@@ -2319,39 +2497,20 @@ static nserror llcache_fetch_auth(llcache_object *object, const char *realm)
 	auth = urldb_get_auth_details(object->url, realm);
 
 	if (auth == NULL || object->fetch.tried_with_auth == true) {
+		llcache_event event;
 		/* No authentication details, or tried what we had, so ask */
 		object->fetch.tried_with_auth = false;
 
-		if (llcache->query_cb != NULL) {
-			llcache_query query;
+		/* Mark object complete */
+		object->fetch.state = LLCACHE_FETCH_COMPLETE;
 
-			/* Emit query for authentication details */
-			query.type = LLCACHE_QUERY_AUTH;
-			query.url = object->url;
-			query.data.auth.realm = realm;
+		/* Inform client(s) that object fetch failed */
+		event.type = LLCACHE_EVENT_ERROR;
+		/** \todo More appropriate error message */
+		event.data.error.code = NSERROR_BAD_AUTH;
+		event.data.error.msg = realm;
 
-			object->fetch.outstanding_query = true;
-
-			error = llcache->query_cb(&query, llcache->query_cb_pw,
-					llcache_query_handle_response, object);
-			if (error != NSERROR_OK) {
-				/* do not continue if error querying user */
-				error = llcache_query_handle_response(false,
-								      object);
-			}
-		} else {
-			llcache_event event;
-
-			/* Mark object complete */
-			object->fetch.state = LLCACHE_FETCH_COMPLETE;
-
-			/* Inform client(s) that object fetch failed */
-			event.type = LLCACHE_EVENT_ERROR;
-			/** \todo More appropriate error message */
-			event.data.msg = messages_get("FetchFailed");
-
-			error = llcache_send_event_to_users(object, &event);
-		}
+		error = llcache_send_event_to_users(object, &event);
 	} else {
 		/* Flag that we've tried to refetch with credentials, so
 		 * that if the fetch fails again, we ask the user again */
@@ -2366,12 +2525,9 @@ static nserror llcache_fetch_auth(llcache_object *object, const char *realm)
  * Handle a TLS certificate verification failure
  *
  * \param object  Object being fetched
- * \param certs	  Certificate chain
- * \param num	  Number of certificates in chain
  * \return NSERROR_OK on success, appropriate error otherwise
  */
-static nserror llcache_fetch_cert_error(llcache_object *object,
-		const struct ssl_cert_info *certs, size_t num)
+static nserror llcache_fetch_cert_error(llcache_object *object)
 {
 	nserror error = NSERROR_OK;
 
@@ -2385,23 +2541,19 @@ static nserror llcache_fetch_cert_error(llcache_object *object,
 	object->fetch.tainted_tls = true;
 
 	/* Only give the user a chance if HSTS isn't in use for this fetch */
-	if (object->fetch.hsts_in_use == false && llcache->query_cb != NULL) {
-		llcache_query query;
+	if (object->fetch.hsts_in_use == false) {
+		llcache_event event;
 
-		/* Emit query for TLS */
-		query.type = LLCACHE_QUERY_SSL;
-		query.url = object->url;
-		query.data.ssl.certs = certs;
-		query.data.ssl.num = num;
+		/* Mark object complete */
+		object->fetch.state = LLCACHE_FETCH_COMPLETE;
 
-		object->fetch.outstanding_query = true;
+		/* Inform client(s) that object fetch failed */
+		event.type = LLCACHE_EVENT_ERROR;
+		/** \todo More appropriate error message */
+		event.data.error.code = NSERROR_BAD_CERTS;
+		event.data.error.msg = messages_get("FetchFailed");
 
-		error = llcache->query_cb(&query, llcache->query_cb_pw,
-				llcache_query_handle_response, object);
-		if (error != NSERROR_OK) {
-			/* do not continue if error querying user */
-			error = llcache_query_handle_response(false, object);
-		}
+		error = llcache_send_event_to_users(object, &event);
 	} else {
 		llcache_event event;
 
@@ -2411,13 +2563,15 @@ static nserror llcache_fetch_cert_error(llcache_object *object,
 		/* Inform client(s) that object fetch failed */
 		event.type = LLCACHE_EVENT_ERROR;
 		/** \todo More appropriate error message */
-		event.data.msg = messages_get("FetchFailed");
+		event.data.error.code = NSERROR_UNKNOWN;
+		event.data.error.msg = messages_get("FetchFailed");
 
 		error = llcache_send_event_to_users(object, &event);
 	}
 
 	return error;
 }
+
 
 /**
  * Handle a TLS connection setup failure
@@ -2441,7 +2595,7 @@ static nserror llcache_fetch_ssl_error(llcache_object *object)
 	/* Make no attempt to downgrade if HSTS is in use
 	 * (i.e. assume server does TLS properly) */
 	if (object->fetch.hsts_in_use ||
-			object->fetch.tried_with_tls_downgrade) {
+	    object->fetch.tried_with_tls_downgrade) {
 		/* Have already tried to downgrade, so give up */
 		llcache_event event;
 
@@ -2451,7 +2605,8 @@ static nserror llcache_fetch_ssl_error(llcache_object *object)
 		/* Inform client(s) that object fetch failed */
 		event.type = LLCACHE_EVENT_ERROR;
 		/** \todo More appropriate error message */
-		event.data.msg = messages_get("FetchFailed");
+		event.data.error.code = NSERROR_UNKNOWN;
+		event.data.error.msg = messages_get("FetchFailed");
 
 		error = llcache_send_event_to_users(object, &event);
 	} else {
@@ -2463,6 +2618,46 @@ static nserror llcache_fetch_ssl_error(llcache_object *object)
 
 	return error;
 }
+
+
+/**
+ * handle time out while trying to fetch.
+ *
+ * \param object Object being fetched
+ * \return NSERROR_OK on success otherwise error code
+ */
+static nserror llcache_fetch_timeout(llcache_object *object)
+{
+	llcache_event event;
+
+	/* The fetch has already been cleaned up by the fetcher but
+	 * we would like to retry if we can.
+	 */
+	if (object->fetch.retries_remaining > 1) {
+		object->fetch.retries_remaining--;
+		return llcache_object_refetch(object);
+	}
+
+	/* The fetch has has already been cleaned up by the fetcher */
+	object->fetch.state = LLCACHE_FETCH_COMPLETE;
+	object->fetch.fetch = NULL;
+
+	/* Release candidate, if any */
+	if (object->candidate != NULL) {
+		object->candidate->candidate_count--;
+		object->candidate = NULL;
+	}
+
+	/* Invalidate cache control data */
+	llcache_invalidate_cache_control_data(object);
+
+	event.type = LLCACHE_EVENT_ERROR;
+	event.data.error.code = NSERROR_TIMEOUT;
+	event.data.error.msg = NULL;
+
+	return llcache_send_event_to_users(object, &event);
+}
+
 
 /**
  * Construct a sorted list of objects available for writeout operation.
@@ -2497,6 +2692,11 @@ build_candidate_list(struct llcache_object ***lst_out, int *lst_len_out)
 	for (object = llcache->cached_objects; object != NULL; object = next) {
 		next = object->next;
 
+		/* Only consider http(s) for the disc cache. */
+		if (!llcache__scheme_is_persistable(object->url)) {
+			continue;
+		}
+
 		remaining_lifetime = llcache_object_rfc2616_remaining_lifetime(
 				&object->cache);
 
@@ -2506,7 +2706,6 @@ build_candidate_list(struct llcache_object ***lst_out, int *lst_len_out)
 		 */
 		if ((object->candidate_count == 0) &&
 		    (object->fetch.fetch == NULL) &&
-		    (object->fetch.outstanding_query == false) &&
 		    (object->store_state == LLCACHE_STATE_RAM) &&
 		    (remaining_lifetime > llcache->minimum_lifetime)) {
 			lst[lst_len] = object;
@@ -2797,6 +2996,7 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 		error = llcache_fetch_redirect(object,
 				msg->data.redirect, &object);
 		break;
+
 	case FETCH_NOTMODIFIED:
 		/* Conditional request determined that cached object is fresh */
 		error = llcache_fetch_notmodified(object, &object);
@@ -2809,6 +3009,7 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 				msg->data.header_or_data.buf,
 				msg->data.header_or_data.len);
 		break;
+
 	case FETCH_FINISHED:
 		/* Finished fetching */
 	{
@@ -2840,14 +3041,9 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 	/* Out-of-band information */
 	case FETCH_TIMEDOUT:
 		/* Timed out while trying to fetch. */
-		/* The fetch has already been cleaned up by the fetcher but
-		 * we would like to retry if we can. */
-		if (object->fetch.retries_remaining > 1) {
-			object->fetch.retries_remaining--;
-			error = llcache_object_refetch(object);
-			break;
-		}
-		/* Fall through */
+		error = llcache_fetch_timeout(object);
+		break;
+
 	case FETCH_ERROR:
 		/* An error occurred while fetching */
 		/* The fetch has has already been cleaned up by the fetcher */
@@ -2866,18 +3062,34 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 		/** \todo Consider using errorcode for something */
 
 		event.type = LLCACHE_EVENT_ERROR;
-		event.data.msg = msg->data.error;
+		event.data.error.code = NSERROR_UNKNOWN;
+		event.data.error.msg = msg->data.error;
 
 		error = llcache_send_event_to_users(object, &event);
 
 		break;
+
 	case FETCH_PROGRESS:
 		/* Progress update */
 		event.type = LLCACHE_EVENT_PROGRESS;
-		event.data.msg = msg->data.progress;
+		event.data.progress_msg = msg->data.progress;
 
 		error = llcache_send_event_to_users(object, &event);
 
+		break;
+
+	case FETCH_CERTS:
+		/* Certificate information from the fetch */
+
+		/* Persist the chain onto our object */
+		error = cert_chain_dup(msg->data.chain, &object->chain);
+		if (error != NSERROR_OK) {
+			/* Now pass on the event */
+			event.type = LLCACHE_EVENT_GOT_CERTS;
+			event.data.chain = msg->data.chain;
+
+			error = llcache_send_event_to_users(object, &event);
+		}
 		break;
 
 	/* Events requiring action */
@@ -2892,6 +3104,7 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 
 		error = llcache_fetch_auth(object, msg->data.auth.realm);
 		break;
+
 	case FETCH_CERT_ERR:
 		/* Something went wrong when validating TLS certificates */
 
@@ -2901,10 +3114,9 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 			object->candidate = NULL;
 		}
 
-		error = llcache_fetch_cert_error(object,
-				msg->data.cert_err.certs,
-				msg->data.cert_err.num_certs);
+		error = llcache_fetch_cert_error(object);
 		break;
+
 	case FETCH_SSL_ERR:
 		/* TLS connection setup failed */
 
@@ -3076,6 +3288,39 @@ static nserror llcache_object_notify_users(llcache_object *object)
 		if (handle->state == LLCACHE_FETCH_INIT &&
 				objstate > LLCACHE_FETCH_INIT) {
 			handle->state = LLCACHE_FETCH_HEADERS;
+
+			/* Emit any certificate data we hold */
+			if (object->chain != NULL) {
+				event.type = LLCACHE_EVENT_GOT_CERTS;
+				event.data.chain = object->chain;
+				error = handle->cb(handle, &event, handle->pw);
+			} else {
+				error = NSERROR_OK;
+			}
+
+			if (user->queued_for_delete) {
+				next_user = user->next;
+				llcache_object_remove_user(object, user);
+				llcache_object_user_destroy(user);
+
+				if (error != NSERROR_OK)
+					return error;
+
+				continue;
+			} else if (error == NSERROR_NEED_DATA) {
+				/* User requested replay */
+				handle->state = LLCACHE_FETCH_HEADERS;
+
+				/* Continue with the next user -- we'll
+				 * reemit the event next time round */
+				user->iterator_target = false;
+				next_user = user->next;
+				llcache_users_not_caught_up();
+				continue;
+			} else if (error != NSERROR_OK) {
+				user->iterator_target = false;
+				return error;
+			}
 		}
 
 		/* User: HEADERS, Obj: DATA, COMPLETE => User->DATA */
@@ -3269,6 +3514,14 @@ llcache_object_snapshot(llcache_object *object,	llcache_object **snapshot)
 		}
 	}
 
+	if (object->chain != NULL) {
+		error = cert_chain_dup(object->chain, &newobj->chain);
+		if (error != NSERROR_OK) {
+			llcache_object_destroy(newobj);
+			return error;
+		}
+	}
+
 	newobj->fetch.state = LLCACHE_FETCH_COMPLETE;
 
 	*snapshot = newobj;
@@ -3305,6 +3558,8 @@ total_object_size(llcache_object *object)
 			tot += strlen(object->headers[hdrc].value);
 		}
 	}
+
+	tot += cert_chain_size(object->chain);
 
 	return tot;
 }
@@ -3347,8 +3602,7 @@ void llcache_clean(bool purge)
 		/* The candidate count of uncacheable objects is always 0 */
 		if ((object->users == NULL) &&
 		    (object->candidate_count == 0) &&
-		    (object->fetch.fetch == NULL) &&
-		    (object->fetch.outstanding_query == false)) {
+		    (object->fetch.fetch == NULL)) {
 			NSLOG(llcache, DEBUG, "Discarding uncachable object with no users (%p) %s",
 				    object, nsurl_access(object->url));
 
@@ -3373,7 +3627,6 @@ void llcache_clean(bool purge)
 		if ((object->users == NULL) &&
 		    (object->candidate_count == 0) &&
 		    (object->fetch.fetch == NULL) &&
-		    (object->fetch.outstanding_query == false) &&
 		    (remaining_lifetime <= 0)) {
 			/* object is stale */
 			NSLOG(llcache, DEBUG, "discarding stale cacheable object with no "
@@ -3414,7 +3667,6 @@ void llcache_clean(bool purge)
 		if ((object->users == NULL) &&
 		    (object->candidate_count == 0) &&
 		    (object->fetch.fetch == NULL) &&
-		    (object->fetch.outstanding_query == false) &&
 		    (object->store_state == LLCACHE_STATE_DISC)) {
 			guit->llcache->release(object->url, BACKING_STORE_NONE);
 
@@ -3439,7 +3691,6 @@ void llcache_clean(bool purge)
 		if ((object->users == NULL) &&
 		    (object->candidate_count == 0) &&
 		    (object->fetch.fetch == NULL) &&
-		    (object->fetch.outstanding_query == false) &&
 		    (object->store_state == LLCACHE_STATE_DISC) &&
 		    (object->source_data == NULL)) {
 			NSLOG(llcache, DEBUG,
@@ -3471,7 +3722,6 @@ void llcache_clean(bool purge)
 		if ((object->users == NULL) &&
 		    (object->candidate_count == 0) &&
 		    (object->fetch.fetch == NULL) &&
-		    (object->fetch.outstanding_query == false) &&
 		    (object->store_state == LLCACHE_STATE_RAM)) {
 			NSLOG(llcache, DEBUG,
 			      "discarding fresh object len:%"PRIssizet" age:%ld (%p) %s",
@@ -3505,8 +3755,6 @@ llcache_initialise(const struct llcache_parameters *prm)
 		return NSERROR_NOMEM;
 	}
 
-	llcache->query_cb = prm->cb;
-	llcache->query_cb_pw = prm->cb_ctx;
 	llcache->limit = prm->limit;
 	llcache->minimum_lifetime = prm->minimum_lifetime;
 	llcache->minimum_bandwidth = prm->minimum_bandwidth;
@@ -3531,6 +3779,11 @@ void llcache_finalise(void)
 	uint64_t total_bandwidth = 0; /* total bandwidth */
 
 	webfs_finalise();
+
+	/* Attempt to persist anything we have left lying around */
+	llcache_persist(NULL);
+	/* Now clear the persistence callback */
+	guit->misc->schedule(-1, llcache_persist, NULL);
 
 	/* Clean uncached objects */
 	for (object = llcache->uncached_objects; object != NULL; object = next) {

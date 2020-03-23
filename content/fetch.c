@@ -98,6 +98,7 @@ struct fetch {
 	int fetcherd;           /**< Fetcher descriptor for this fetch */
 	void *fetcher_handle;	/**< The handle for the fetcher. */
 	bool fetch_is_active;	/**< This fetch is active. */
+	fetch_msg_type last_msg;/**< The last message sent for this fetch */
 	struct fetch *r_prev;	/**< Previous active fetch in ::fetch_ring. */
 	struct fetch *r_next;	/**< Next active fetch in ::fetch_ring. */
 };
@@ -462,7 +463,7 @@ fetch_start(nsurl *url,
 	lwc_string *scheme;
 	bool match;
 
-	fetch = malloc(sizeof (*fetch));
+	fetch = calloc(1, sizeof (*fetch));
 	if (fetch == NULL) {
 		return NSERROR_NOMEM;
 	}
@@ -486,13 +487,6 @@ fetch_start(nsurl *url,
 	fetch->url = nsurl_ref(url);
 	fetch->verifiable = verifiable;
 	fetch->p = p;
-	fetch->http_code = 0;
-	fetch->r_prev = NULL;
-	fetch->r_next = NULL;
-	fetch->referer = NULL;
-	fetch->send_referer = false;
-	fetch->fetcher_handle = NULL;
-	fetch->fetch_is_active = false;
 	fetch->host = nsurl_get_component(url, NSURL_HOST);
 
 	if (referer != NULL) {
@@ -584,6 +578,7 @@ fetch_start(nsurl *url,
 void fetch_abort(struct fetch *f)
 {
 	assert(f);
+	f->last_msg = FETCH__INTERNAL_ABORTED;
 	NSLOG(fetch, DEBUG,
 	      "fetch %p, fetcher %p, url '%s'", f, f->fetcher_handle,
 	     nsurl_access(f->url));
@@ -593,6 +588,20 @@ void fetch_abort(struct fetch *f)
 /* exported interface documented in content/fetch.h */
 void fetch_free(struct fetch *f)
 {
+	if (f->last_msg < FETCH_MIN_FINISHED_MSG) {
+		/* We didn't finish, so tell our user that an error occurred */
+		fetch_msg msg;
+
+		msg.type = FETCH_ERROR;
+		msg.data.error = "FetchFailedToFinish";
+
+		NSLOG(fetch, CRITICAL,
+		      "During the fetch of %s, the fetcher did not finish.",
+		      nsurl_access(f->url));
+
+		fetch_send_callback(&msg, f);
+	}
+
 	NSLOG(fetch, DEBUG,
 	      "Freeing fetch %p, fetcher %p",
 	      f,
@@ -712,6 +721,23 @@ fetch_multipart_data_clone(const struct fetch_multipart_data *list)
 	return result;
 }
 
+
+/* exported interface documented in content/fetch.h */
+const char *
+fetch_multipart_data_find(const struct fetch_multipart_data *list,
+			  const char *name)
+{
+	while (list != NULL) {
+		if (strcmp(list->name, name) == 0) {
+			return list->value;
+		}
+		list = list->next;
+	}
+
+	return NULL;
+}
+
+
 /* exported interface documented in content/fetch.h */
 void fetch_multipart_data_destroy(struct fetch_multipart_data *list)
 {
@@ -730,10 +756,50 @@ void fetch_multipart_data_destroy(struct fetch_multipart_data *list)
 	}
 }
 
+
+/* exported interface documented in content/fetch.h */
+nserror
+fetch_multipart_data_new_kv(struct fetch_multipart_data **list,
+			    const char *name,
+			    const char *value)
+{
+	struct fetch_multipart_data *newdata;
+
+	assert(list);
+
+	newdata = calloc(sizeof(*newdata), 1);
+
+	if (newdata == NULL) {
+		return NSERROR_NOMEM;
+	}
+
+	newdata->name = strdup(name);
+	if (newdata->name == NULL) {
+		free(newdata);
+		return NSERROR_NOMEM;
+	}
+
+	newdata->value = strdup(value);
+	if (newdata->value == NULL) {
+		free(newdata->name);
+		free(newdata);
+		return NSERROR_NOMEM;
+	}
+
+	newdata->next = *list;
+	*list = newdata;
+
+	return NSERROR_OK;
+}
+
+
 /* exported interface documented in content/fetch.h */
 void
 fetch_send_callback(const fetch_msg *msg, struct fetch *fetch)
 {
+	/* Bump the last_msg to the greatest seen msg */
+	if (msg->type > fetch->last_msg)
+		fetch->last_msg = msg->type;
 	fetch->callback(msg, fetch->p);
 }
 

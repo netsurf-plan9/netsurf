@@ -41,6 +41,7 @@
 #include "netsurf/keypress.h"
 #include "netsurf/url_db.h"
 #include "netsurf/cookie_db.h"
+#include "netsurf/browser.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/misc.h"
 #include "netsurf/netsurf.h"
@@ -62,15 +63,14 @@
 #include "gtk/global_history.h"
 #include "gtk/hotlist.h"
 #include "gtk/throbber.h"
+#include "gtk/toolbar_items.h"
 #include "gtk/scaffolding.h"
 #include "gtk/window.h"
 #include "gtk/schedule.h"
 #include "gtk/selection.h"
 #include "gtk/search.h"
-#include "gtk/ssl_cert.h"
 #include "gtk/bitmap.h"
 #include "gtk/resources.h"
-#include "gtk/login.h"
 #include "gtk/layout_pango.h"
 #include "gtk/accelerator.h"
 
@@ -80,7 +80,6 @@ char *nsgtk_config_home; /* exported global defined in gtk/gui.h */
 
 GdkPixbuf *favicon_pixbuf; /** favicon default pixbuf */
 GdkPixbuf *win_default_icon_pixbuf; /** default window icon pixbuf */
-GdkPixbuf *arrow_down_pixbuf; /** arrow down pixbuf */
 
 GtkBuilder *warning_builder;
 
@@ -159,12 +158,15 @@ nsgtk_init_resource_path(const char *config_home)
 /**
  * Set option defaults for gtk frontend.
  *
- * @param defaults The option table to update.
- * @return error status.
+ * \param defaults The option table to update.
+ * \return error status.
  */
 static nserror set_defaults(struct nsoption_s *defaults)
 {
 	char *fname;
+	GtkSettings *settings;
+	GtkIconSize tooliconsize;
+	GtkToolbarStyle toolbarstyle;
 
 	/* cookie file default */
 	fname = NULL;
@@ -200,15 +202,11 @@ static nserror set_defaults(struct nsoption_s *defaults)
 		nsoption_setnull_charp(downloads_directory, strdup(fname));
 	}
 
-	/* default path to certificates */
-	nsoption_setnull_charp(ca_path, strdup("/etc/ssl/certs"));
-
 	if ((nsoption_charp(cookie_file) == NULL) ||
 	    (nsoption_charp(cookie_jar) == NULL) ||
 	    (nsoption_charp(url_file) == NULL) ||
 	    (nsoption_charp(hotlist_path) == NULL) ||
-	    (nsoption_charp(downloads_directory) == NULL) ||
-	    (nsoption_charp(ca_path) == NULL)) {
+	    (nsoption_charp(downloads_directory) == NULL)) {
 		NSLOG(netsurf, INFO,
 		      "Failed initialising default resource paths");
 		return NSERROR_BAD_PARAMETER;
@@ -221,10 +219,111 @@ static nserror set_defaults(struct nsoption_s *defaults)
 	nsoption_set_charp(font_cursive, strdup("Serif"));
 	nsoption_set_charp(font_fantasy, strdup("Serif"));
 
+	/* Default toolbar button type to system defaults */
+
+	settings = gtk_settings_get_default();
+	g_object_get(settings,
+		     "gtk-toolbar-icon-size", &tooliconsize,
+		     "gtk-toolbar-style", &toolbarstyle, NULL);
+
+	switch (toolbarstyle) {
+	case GTK_TOOLBAR_ICONS:
+		if (tooliconsize == GTK_ICON_SIZE_SMALL_TOOLBAR) {
+			nsoption_set_int(button_type, 1);
+		} else {
+			nsoption_set_int(button_type, 2);
+		}
+		break;
+
+	case GTK_TOOLBAR_TEXT:
+		nsoption_set_int(button_type, 4);
+		break;
+
+	case GTK_TOOLBAR_BOTH:
+	case GTK_TOOLBAR_BOTH_HORIZ:
+		/* no labels in default configuration */
+	default:
+		/* No system default, so use large icons */
+		nsoption_set_int(button_type, 2);
+		break;
+	}
+
+	/* set default items in toolbar */
+	nsoption_set_charp(toolbar_items,
+	  strdup("back/history/forward/reloadstop/url_bar/websearch/openmenu"));
+
+	/* set default for menu and tool bar visibility */
+	nsoption_set_charp(bar_show, strdup("tool"));
+
 	return NSERROR_OK;
 }
 
+#if GTK_CHECK_VERSION(3,14,0)
 
+/**
+ * adds named icons into gtk theme
+ */
+static nserror nsgtk_add_named_icons_to_theme(void)
+{
+	gtk_icon_theme_add_resource_path(gtk_icon_theme_get_default(),
+					  "/org/netsurf/icons");
+	return NSERROR_OK;
+}
+
+#else
+
+static nserror
+add_builtin_icon(const char *prefix, const char *name, int x, int y)
+{
+	GdkPixbuf *pixbuf;
+	nserror res;
+	char *resname;
+	int resnamelen;
+
+	 /* resource name string length allowing for / .png and termination */
+	resnamelen = strlen(prefix) + strlen(name) + 5 + 1 + 4 + 1;
+	resname = malloc(resnamelen);
+	if (resname == NULL) {
+		return NSERROR_NOMEM;
+	}
+	snprintf(resname, resnamelen, "icons%s/%s.png", prefix, name);
+
+	res = nsgdk_pixbuf_new_from_resname(resname, &pixbuf);
+	NSLOG(netsurf, DEEPDEBUG, "%d %s", res, resname);
+	free(resname);
+	if (res != NSERROR_OK) {
+		pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, false, 8, x, y);
+	}
+	gtk_icon_theme_add_builtin_icon(name, y, pixbuf);
+
+	return NSERROR_OK;
+}
+
+/**
+ * adds named icons into gtk theme
+ */
+static nserror nsgtk_add_named_icons_to_theme(void)
+{
+	/* these must also be in gtk/resources.c pixbuf_resource *and*
+	 * gtk/res/netsurf.gresource.xml 
+	 */
+	add_builtin_icon("", "local-history", 8, 32);
+	add_builtin_icon("", "show-cookie", 24, 24);
+	add_builtin_icon("/24x24/actions", "page-info-insecure", 24, 24);
+	add_builtin_icon("/24x24/actions", "page-info-internal", 24, 24);
+	add_builtin_icon("/24x24/actions", "page-info-local", 24, 24);
+	add_builtin_icon("/24x24/actions", "page-info-secure", 24, 24);
+	add_builtin_icon("/24x24/actions", "page-info-warning", 24, 24);
+	add_builtin_icon("/48x48/actions", "page-info-insecure", 48, 48);
+	add_builtin_icon("/48x48/actions", "page-info-internal", 48, 48);
+	add_builtin_icon("/48x48/actions", "page-info-local", 48, 48);
+	add_builtin_icon("/48x48/actions", "page-info-secure", 48, 48);
+	add_builtin_icon("/48x48/actions", "page-info-warning", 48, 48);
+
+	return NSERROR_OK;
+}
+
+#endif
 
 
 /**
@@ -232,7 +331,7 @@ static nserror set_defaults(struct nsoption_s *defaults)
  *
  * \param argc The number of arguments on the command line
  * \param argv A string vector of command line arguments.
- * \respath A string vector of the path elements of resources 
+ * \respath A string vector of the path elements of resources
  */
 static nserror nsgtk_init(int argc, char** argv, char **respath)
 {
@@ -275,6 +374,7 @@ static nserror nsgtk_init(int argc, char** argv, char **respath)
 		      resource_filename);
 		free(resource_filename);
 	}
+	search_web_select_provider(nsoption_int(search_provider));
 
 	/* Default favicon */
 	res = nsgdk_pixbuf_new_from_resname("favicon.png", &favicon_pixbuf);
@@ -283,12 +383,11 @@ static nserror nsgtk_init(int argc, char** argv, char **respath)
 						false, 8, 16, 16);
 	}
 
-	/* arrow down icon */
-	res = nsgdk_pixbuf_new_from_resname("arrow_down_8x32.png",
-					    &arrow_down_pixbuf);
+	/* add named icons to gtk theme */
+	res = nsgtk_add_named_icons_to_theme();
 	if (res != NSERROR_OK) {
-		arrow_down_pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB,
-						   false, 8, 8, 32);
+		NSLOG(netsurf, INFO, "Unable to add named icons to GTK theme.");
+		return res;
 	}
 
 	/* initialise throbber */
@@ -401,6 +500,11 @@ static void nsgtk_main(void)
 		FD_ZERO(&write_fd_set);
 		FD_ZERO(&exc_fd_set);
 
+		while (gtk_events_pending())
+			gtk_main_iteration_do(TRUE);
+
+		schedule_run();
+
 		fetch_fdset(&read_fd_set, &write_fd_set, &exc_fd_set, &max_fd);
 		for (int i = 0; i <= max_fd; i++) {
 			if (FD_ISSET(i, &read_fd_set)) {
@@ -425,8 +529,6 @@ static void nsgtk_main(void)
 				fd_list[fd_count++] = fd;
 			}
 		}
-
-		schedule_run();
 
 		gtk_main_iteration();
 
@@ -478,6 +580,12 @@ static void gui_quit(void)
 	res = hotlist_fini();
 	if (res != NSERROR_OK) {
 		NSLOG(netsurf, INFO, "Error finalising hotlist: %s",
+		      messages_get_errorcode(res));
+	}
+
+	res = save_complete_finalise();
+	if (res != NSERROR_OK) {
+		NSLOG(netsurf, INFO, "Error finalising save complete: %s",
 		      messages_get_errorcode(res));
 	}
 
@@ -1071,12 +1179,9 @@ static nserror nsgtk_option_init(int *pargc, char** argv)
 
 static struct gui_misc_table nsgtk_misc_table = {
 	.schedule = nsgtk_schedule,
-	.warning = nsgtk_warning,
 
 	.quit = gui_quit,
 	.launch_url = gui_launch_url,
-	.cert_verify = gtk_cert_verify,
-	.login = gui_401login_open,
 	.pdf_password = nsgtk_pdf_password,
 };
 
@@ -1177,7 +1282,7 @@ int main(int argc, char** argv)
 		NSLOG(netsurf, INFO, "Unable to load translated messages");
 		/** \todo decide if message load faliure should be fatal */
 	}
-	
+
 	/* Locate the correct user cache directory path */
 	ret = get_cache_home(&cache_home);
 	if (ret == NSERROR_NOT_FOUND) {

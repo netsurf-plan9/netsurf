@@ -16,8 +16,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** \file
- * Content for image/ico (implementation)
+/**
+ * \file
+ * implementation for image/ico content handler
  */
 
 #include <stdbool.h>
@@ -39,8 +40,7 @@
 typedef struct nsico_content {
 	struct content base;
 
-	struct ico_collection *ico;	/** ICO collection data */
-
+	struct ico_collection *ico; /** ICO collection data */
 } nsico_content;
 
 /**
@@ -75,7 +75,7 @@ static nserror nsico_create_ico_data(nsico_content *c)
 
 	c->ico = calloc(sizeof(ico_collection), 1);
 	if (c->ico == NULL) {
-		content_broadcast_errorcode(&c->base, NSERROR_NOMEM);
+		content_broadcast_error(&c->base, NSERROR_NOMEM, NULL);
 		return NSERROR_NOMEM;
 	}
 	ico_collection_create(c->ico, &bmp_bitmap_callbacks);
@@ -134,11 +134,11 @@ static bool nsico_convert(struct content *c)
 	case BMP_OK:
 		break;
 	case BMP_INSUFFICIENT_MEMORY:
-		content_broadcast_errorcode(c, NSERROR_NOMEM);
+		content_broadcast_error(c, NSERROR_NOMEM, NULL);
 		return false;
 	case BMP_INSUFFICIENT_DATA:
 	case BMP_DATA_ERROR:
-		content_broadcast_errorcode(c, NSERROR_ICO_ERROR);
+		content_broadcast_error(c, NSERROR_ICO_ERROR, NULL);
 		return false;
 	}
 

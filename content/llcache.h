@@ -30,7 +30,7 @@
 #include "utils/errors.h"
 #include "utils/nsurl.h"
 
-struct ssl_cert_info;
+struct cert_chain;
 struct fetch_multipart_data;
 
 /** Handle for low-level cache object */
@@ -48,45 +48,6 @@ typedef struct llcache_post_data {
 	} data;				/**< POST data content */
 } llcache_post_data;
 
-/** Low-level cache event types */
-typedef enum {
-	LLCACHE_EVENT_HAD_HEADERS,	/**< Received all headers */
-	LLCACHE_EVENT_HAD_DATA,		/**< Received some data */
-	LLCACHE_EVENT_DONE,		/**< Finished fetching data */
-
-	LLCACHE_EVENT_ERROR,		/**< An error occurred during fetch */
-	LLCACHE_EVENT_PROGRESS,		/**< Fetch progress update */
-
-	LLCACHE_EVENT_REDIRECT		/**< Fetch URL redirect occured */
-} llcache_event_type;
-
-/** Low-level cache events */
-typedef struct {
-	llcache_event_type type;	/**< Type of event */
-	union {
-		struct {
-			const uint8_t *buf;	/**< Buffer of data */
-			size_t len;	/**< Length of buffer, in bytes */
-		} data;			/**< Received data */
-		const char *msg;	/**< Error or progress message */
-		struct {
-			nsurl *from;	/**< Redirect origin */
-			nsurl *to;	/**< Redirect target */
-		} redirect;		/**< Fetch URL redirect occured */
-	} data;				/**< Event data */
-} llcache_event;
-
-/**
- * Client callback for low-level cache events
- *
- * \param handle  Handle for which event is issued
- * \param event   Event data
- * \param pw      Pointer to client-specific data
- * \return NSERROR_OK on success, appropriate error otherwise.
- */
-typedef nserror (*llcache_handle_callback)(llcache_handle *handle,
-		const llcache_event *event, void *pw);
-
 /** Flags for low-level cache object retrieval */
 enum llcache_retrieve_flag {
 	/* Note: We're permitted a maximum of 16 flags which must reside in the
@@ -102,59 +63,55 @@ enum llcache_retrieve_flag {
 	LLCACHE_RETRIEVE_STREAM_DATA    = (1 << 3)
 };
 
-/** Low-level cache query types */
+/** Low-level cache event types */
 typedef enum {
-	LLCACHE_QUERY_AUTH,		/**< Need authentication details */
-	LLCACHE_QUERY_REDIRECT,		/**< Need permission to redirect */
-	LLCACHE_QUERY_SSL		/**< SSL chain needs inspection */
-} llcache_query_type;
+	LLCACHE_EVENT_GOT_CERTS,        /**< SSL certificates arrived */
+	LLCACHE_EVENT_HAD_HEADERS,	/**< Received all headers */
+	LLCACHE_EVENT_HAD_DATA,		/**< Received some data */
+	LLCACHE_EVENT_DONE,		/**< Finished fetching data */
 
-/** Low-level cache query */
+	LLCACHE_EVENT_ERROR,		/**< An error occurred during fetch */
+	LLCACHE_EVENT_PROGRESS,		/**< Fetch progress update */
+
+	LLCACHE_EVENT_REDIRECT		/**< Fetch URL redirect occured */
+} llcache_event_type;
+
+/**
+ * Low-level cache events.
+ *
+ * Lifetime of contained information is only for the duration of the event
+ * and must be copied if it is desirable to retain.
+ */
 typedef struct {
-	llcache_query_type type;	/**< Type of query */
-
-	nsurl *url;			/**< URL being fetched */
-
+	llcache_event_type type;            /**< Type of event */
 	union {
 		struct {
-			const char *realm;	/**< Authentication realm */
-		} auth;
-
+			const uint8_t *buf; /**< Buffer of data */
+			size_t len;	    /**< Byte length of buffer */
+		} data;                     /**< Received data */
 		struct {
-			const char *target;	/**< Redirect target */
-		} redirect;
-
+			nserror code;       /**< The error code */
+			const char *msg;    /**< Error message */
+		} error;
+		const char *progress_msg;   /**< Progress message */
 		struct {
-			const struct ssl_cert_info *certs;
-			size_t num;		/**< Number of certs in chain */
-		} ssl;
-	} data;
-} llcache_query;
+			nsurl *from;	    /**< Redirect origin */
+			nsurl *to;	    /**< Redirect target */
+		} redirect;                 /**< Fetch URL redirect occured */
+		const struct cert_chain *chain;    /**< Certificate chain */
+	} data;				    /**< Event data */
+} llcache_event;
 
 /**
- * Response handler for fetch-related queries
+ * Client callback for low-level cache events
  *
- * \param proceed  Whether to proceed with the fetch or not
- * \param cbpw     Opaque value provided to llcache_query_callback
- * \return NSERROR_OK on success, appropriate error otherwise
+ * \param handle  Handle for which event is issued
+ * \param event   Event data
+ * \param pw      Pointer to client-specific data
+ * \return NSERROR_OK on success, appropriate error otherwise.
  */
-typedef nserror (*llcache_query_response)(bool proceed, void *cbpw);
-
-/**
- * Callback to handle fetch-related queries
- *
- * \param query  Object containing details of query
- * \param pw     Pointer to callback-specific data
- * \param cb     Callback that client should call once query is satisfied
- * \param cbpw   Opaque value to pass into \a cb
- * \return NSERROR_OK on success, appropriate error otherwise
- *
- * \note This callback should return immediately. Once a suitable answer to
- *       the query has been obtained, the provided response callback should be
- *       called. This is intended to be an entirely asynchronous process.
- */
-typedef nserror (*llcache_query_callback)(const llcache_query *query, void *pw,
-		llcache_query_response cb, void *cbpw);
+typedef nserror (*llcache_handle_callback)(llcache_handle *handle,
+		const llcache_event *event, void *pw);
 
 /**
  * Parameters to configure the low level cache backing store.
@@ -164,67 +121,27 @@ struct llcache_store_parameters {
 
 	size_t limit; /**< The backing store upper bound target size */
 	size_t hysteresis; /**< The hysteresis around the target size */
-
-	/** log2 of the default maximum number of entries the cache
-	 * can track.
-	 *
-	 * If unset this defaults to 16 (65536 entries) The cache
-	 * control file takes precedence so cache data remains
-	 * portable between builds with differing defaults.
-	 */
-	unsigned int entry_size;
-
-	/** log2 of the default number of entries in the mapping between
-	 * the url and cache entries.
-	 *
-	 * @note This is exposing an internal implementation detail of
-	 * the filesystem based default backing store implementation.
-	 * However it is likely any backing store implementation will
-	 * need some way to map url to cache entries so it is a
-	 * generally useful configuration value.
-	 *
-	 * Too small a value will cause unecessary collisions and
-	 * cache misses and larger values cause proportionaly larger
-	 * amounts of memory to be used.
-	 *
-	 * The "birthday paradox" means that the hash will experience
-	 * a collision in every 2^(address_size/2) urls the cache
-	 * stores.
-	 *
-	 * A value of 20 means one object stored in every 1024 will
-	 * cause a collion and a cache miss while using two megabytes
-	 * of storage.
-	 *
-	 * If unset this defaults to 20 (1048576 entries using two
-	 * megabytes) The cache control file takes precedence so cache
-	 * data remains portable between builds with differing
-	 * defaults.
-	 */
-	unsigned int address_size;
 };
 
 /**
  * Parameters to configure the low level cache.
  */
 struct llcache_parameters {
-	llcache_query_callback cb; /**< Query handler for llcache */
-	void *cb_ctx; /**< Pointer to llcache query handler data */
-
 	size_t limit; /**< The target upper bound for the RAM cache size */
 	size_t hysteresis; /**< The hysteresis around the target size */
 
 	/** The minimum lifetime to consider sending objects to backing store.*/
-	int minimum_lifetime; 
+	int minimum_lifetime;
 
 	/** The minimum bandwidth to allow the backing store to
 	 * use in bytes/second
 	 */
-	size_t minimum_bandwidth; 
+	size_t minimum_bandwidth;
 
 	/** The maximum bandwidth to allow the backing store to use in
 	 * bytes/second
 	 */
-	size_t maximum_bandwidth; 
+	size_t maximum_bandwidth;
 
 	/** The time quantum over which to calculate the bandwidth values
 	 */

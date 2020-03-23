@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _NETSURF_WINDOWS_WINDOW_H_
-#define _NETSURF_WINDOWS_WINDOW_H_
+#ifndef NETSURF_WINDOWS_WINDOW_H_
+#define NETSURF_WINDOWS_WINDOW_H_
 
 /** The window operation function table for win32 */
 extern struct gui_window_table *win32_window_table;
@@ -27,7 +27,7 @@ extern struct gui_window_table *win32_window_table;
 struct browser_mouse {
        struct gui_window *gui;
        struct box *box;
-       
+
        double pressed_x;
        double pressed_y;
        bool waiting;
@@ -62,7 +62,7 @@ struct gui_window {
 
 	HACCEL acceltable; /**< accelerators */
 
-	float scale; /**< scale of content */
+	HBITMAP hPageInfo[8]; /**< page info handles */
 
 	int scrollx; /**< current scroll location */
 	int scrolly; /**< current scroll location */

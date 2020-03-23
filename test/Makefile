@@ -7,6 +7,7 @@ TESTS := \
 	nsoption \
 	bloom \
 	hashtable \
+	hashmap \
 	urlescape \
 	utils \
 	messages \
@@ -51,6 +52,10 @@ bloom_SRCS := utils/bloom.c test/bloom.c
 
 # hash table test sources
 hashtable_SRCS := utils/hashtable.c test/log.c test/hashtable.c
+
+# hashmap test sources
+hashmap_SRCS := $(NSURL_SOURCES) utils/hashmap.c utils/corestrings.c test/log.c test/hashmap.c
+hashmap_LD := -lmalloc_fig
 
 # url escape test sources
 urlescape_SRCS := utils/url.c test/log.c test/urlescape.c
@@ -143,6 +148,8 @@ BASE_TESTCFLAGS := -std=c99 -g \
 	-Dnsgtk \
 	-DNETSURF_BUILTIN_LOG_FILTER=\"level:WARNING\" \
 	-DNETSURF_BUILTIN_VERBOSE_FILTER=\"level:DEBUG\" \
+	-DTESTROOT=\"$(TESTROOT)\" \
+	-DWITH_UTF8PROC \
 	$(SAN_FLAGS) \
 	$(shell pkg-config --cflags libcurl libparserutils libwapcaplet libdom libnsutils libutf8proc) \
 	$(LIB_CFLAGS)
@@ -158,7 +165,7 @@ TESTLDFLAGS := -L$(TESTROOT) \
 
 # malloc faliure injection generator
 $(TESTROOT)/libmalloc_fig.so:test/malloc_fig.c
-	$(CC) -shared -fPIC -I. -std=c99 $(TEST_WARNFLAGS) $^ -o $@
+	$(CC) -shared -fPIC -I. -std=c99 $(TEST_WARNFLAGS) $^ -ldl -o $@
 
 # Source files for all tests being compiled
 TESTSOURCES :=

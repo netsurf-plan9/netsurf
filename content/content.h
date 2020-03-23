@@ -43,6 +43,8 @@ struct hlcache_handle;
 struct object_params;
 struct rect;
 struct redraw_context;
+struct llcache_query_msg;
+struct cert_chain;
 
 /** Status of a content */
 typedef enum {
@@ -58,11 +60,11 @@ typedef enum {
 /** Used in callbacks to indicate what has occurred. */
 typedef enum {
 	CONTENT_MSG_LOG,       /**< Content wishes to log something */
+	CONTENT_MSG_SSL_CERTS, /**< Content is from SSL and this is its chain */
 	CONTENT_MSG_LOADING,   /**< fetching or converting */
 	CONTENT_MSG_READY,     /**< may be displayed */
 	CONTENT_MSG_DONE,      /**< finished */
 	CONTENT_MSG_ERROR,     /**< error occurred */
-	CONTENT_MSG_ERRORCODE, /**< error occurred return nserror */
 	CONTENT_MSG_REDIRECT,  /**< fetch url redirect occured */
 	CONTENT_MSG_STATUS,    /**< new status string */
 	CONTENT_MSG_REFORMAT,  /**< content_reformat done */
@@ -70,7 +72,7 @@ typedef enum {
 	CONTENT_MSG_REFRESH,   /**< wants refresh */
 	CONTENT_MSG_DOWNLOAD,  /**< download, not for display */
 	CONTENT_MSG_LINK,      /**< RFC5988 link */
-	CONTENT_MSG_GETCTX,    /**< Javascript context */
+	CONTENT_MSG_GETTHREAD, /**< Javascript thread */
 	CONTENT_MSG_GETDIMS,   /**< Get viewport dimensions. */
 	CONTENT_MSG_SCROLL,    /**< Request to scroll content */
 	CONTENT_MSG_DRAGSAVE,  /**< Allow drag saving of content */
@@ -98,64 +100,115 @@ struct content_rfc5988_link {
 
 /** Extra data for some content_msg messages. */
 union content_msg_data {
-	/** CONTENT_MSG_LOG - Information for logging */
+	/**
+	 * CONTENT_MSG_LOG - Information for logging
+	 */
 	struct {
-		browser_window_console_source src; /**< The source of the logging */
-		const char *msg; /**< The message to log */
-		size_t msglen; /**< The length of that message */
-		browser_window_console_flags flags; /**< The flags of the logging */
+		/** The source of the logging */
+		browser_window_console_source src;
+		/** The message to log */
+		const char *msg;
+		/** The length of that message */
+		size_t msglen;
+		/** The flags of the logging */
+		browser_window_console_flags flags;
 	} log;
-	/** CONTENT_MSG_ERROR - Error message */
-	const char *error;
-        /** CONTENT_MSG_ERRORCODE - Error code */
-	nserror errorcode;
-        /** CONTENT_MSG_REDIRECT - Redirect info */
+
+	/**
+	 * CONTENT_MSG_SSL_CERTS - The certificate chain from the
+	 *   underlying fetch
+	 */
+	const struct cert_chain *chain;
+
+	/**
+	 * CONTENT_MSG_ERROR - Error from content or underlying fetch
+	 */
+	struct {
+		/**
+		 * The error code to convey meaning
+		 */
+		nserror errorcode;
+		/**
+		 * The message.  if NSERROR_UNKNOWN then this is the direct
+		 *   message, otherwise is some kind of metadata (e.g. a
+		 *   message name or somesuch) but always a null terminated
+		 *   string.
+		 */
+		const char *errormsg;
+	} errordata;
+
+	/**
+	 * CONTENT_MSG_REDIRECT - Redirect info
+	 */
 	struct {
 		struct nsurl *from;	/**< Redirect origin */
 		struct nsurl *to;	/**< Redirect target */
 	} redirect;		/**< Fetch URL redirect occured */
-	/** CONTENT_MSG_REDRAW - Area of content which needs redrawing */
+
+	/**
+	 * CONTENT_MSG_REDRAW - Area of content which needs redrawing
+	 */
 	struct {
 		int x, y, width, height;
-		/** Redraw the area fully. If false, object must be set,
-		 * and only the object will be redrawn. */
-		bool full_redraw;
-		/** Object to redraw if full_redraw is false. */
-		struct content *object;
-		/** Coordinates to plot object at. */
-		int object_x, object_y;
-		/** Dimensions to plot object with. */
-		int object_width, object_height;
 	} redraw;
-	/** CONTENT_MSG_REFRESH - Minimum delay  */
+
+	/**
+	 * CONTENT_MSG_REFRESH - Minimum delay
+	 */
 	int delay;
-	/** CONTENT_MSG_REFORMAT - Reformat should not cause a redraw */
+
+	/**
+	 * CONTENT_MSG_REFORMAT - Reformat should not cause a redraw
+	 */
 	bool background;
-	/** CONTENT_MSG_STATUS - Status message update.  If NULL, the content's
-	 * internal status text has been updated, and listener should use
-	 * content_get_status_message() */
+
+	/**
+	 * CONTENT_MSG_STATUS - Status message update.  If NULL, the
+	 * content's internal status text has been updated, and
+	 * listener should use content_get_status_message()
+	 */
 	const char *explicit_status_text;
-	/** CONTENT_MSG_DOWNLOAD - Low-level cache handle */
+
+	/**
+	 * CONTENT_MSG_DOWNLOAD - Low-level cache handle
+	 */
 	struct llcache_handle *download;
-	/** CONTENT_MSG_RFC5988_LINK - rfc5988 link data   */
+
+	/**
+	 * CONTENT_MSG_RFC5988_LINK - rfc5988 link data
+	 */
 	struct content_rfc5988_link *rfc5988_link;
-	/** CONTENT_MSG_GETCTX - Javascript context */
-	struct jscontext **jscontext;
-	/** CONTENT_MSG_GETDIMS - Get the viewport dimensions */
+
+	/**
+	 * CONTENT_MSG_GETTHREAD - Javascript context (thread)
+	 */
+	struct jsthread **jsthread;
+
+	/**
+	 * CONTENT_MSG_GETDIMS - Get the viewport dimensions
+	 */
 	struct {
-		/* TODO: Consider getting screen_width, screen_height too. */
+		/** \todo Consider getting screen_width, screen_height too. */
 		unsigned *viewport_width;
 		unsigned *viewport_height;
 	} getdims;
-	/** CONTENT_MSG_SCROLL - Part of content to scroll to show */
+
+	/**
+	 * CONTENT_MSG_SCROLL - Part of content to scroll to show
+	 */
 	struct {
-		/** if true, scroll to show area given by (x0, y0) and (x1,y1).
-		 * if false, scroll point (x0, y0) to top left of viewport */
+		/*
+		 * if true, scroll to show area given by (x0, y0) and (x1,y1).
+		 * if false, scroll point (x0, y0) to top left of viewport
+		 */
 		bool area;
 		int x0, y0;
 		int x1, y1;
 	} scroll;
-	/** CONTENT_MSG_DRAGSAVE - Drag save a content */
+
+	/**
+	 * CONTENT_MSG_DRAGSAVE - Drag save a content
+	 */
 	struct {
 		enum {
 			CONTENT_SAVE_ORIG,
@@ -166,19 +219,31 @@ union content_msg_data {
 		 /** if NULL, save the content generating the message */
 		struct hlcache_handle *content;
 	} dragsave;
-	/** CONTENT_MSG_SAVELINK - Save a URL */
+
+	/**
+	 * CONTENT_MSG_SAVELINK - Save a URL
+	 */
 	struct {
 		struct nsurl *url;
 		const char *title;
 	} savelink;
-	/** CONTENT_MSG_POINTER - Mouse pointer to set */
+
+	/**
+	 * CONTENT_MSG_POINTER - Mouse pointer to set
+	 */
 	browser_pointer_shape pointer;
-	/** CONTENT_MSG_SELECTION - Selection made or cleared */
+
+	/**
+	 * CONTENT_MSG_SELECTION - Selection made or cleared
+	 */
 	struct {
 		bool selection; /**< false for selection cleared */
 		bool read_only;
 	} selection;
-	/** CONTENT_MSG_CARET - set caret position or, hide caret */
+
+	/**
+	 * CONTENT_MSG_CARET - set caret position or, hide caret
+	 */
 	struct {
 		enum {
 			CONTENT_CARET_SET_POS,
@@ -192,7 +257,10 @@ union content_msg_data {
 			const struct rect *clip;	/**< Carret clip rect */
 		} pos;			/**< With CONTENT_CARET_SET_POS */
 	} caret;
-	/** CONTENT_MSG_DRAG - Drag start or end */
+
+	/**
+	 * CONTENT_MSG_DRAG - Drag start or end
+	 */
 	struct {
 		enum {
 			CONTENT_DRAG_NONE,
@@ -201,11 +269,17 @@ union content_msg_data {
 		} type;
 		const struct rect *rect;
 	} drag;
-	/** CONTENT_MSG_SELECTMENU - Create select menu at pointer */
+
+	/**
+	 * CONTENT_MSG_SELECTMENU - Create select menu at pointer
+	 */
 	struct {
 		struct form_control *gadget;
 	} select_menu;
-	/** CONTENT_MSG_GADGETCLICK - User clicked on a form gadget */
+
+	/**
+	 * CONTENT_MSG_GADGETCLICK - User clicked on a form gadget
+	 */
 	struct {
 		struct form_control *gadget;
 	} gadget_click;
@@ -415,5 +489,17 @@ bool content_is_locked(struct hlcache_handle *h);
  */
 bool content_exec(struct hlcache_handle *h, const char *src, size_t srclen);
 
+/**
+ * Determine if the content referred to any insecure objects.
+ *
+ * Query the content to determine if any of its referred objects were loaded
+ * in a manner not considered secure.  For a content to be recursively
+ * secure it must only load over https and must not have certificate overrides
+ * in place.
+ *
+ * \param h The handle to the content
+ * \return Whether the content referred to any insecure objects
+ */
+bool content_saw_insecure_objects(struct hlcache_handle *h);
 
 #endif

@@ -28,6 +28,7 @@
 #include "netsurf/inttypes.h"
 #include "utils/log.h"
 #include "utils/messages.h"
+#include "utils/corestrings.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/bitmap.h"
 #include "netsurf/content.h"
@@ -37,6 +38,7 @@
 #include "content/content_protected.h"
 #include "content/content_debug.h"
 #include "content/hlcache.h"
+#include "content/urldb.h"
 
 #define URL_FMT_SPC "%.140s"
 
@@ -142,6 +144,9 @@ nserror content_llcache_callback(llcache_handle *llcache,
 	nserror error = NSERROR_OK;
 
 	switch (event->type) {
+	case LLCACHE_EVENT_GOT_CERTS:
+		/* Will never happen: handled in hlcache */
+		break;
 	case LLCACHE_EVENT_HAD_HEADERS:
 		/* Will never happen: handled in hlcache */
 		break;
@@ -173,11 +178,12 @@ nserror content_llcache_callback(llcache_handle *llcache,
 	case LLCACHE_EVENT_ERROR:
 		/** \todo Error page? */
 		c->status = CONTENT_STATUS_ERROR;
-		msg_data.error = event->data.msg;
+		msg_data.errordata.errorcode = event->data.error.code;
+		msg_data.errordata.errormsg = event->data.error.msg;
 		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		break;
 	case LLCACHE_EVENT_PROGRESS:
-		content_set_status(c, event->data.msg);
+		content_set_status(c, event->data.progress_msg);
 		msg_data.explicit_status_text = NULL;
 		content_broadcast(c, CONTENT_MSG_STATUS, &msg_data);
 		break;
@@ -534,14 +540,6 @@ void content__request_redraw(struct content *c,
 	data.redraw.width = width;
 	data.redraw.height = height;
 
-	data.redraw.full_redraw = true;
-
-	data.redraw.object = c;
-	data.redraw.object_x = 0;
-	data.redraw.object_y = 0;
-	data.redraw.object_width = c->width;
-	data.redraw.object_height = c->height;
-
 	content_broadcast(c, CONTENT_MSG_REDRAW, &data);
 }
 
@@ -565,6 +563,62 @@ bool content_exec(struct hlcache_handle *h, const char *src, size_t srclen)
 	}
 
 	return c->handler->exec(c, src, srclen);
+}
+
+/* exported interface, documented in content/content.h */
+bool content_saw_insecure_objects(struct hlcache_handle *h)
+{
+	struct content *c = hlcache_handle_get_content(h);
+	struct nsurl *url = hlcache_handle_get_url(h);
+	lwc_string *scheme = nsurl_get_component(url, NSURL_SCHEME);
+	bool match;
+
+	/* Is this an internal scheme? If so, we trust here and stop */
+	if ((lwc_string_isequal(scheme, corestring_lwc_about,
+				&match) == lwc_error_ok &&
+	     (match == true)) ||
+	    (lwc_string_isequal(scheme, corestring_lwc_data,
+				&match) == lwc_error_ok &&
+	     (match == true)) ||
+	    (lwc_string_isequal(scheme, corestring_lwc_resource,
+				&match) == lwc_error_ok &&
+	     (match == true)) ||
+	    /* Our internal x-ns-css scheme is secure */
+	    (lwc_string_isequal(scheme, corestring_lwc_x_ns_css,
+				&match) == lwc_error_ok &&
+	     (match == true)) ||
+	    /* We also treat file: as "not insecure" here */
+	    (lwc_string_isequal(scheme, corestring_lwc_file,
+				&match) == lwc_error_ok &&
+	     (match == true))) {
+		/* No insecurity to find */
+		lwc_string_unref(scheme);
+		return false;
+	}
+
+	/* Okay, not internal, am *I* secure? */
+	if ((lwc_string_isequal(scheme, corestring_lwc_https,
+				&match) == lwc_error_ok)
+	    && (match == false)) {
+		/* I did see something insecure -- ME! */
+		lwc_string_unref(scheme);
+		return true;
+	}
+
+	lwc_string_unref(scheme);
+	/* I am supposed to be secure, but was I overridden */
+	if (urldb_get_cert_permissions(url)) {
+		/* I was https:// but I was overridden, that's no good */
+		return true;
+	}
+
+	/* Otherwise try and chain through the handler */
+	if (c != NULL && c->handler->saw_insecure_objects != NULL) {
+		return c->handler->saw_insecure_objects(c);
+	}
+
+	/* If we can't see insecure objects, we can't see them */
+	return false;
 }
 
 /* exported interface, documented in content/content.h */
@@ -802,19 +856,20 @@ void content_broadcast(struct content *c, content_msg msg,
 }
 
 /* exported interface documented in content_protected.h */
-void content_broadcast_errorcode(struct content *c, nserror errorcode)
+void content_broadcast_error(struct content *c, nserror errorcode, const char *msg)
 {
 	struct content_user *user, *next;
 	union content_msg_data data;
 
 	assert(c);
 
-	data.errorcode = errorcode;
+	data.errordata.errorcode = errorcode;
+	data.errordata.errormsg = msg;
 
 	for (user = c->user_list->next; user != 0; user = next) {
 		next = user->next;  /* user may be destroyed during callback */
 		if (user->callback != 0) {
-			user->callback(c, CONTENT_MSG_ERRORCODE,
+			user->callback(c, CONTENT_MSG_ERROR,
 					&data, user->pw);
 		}
 	}

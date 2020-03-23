@@ -50,6 +50,8 @@
 #include "utils/corestrings.h"
 #include "utils/messages.h"
 #include "utils/utils.h"
+#include "utils/log.h"
+#include "utils/time.h"
 #include "utils/ring.h"
 #include "utils/file.h"
 #include "netsurf/fetch.h"
@@ -97,19 +99,21 @@ static bool fetch_file_send_header(struct fetch_file_context *ctx,
 	fetch_msg msg;
 	char header[64];
 	va_list ap;
+	int len;
 
 	va_start(ap, fmt);
-
-	vsnprintf(header, sizeof header, fmt, ap);
-
+	len = vsnprintf(header, sizeof header, fmt, ap);
 	va_end(ap);
+
+	if (len >= (int)sizeof(header) || len < 0) {
+		return false;
+	}
 
 	msg.type = FETCH_HEADER;
 	msg.data.header_or_data.buf = (const uint8_t *) header;
-	msg.data.header_or_data.len = strlen(header);
-	fetch_file_send_callback(&msg, ctx);
+	msg.data.header_or_data.len = len;
 
-	return ctx->aborted;
+	return fetch_file_send_callback(&msg, ctx);
 }
 
 /** callback to initialise the file fetcher. */
@@ -156,18 +160,25 @@ fetch_file_setup(struct fetch *fetchh,
 
 	/* Scan request headers looking for If-None-Match */
 	for (i = 0; headers[i] != NULL; i++) {
-		if (strncasecmp(headers[i], "If-None-Match:", 
-				SLEN("If-None-Match:")) == 0) {
-			/* If-None-Match: "12345678" */
-			const char *d = headers[i] + SLEN("If-None-Match:");
+		if (strncasecmp(headers[i], "If-None-Match:",
+				SLEN("If-None-Match:")) != 0) {
+			continue;
+		}
 
-			/* Scan to first digit, if any */
-			while (*d != '\0' && (*d < '0' || '9' < *d))
-				d++;
+		/* If-None-Match: "12345678" */
+		const char *d = headers[i] + SLEN("If-None-Match:");
 
-			/* Convert to time_t */
-			if (*d != '\0')
-				ctx->file_etag = atoi(d);
+		/* Scan to first digit, if any */
+		while (*d != '\0' && (*d < '0' || '9' < *d))
+			d++;
+
+		/* Convert to time_t */
+		if (*d != '\0') {
+			ret = nsc_snptimet(d, strlen(d), &ctx->file_etag);
+			if (ret != NSERROR_OK) {
+				NSLOG(fetch, WARNING,
+						"Bad If-None-Match value");
+			}
 		}
 	}
 
@@ -184,7 +195,6 @@ static void fetch_file_free(void *ctx)
 	struct fetch_file_context *c = ctx;
 	nsurl_unref(c->url);
 	free(c->path);
-	RING_REMOVE(ring, c);
 	free(ctx);
 }
 
@@ -780,13 +790,13 @@ static void fetch_file_process(struct fetch_file_context *ctx)
 /** callback to poll for additional file fetch contents */
 static void fetch_file_poll(lwc_string *scheme)
 {
-	struct fetch_file_context *c, *next;
+	struct fetch_file_context *c, *save_ring = NULL;
 
-	if (ring == NULL) return;
+	while (ring != NULL) {
+		/* Take the first entry from the ring */
+		c = ring;
+		RING_REMOVE(ring, c);
 
-	/* Iterate over ring, processing each pending fetch */
-	c = ring;
-	do {
 		/* Ignore fetches that have been flagged as locked.
 		 * This allows safe re-entrant calls to this function.
 		 * Re-entrancy can occur if, as a result of a callback,
@@ -794,7 +804,7 @@ static void fetch_file_poll(lwc_string *scheme)
 		 * again.
 		 */
 		if (c->locked == true) {
-			next = c->r_next;
+			RING_INSERT(save_ring, c);
 			continue;
 		}
 
@@ -804,18 +814,16 @@ static void fetch_file_poll(lwc_string *scheme)
 			fetch_file_process(c);
 		}
 
-		/* Compute next fetch item at the last possible moment as
-		 * processing this item may have added to the ring.
-		 */
-		next = c->r_next;
-
+		/* And now finish */
 		fetch_remove_from_queues(c->fetchh);
 		fetch_free(c->fetchh);
 
-		/* Advance to next ring entry, exiting if we've reached
-		 * the start of the ring or the ring has become empty
-		 */
-	} while ( (c = next) != ring && ring != NULL);
+	}
+
+	/* Finally, if we saved any fetches which were locked, put them back
+	 * into the ring for next time
+	 */
+	ring = save_ring;
 }
 
 nserror fetch_file_register(void)

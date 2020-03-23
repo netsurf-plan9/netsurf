@@ -390,15 +390,18 @@ static void ro_gui_window_open(wimp_open *open)
 
 	/* reformat or change extent if necessary */
 	if (have_content &&
-			(g->old_width != width || g->old_height != height)) {
+	    (g->old_width != width || g->old_height != height)) {
 		/* Ctrl-resize of a top-level window scales the content size */
-		if ((g->old_width > 0) && (g->old_width != width) &&
-				(ro_gui_ctrl_pressed()))
-			new_scale = (g->scale * width) / g->old_width;
+		if ((g->old_width > 0) &&
+		    (g->old_width != width) &&
+		    (ro_gui_ctrl_pressed())) {
+			new_scale = (browser_window_get_scale(g->bw) * width) / g->old_width;
+		}
 		browser_window_schedule_reformat(g->bw);
 	}
-	if (g->update_extent || g->old_width != width ||
-			g->old_height != height) {
+	if (g->update_extent ||
+	    g->old_width != width ||
+	    g->old_height != height) {
 		g->old_width = width;
 		g->old_height = height;
 		g->update_extent = false;
@@ -1152,10 +1155,12 @@ ro_gui_window_scroll_action(struct gui_window *g,
 	 */
 
 	if (pointer.w == g->window &&
-			ro_gui_window_to_window_pos(g,
-			pointer.pos.x, pointer.pos.y, &pos))
-		handled = browser_window_scroll_at_point(g->bw, pos.x, pos.y,
-				step_x, step_y);
+	    ro_gui_window_to_window_pos(g, pointer.pos.x, pointer.pos.y, &pos))
+		handled = browser_window_scroll_at_point(g->bw,
+							 pos.x,
+							 pos.y,
+							 step_x,
+							 step_y);
 
 	/* If the core didn't do the scrolling, handle it via the Wimp.
 	 * Windows which contain frames can only be scrolled by the core,
@@ -1207,6 +1212,52 @@ ro_gui_window_scroll_action(struct gui_window *g,
 	}
 }
 
+/**
+ * handle scale kepresses within RISC OS
+ */
+static bool handle_local_keypress_scale(struct gui_window *gw, uint32_t c)
+{
+	float cscale; /* current scale */
+	float scale; /* new scale */
+
+	cscale = browser_window_get_scale(gw->bw);
+
+	scale = cscale;
+
+	if (ro_gui_shift_pressed() && c == 17) {
+		scale = cscale - 0.1;
+	} else if (ro_gui_shift_pressed() && c == 23) {
+		scale = cscale + 0.1;
+	} else if (c == 17) {
+		for (int i = SCALE_SNAP_TO_SIZE - 1; i >= 0; i--) {
+			if (scale_snap_to[i] < cscale) {
+				scale = scale_snap_to[i];
+				break;
+			}
+		}
+	} else {
+		for (unsigned int i = 0; i < SCALE_SNAP_TO_SIZE; i++) {
+			if (scale_snap_to[i] > cscale) {
+				scale = scale_snap_to[i];
+				break;
+			}
+		}
+	}
+
+	if (scale < scale_snap_to[0]) {
+		scale = scale_snap_to[0];
+	}
+
+	if (scale > scale_snap_to[SCALE_SNAP_TO_SIZE - 1]) {
+		scale = scale_snap_to[SCALE_SNAP_TO_SIZE - 1];
+	}
+
+	if (cscale != scale) {
+		ro_gui_window_set_scale(gw, scale);
+	}
+
+	return true;
+}
 
 /**
  * Handle keypresses within the RISC OS GUI
@@ -1229,7 +1280,6 @@ ro_gui_window_handle_local_keypress(struct gui_window *g,
 	os_error			*ro_error;
 	wimp_pointer			pointer;
 	os_coord			pos;
-	float				scale;
 	uint32_t			c = (uint32_t) key->c;
 	wimp_scroll_direction		xscroll = wimp_SCROLL_NONE;
 	wimp_scroll_direction		yscroll = wimp_SCROLL_NONE;
@@ -1390,34 +1440,10 @@ ro_gui_window_handle_local_keypress(struct gui_window *g,
 
 	case 17:       /* CTRL+Q (Zoom out) */
 	case 23:       /* CTRL+W (Zoom in) */
-		if (browser_window_has_content(g->bw) == false)
-			break;
-		scale = g->scale;
-		if (ro_gui_shift_pressed() && c == 17)
-			scale = g->scale - 0.1;
-		else if (ro_gui_shift_pressed() && c == 23)
-			scale = g->scale + 0.1;
-		else if (c == 17) {
-			for (int i = SCALE_SNAP_TO_SIZE - 1; i >= 0; i--)
-				if (scale_snap_to[i] < g->scale) {
-					scale = scale_snap_to[i];
-					break;
-				}
-		} else {
-			for (unsigned int i = 0; i < SCALE_SNAP_TO_SIZE; i++)
-				if (scale_snap_to[i] > g->scale) {
-					scale = scale_snap_to[i];
-					break;
-				}
+		if (browser_window_has_content(g->bw) == true) {
+			return handle_local_keypress_scale(g, c);
 		}
-		if (scale < scale_snap_to[0])
-			scale = scale_snap_to[0];
-		if (scale > scale_snap_to[SCALE_SNAP_TO_SIZE - 1])
-			scale = scale_snap_to[SCALE_SNAP_TO_SIZE - 1];
-		if (g->scale != scale) {
-			ro_gui_window_set_scale(g, scale);
-		}
-		return true;
+		break;
 
 	case IS_WIMP_KEY + wimp_KEY_PRINT:
 		ro_gui_window_action_print(g);
@@ -1698,37 +1724,48 @@ static void ro_gui_window_redraw(wimp_draw *redraw)
  */
 static void ro_gui_window_scroll(wimp_scroll *scroll)
 {
-	struct gui_window	*g = ro_gui_window_lookup(scroll->w);
+	float cscale, scale, inc;
+	struct gui_window *g = ro_gui_window_lookup(scroll->w);
 
-	if (g && browser_window_has_content(g->bw) && ro_gui_shift_pressed()) {
-		/* extended scroll request with shift held down; change zoom */
-		float scale, inc;
+	if (g == NULL) {
+		return;
+	}
 
-		if (scroll->ymin & 3)
-			inc = 0.02;  /* RO5 sends the msg 5 times;
-				      * don't ask me why
-				      *
-				      * @todo this is liable to break if
-				      * HID is configured optimally for
-				      * frame scrolling. *5 appears to be
-				      * an artifact of non-HID mode scrolling.
-				      */
-		else
-			inc = (1 << (ABS(scroll->ymin)>>2)) / 20.0F;
-
-		if (scroll->ymin > 0) {
-			scale = g->scale + inc;
-			if (scale > scale_snap_to[SCALE_SNAP_TO_SIZE - 1])
-				scale = scale_snap_to[SCALE_SNAP_TO_SIZE - 1];
-		} else {
-			scale = g->scale - inc;
-			if (scale < scale_snap_to[0])
-				scale = scale_snap_to[0];
-		}
-		if (g->scale != scale)
-			ro_gui_window_set_scale(g, scale);
-	} else if (g != NULL) {
+	if ((browser_window_has_content(g->bw) == false) ||
+	    (ro_gui_shift_pressed() == false)) {
 		ro_gui_window_scroll_action(g, scroll->xmin, scroll->ymin);
+		return;
+	}
+
+	/* extended scroll request with shift held down; change zoom */
+	cscale = browser_window_get_scale(g->bw);
+
+	if (scroll->ymin & 3) {
+		inc = 0.02;  /* RO5 sends the msg 5 times;
+			      * don't ask me why
+			      *
+			      * @todo this is liable to break if
+			      * HID is configured optimally for
+			      * frame scrolling. *5 appears to be
+			      * an artifact of non-HID mode scrolling.
+			      */
+	} else {
+		inc = (1 << (ABS(scroll->ymin)>>2)) / 20.0F;
+	}
+
+	if (scroll->ymin > 0) {
+		scale = cscale + inc;
+		if (scale > scale_snap_to[SCALE_SNAP_TO_SIZE - 1]) {
+			scale = scale_snap_to[SCALE_SNAP_TO_SIZE - 1];
+		}
+	} else {
+		scale = cscale - inc;
+		if (scale < scale_snap_to[0]) {
+			scale = scale_snap_to[0];
+		}
+	}
+	if (scale != cscale) {
+		ro_gui_window_set_scale(g, scale);
 	}
 }
 
@@ -3231,7 +3268,6 @@ static struct gui_window *gui_window_create(struct browser_window *bw,
 	g->active = false;
 	strcpy(g->title, "NetSurf");
 	g->iconise_icon = -1;
-	g->scale = browser_window_get_scale(bw);
 
 	/* Set the window position */
 	if (existing != NULL &&
@@ -3512,20 +3548,24 @@ static void gui_window_destroy(struct gui_window *g)
  */
 static void gui_window_set_title(struct gui_window *g, const char *title)
 {
+	float scale;
 	assert(g);
 	assert(title);
 
-	if (g->scale != 1.0) {
-		int scale_disp = g->scale * 100;
+	scale = browser_window_get_scale(g->bw);
 
-		if (ABS((float)scale_disp - g->scale * 100) >= 0.05)
+	if (scale != 1.0) {
+		int scale_disp = scale * 100;
+
+		if (ABS((float)scale_disp - scale * 100) >= 0.05) {
 			snprintf(g->title, sizeof g->title, "%s (%.1f%%)",
-					title, g->scale * 100);
-		else
+					title, scale * 100);
+		} else {
 			snprintf(g->title, sizeof g->title, "%s (%i%%)",
 					title, scale_disp);
+		}
 	} else {
-		strncpy(g->title, title, sizeof g->title);
+		strncpy(g->title, title, sizeof(g->title));
 	}
 
 	ro_gui_set_window_title(g->window, g->title);
@@ -3557,10 +3597,11 @@ static bool gui_window_get_scroll(struct gui_window *g, int *sx, int *sy)
 		return false;
 	}
 
-	if (g->toolbar)
+	if (g->toolbar) {
 		toolbar_height = ro_toolbar_full_height(g->toolbar);
-	*sx = state.xscroll / (2 * g->scale);
-	*sy = -(state.yscroll - toolbar_height) / (2 * g->scale);
+	}
+	*sx = state.xscroll / 2;
+	*sy = -(state.yscroll - toolbar_height) / 2;
 	return true;
 }
 
@@ -3599,8 +3640,8 @@ gui_window_set_scroll(struct gui_window *g, const struct rect *rect)
 
 	if ((rect->x0 == rect->x1) && (rect->y0 == rect->y1)) {
 		/* scroll to top */
-		state.xscroll = rect->x0 * 2 * g->scale;
-		state.yscroll = (-rect->y0 * 2 * g->scale) + toolbar_height;
+		state.xscroll = rect->x0 * 2;
+		state.yscroll = (-rect->y0 * 2) + toolbar_height;
 	} else {
 		/* scroll area into view with padding */
 		int x0, y0, x1, y1;
@@ -3608,10 +3649,10 @@ gui_window_set_scroll(struct gui_window *g, const struct rect *rect)
 		int padding_available;
 		int correction;
 
-		x0 = rect->x0 * 2 * g->scale;
-		y0 = rect->y0 * 2 * g->scale;
-		x1 = rect->x1 * 2 * g->scale;
-		y1 = rect->y1 * 2 * g->scale;
+		x0 = rect->x0 * 2 ;
+		y0 = rect->y0 * 2 ;
+		x1 = rect->x1 * 2 ;
+		y1 = rect->y1 * 2 ;
 
 		cx0 = state.xscroll;
 		cy0 = -state.yscroll + toolbar_height;
@@ -3679,21 +3720,15 @@ gui_window_set_scroll(struct gui_window *g, const struct rect *rect)
  * \param gw gui window to measure
  * \param width receives width of window
  * \param height receives height of window
- * \param scaled whether to return scaled values
+ * \return NSERROR_OK and width and height updated
  */
 static nserror
-gui_window_get_dimensions(struct gui_window *gw,
-			  int *width, int *height,
-			  bool scaled)
+gui_window_get_dimensions(struct gui_window *gw, int *width, int *height)
 {
 	/* use the cached window sizes */
 	*width = gw->old_width / 2;
 	*height = gw->old_height / 2;
 
-	if (scaled) {
-		*width /= gw->scale;
-		*height /= gw->scale;
-	}
 	return NSERROR_OK;
 }
 
@@ -3727,7 +3762,6 @@ static void gui_window_start_throbber(struct gui_window *g)
 }
 
 
-
 /**
  * Update the interface to reflect page loading stopped.
  *
@@ -3742,6 +3776,20 @@ static void gui_window_stop_throbber(struct gui_window *g)
 	g->active = false;
 }
 
+
+/**
+ * Update the interface to reflect change in page info status
+ *
+ * \param gw window with start of load
+ */
+static void gui_window_page_info_change(struct gui_window *gw)
+{
+	if (gw->toolbar != NULL) {
+		ro_toolbar_page_info_change(gw->toolbar);
+	}
+}
+
+
 /**
  * set favicon
  */
@@ -3753,7 +3801,6 @@ gui_window_set_icon(struct gui_window *g, struct hlcache_handle *icon)
 
 	ro_toolbar_set_site_favicon(g->toolbar, icon);
 }
-
 
 
 /**
@@ -3835,8 +3882,9 @@ static void ro_gui_window_scroll_end(wimp_dragged *drag, void *data)
 		ro_warn_user("WimpError", error->errmess);
 	}
 
-	if (ro_gui_window_to_window_pos(g, drag->final.x0, drag->final.y0, &pos))
+	if (ro_gui_window_to_window_pos(g, drag->final.x0, drag->final.y0, &pos)) {
 		browser_window_mouse_track(g->bw, 0, pos.x, pos.y);
+	}
 }
 
 
@@ -3915,6 +3963,7 @@ gui_window_drag_start(struct gui_window *g,
 {
 	wimp_pointer pointer;
 	wimp_drag drag;
+	float scale = browser_window_get_scale(g->bw);
 
 	if (rect != NULL) {
 		/* We have a box to constrain the pointer to, for the drag
@@ -3931,13 +3980,13 @@ gui_window_drag_start(struct gui_window *g,
 
 		drag.type = wimp_DRAG_USER_POINT;
 		drag.bbox.x0 = pointer.pos.x +
-				(int)(rect->x0 * 2 * g->scale);
+				(int)(rect->x0 * 2 * scale);
 		drag.bbox.y0 = pointer.pos.y +
-				(int)(rect->y0 * 2 * g->scale);
+				(int)(rect->y0 * 2 * scale);
 		drag.bbox.x1 = pointer.pos.x +
-				(int)(rect->x1 * 2 * g->scale);
+				(int)(rect->x1 * 2 * scale);
 		drag.bbox.y1 = pointer.pos.y +
-				(int)(rect->y1 * 2 * g->scale);
+				(int)(rect->y1 * 2 * scale);
 
 		error = xwimp_drag_box(&drag);
 		if (error) {
@@ -3951,8 +4000,9 @@ gui_window_drag_start(struct gui_window *g,
 	switch (type) {
 	case GDRAGGING_SCROLLBAR:
 		/* Dragging a core scrollbar */
-		ro_mouse_drag_start(ro_gui_window_scroll_end, ro_gui_window_mouse_at,
-				NULL, g);
+		ro_mouse_drag_start(ro_gui_window_scroll_end,
+				    ro_gui_window_mouse_at,
+				    NULL, g);
 		break;
 
 	default:
@@ -4097,6 +4147,57 @@ ro_gui_window_import_text(struct gui_window *g, const char *filename)
 
 
 /**
+ * process miscellaneous window events
+ *
+ * \param gw The window receiving the event.
+ * \param event The event code.
+ * \return NSERROR_OK when processed ok
+ */
+static nserror
+ro_gui_window_event(struct gui_window *gw, enum gui_window_event event)
+{
+	switch (event) {
+	case GW_EVENT_UPDATE_EXTENT:
+		gui_window_update_extent(gw);
+		break;
+
+	case GW_EVENT_REMOVE_CARET:
+		gui_window_remove_caret(gw);
+		break;
+
+	case GW_EVENT_SCROLL_START:
+		gui_window_scroll_start(gw);
+		break;
+
+	case GW_EVENT_NEW_CONTENT:
+		gui_window_new_content(gw);
+		break;
+
+	case GW_EVENT_START_THROBBER:
+		gui_window_start_throbber(gw);
+		break;
+
+	case GW_EVENT_STOP_THROBBER:
+		gui_window_stop_throbber(gw);
+		break;
+
+	case GW_EVENT_START_SELECTION:
+		/* from textselection */
+		gui_start_selection(gw);
+		break;
+
+	case GW_EVENT_PAGE_INFO_CHANGE:
+		gui_window_page_info_change(gw);
+		break;
+
+	default:
+		break;
+	}
+	return NSERROR_OK;
+}
+
+
+/**
  * RISC OS browser window operation table
  */
 static struct gui_window_table window_table = {
@@ -4106,7 +4207,7 @@ static struct gui_window_table window_table = {
 	.get_scroll = gui_window_get_scroll,
 	.set_scroll = gui_window_set_scroll,
 	.get_dimensions = gui_window_get_dimensions,
-	.update_extent = gui_window_update_extent,
+	.event = ro_gui_window_event,
 
 	.set_title = gui_window_set_title,
 	.set_url = ro_gui_window_set_url,
@@ -4114,21 +4215,13 @@ static struct gui_window_table window_table = {
 	.set_status = riscos_window_set_status,
 	.set_pointer = gui_window_set_pointer,
 	.place_caret = gui_window_place_caret,
-	.remove_caret = gui_window_remove_caret,
 	.save_link = gui_window_save_link,
 	.drag_start = gui_window_drag_start,
-	.scroll_start = gui_window_scroll_start,
-	.new_content = gui_window_new_content,
-	.start_throbber = gui_window_start_throbber,
-	.stop_throbber = gui_window_stop_throbber,
 	.create_form_select_menu = gui_window_create_form_select_menu,
 
 	/* from save */
 	.drag_save_object = gui_drag_save_object,
 	.drag_save_selection =gui_drag_save_selection,
-
-	/* from textselection */
-	.start_selection = gui_start_selection,
 };
 
 struct gui_window_table *riscos_window_table = &window_table;
@@ -4278,10 +4371,10 @@ ro_gui_window_invalidate_area(struct gui_window *g, const struct rect *rect)
 		return NSERROR_OK;
 	}
 
-	x0 = floorf(rect->x0 * 2 * g->scale);
-	y0 = -ceilf(rect->y1 * 2 * g->scale);
-	x1 = ceilf(rect->x1 * 2 * g->scale) + 1;
-	y1 = -floorf(rect->y0 * 2 * g->scale) + 1;
+	x0 = floorf(rect->x0 * 2 );
+	y0 = -ceilf(rect->y1 * 2 );
+	x1 = ceilf(rect->x1 * 2 ) + 1;
+	y1 = -floorf(rect->y0 * 2 ) + 1;
 	use_buffer =
 		(g->option.buffer_everything || g->option.buffer_animations);
 
@@ -4349,7 +4442,6 @@ nserror ro_gui_window_set_url(struct gui_window *g, nsurl *url)
 /* exported interface documented in riscos/window.h */
 void ro_gui_window_set_scale(struct gui_window *g, float scale)
 {
-	g->scale = scale;
 	browser_window_set_scale(g->bw, scale, true);
 }
 
@@ -4392,11 +4484,14 @@ void ro_gui_window_mouse_at(wimp_pointer *pointer, void *data)
 	os_coord pos;
 	struct gui_window *g = (struct gui_window *) data;
 
-	if (ro_gui_window_to_window_pos(g, pointer->pos.x, pointer->pos.y, &pos))
-		browser_window_mouse_track(g->bw,
-				ro_gui_mouse_drag_state(pointer->buttons,
+	if (ro_gui_window_to_window_pos(g, pointer->pos.x, pointer->pos.y, &pos)) {
+		browser_window_mouse_track(
+			g->bw,
+			ro_gui_mouse_drag_state(pointer->buttons,
 						wimp_BUTTON_DOUBLE_CLICK_DRAG),
-				pos.x, pos.y);
+			pos.x,
+			pos.y);
+	}
 }
 
 
@@ -4686,17 +4781,19 @@ void ro_gui_throb(void)
 /* exported interface documented in riscos/window.h */
 void ro_gui_window_default_options(struct gui_window *gui)
 {
+	float cscale;
+
 	if (gui == NULL)
 		return;
 
-	/*	Save the basic options
-	*/
-	nsoption_set_int(scale, gui->scale * 100);
+	cscale = browser_window_get_scale(gui->bw);
+
+	/*	Save the basic options	*/
+	nsoption_set_int(scale, cscale * 100);
 	nsoption_set_bool(buffer_animations, gui->option.buffer_animations);
 	nsoption_set_bool(buffer_everything, gui->option.buffer_everything);
 
-	/*	Set up the toolbar
-	*/
+	/*	Set up the toolbar	*/
 	if (gui->toolbar != NULL) {
 		nsoption_set_bool(toolbar_show_buttons,
 				  ro_toolbar_get_display_buttons(gui->toolbar));
@@ -4705,9 +4802,10 @@ void ro_gui_window_default_options(struct gui_window *gui)
 		nsoption_set_bool(toolbar_show_throbber,
 				  ro_toolbar_get_display_throbber(gui->toolbar));
 	}
-	if (gui->status_bar != NULL)
+	if (gui->status_bar != NULL) {
 		nsoption_set_int(toolbar_status_size,
 				 ro_gui_status_bar_get_width(gui->status_bar));
+	}
 }
 
 
@@ -4759,33 +4857,8 @@ ro_gui_window_to_window_pos(struct gui_window *g, int x, int y, os_coord *pos)
 		ro_warn_user("WimpError", error->errmess);
 		return false;
 	}
-	pos->x = (x - (state.visible.x0 - state.xscroll)) / 2 / g->scale;
-	pos->y = ((state.visible.y1 - state.yscroll) - y) / 2 / g->scale;
-	return true;
-}
-
-
-/* exported interface documented in riscos/window.h */
-bool ro_gui_window_to_screen_pos(struct gui_window *g,
-				 int x,
-				 int y,
-				 os_coord *pos)
-{
-	wimp_window_state state;
-	os_error *error;
-
-	assert(g);
-
-	state.w = g->window;
-	error = xwimp_get_window_state(&state);
-	if (error) {
-		NSLOG(netsurf, INFO, "xwimp_get_window_state: 0x%x:%s",
-		      error->errnum, error->errmess);
-		ro_warn_user("WimpError", error->errmess);
-		return false;
-	}
-	pos->x = (x * 2 * g->scale) + (state.visible.x0 - state.xscroll);
-	pos->y = (state.visible.y1 - state.yscroll) - (y * 2 * g->scale);
+	pos->x = (x - (state.visible.x0 - state.xscroll)) / 2 ;
+	pos->y = ((state.visible.y1 - state.yscroll) - y) / 2 ;
 	return true;
 }
 

@@ -21,6 +21,10 @@
  * Processing for html content css operations.
  */
 
+#include "utils/config.h"
+
+#define _GNU_SOURCE /* strcasestr needs this for string.h */
+
 #include <assert.h>
 #include <ctype.h>
 #include <stdint.h>
@@ -30,7 +34,6 @@
 
 #include "utils/nsoption.h"
 #include "utils/corestrings.h"
-#include "utils/config.h"
 #include "utils/log.h"
 #include "netsurf/misc.h"
 #include "netsurf/content.h"
@@ -114,10 +117,8 @@ html_convert_css_callback(hlcache_handle *css,
 	case CONTENT_MSG_ERROR:
 		NSLOG(netsurf, INFO, "stylesheet %s failed: %s",
 		      nsurl_access(hlcache_handle_get_url(css)),
-		      event->data.error);
-		/* fall through */
+		      event->data.errordata.errormsg);
 
-	case CONTENT_MSG_ERRORCODE:
 		hlcache_handle_release(css);
 		s->sheet = NULL;
 		parent->base.active--;
@@ -238,7 +239,7 @@ html_create_style_element(html_content *c, dom_node *style)
 			      (c->stylesheet_count + 1));
 	if (stylesheets == NULL) {
 
-		content_broadcast_errorcode(&c->base, NSERROR_NOMEM);
+		content_broadcast_error(&c->base, NSERROR_NOMEM, NULL);
 		return false;
 
 	}
@@ -262,7 +263,7 @@ static bool html_css_process_modified_style(html_content *c,
 	error = html_stylesheet_from_domnode(c, s->node, &sheet);
 	if (error != NSERROR_OK) {
 		NSLOG(netsurf, INFO, "Failed to update sheet");
-		content_broadcast_errorcode(&c->base, error);
+		content_broadcast_error(&c->base, error, NULL);
 		return false;
 	}
 
@@ -470,7 +471,7 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	return true;
 
 no_memory:
-	content_broadcast_errorcode(&htmlc->base, ns_error);
+	content_broadcast_error(&htmlc->base, ns_error, NULL);
 	return false;
 }
 
@@ -487,6 +488,23 @@ struct html_stylesheet *html_get_stylesheets(hlcache_handle *h, unsigned int *n)
 	return c->stylesheets;
 }
 
+/* exported interface documented in html/html_internal.h */
+bool html_saw_insecure_stylesheets(html_content *html)
+{
+	struct html_stylesheet *s;
+	unsigned int i;
+
+	for (i = 0, s = html->stylesheets; i < html->stylesheet_count;
+	     i++, s++) {
+		if (s->sheet != NULL) {
+			if (content_saw_insecure_objects(s->sheet)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
 
 /* exported interface documented in html/html_internal.h */
 nserror html_css_free_stylesheets(html_content *html)

@@ -137,9 +137,7 @@ html_object_callback(hlcache_handle *object,
 	struct box *box;
 
 	box = o->box;
-	if (box == NULL &&
-			event->type != CONTENT_MSG_ERROR &&
-			event->type != CONTENT_MSG_ERRORCODE) {
+	if (box == NULL && event->type != CONTENT_MSG_ERROR) {
 		return NSERROR_OK;
 	}
 
@@ -180,6 +178,10 @@ html_object_callback(hlcache_handle *object,
 				box->flags & REPLACE_DIM) {
 			union content_msg_data data;
 
+			if (c->had_initial_layout == false) {
+				break;
+			}
+
 			if (!box_visible(box))
 				break;
 
@@ -189,13 +191,11 @@ html_object_callback(hlcache_handle *object,
 			data.redraw.y = y + box->padding[TOP];
 			data.redraw.width = box->width;
 			data.redraw.height = box->height;
-			data.redraw.full_redraw = true;
 
 			content_broadcast(&c->base, CONTENT_MSG_REDRAW, &data);
 		}
 		break;
 
-	case CONTENT_MSG_ERRORCODE:
 	case CONTENT_MSG_ERROR:
 		hlcache_handle_release(object);
 
@@ -214,6 +214,10 @@ html_object_callback(hlcache_handle *object,
 	case CONTENT_MSG_REDRAW:
 		if (c->base.status != CONTENT_STATUS_LOADING) {
 			union content_msg_data data = event->data;
+
+			if (c->had_initial_layout == false) {
+				break;
+			}
 
 			if (!box_visible(box))
 				break;
@@ -284,53 +288,39 @@ html_object_callback(hlcache_handle *object,
 					break;
 				}
 
-				data.redraw.object_width = box->width;
-				data.redraw.object_height = box->height;
-
 				/* Add offset to box */
 				data.redraw.x += x;
 				data.redraw.y += y;
-				data.redraw.object_x += x;
-				data.redraw.object_y += y;
-
-				content_broadcast(&c->base,
-						CONTENT_MSG_REDRAW, &data);
-				break;
 
 			} else {
 				/* Non-background case */
-				if (hlcache_handle_get_content(object) ==
-						event->data.redraw.object) {
+				int w = content_get_width(object);
+				int h = content_get_height(object);
 
-					int w = content_get_width(object);
-					int h = content_get_height(object);
-
-					if (w != 0) {
-						data.redraw.x =
-							data.redraw.x *
+				if (w != 0 && box->width != w) {
+					/* Not showing image at intrinsic
+					 * width; need to scale the redraw
+					 * request area. */
+					data.redraw.x = data.redraw.x *
 							box->width / w;
-						data.redraw.width =
+					data.redraw.width =
 							data.redraw.width *
 							box->width / w;
-					}
+				}
 
-					if (h != 0) {
-						data.redraw.y =
-							data.redraw.y *
+				if (h != 0 && box->height != w) {
+					/* Not showing image at intrinsic
+					 * height; need to scale the redraw
+					 * request area. */
+					data.redraw.y = data.redraw.y *
 							box->height / h;
-						data.redraw.height =
+					data.redraw.height =
 							data.redraw.height *
 							box->height / h;
-					}
-
-					data.redraw.object_width = box->width;
-					data.redraw.object_height = box->height;
 				}
 
 				data.redraw.x += x + box->padding[LEFT];
 				data.redraw.y += y + box->padding[TOP];
-				data.redraw.object_x += x + box->padding[LEFT];
-				data.redraw.object_y += y + box->padding[TOP];
 			}
 
 			content_broadcast(&c->base, CONTENT_MSG_REDRAW, &data);
@@ -350,8 +340,9 @@ html_object_callback(hlcache_handle *object,
 		/* Don't care about favicons that aren't on top level content */
 		break;
 
-	case CONTENT_MSG_GETCTX:
-		*(event->data.jscontext) = NULL;
+	case CONTENT_MSG_GETTHREAD:
+		/* Objects don't have JS threads */
+		*(event->data.jsthread) = NULL;
 		break;
 
 	case CONTENT_MSG_GETDIMS:
@@ -462,8 +453,7 @@ html_object_callback(hlcache_handle *object,
 	    c->base.active == 0 &&
 	    (event->type == CONTENT_MSG_LOADING ||
 	     event->type == CONTENT_MSG_DONE ||
-	     event->type == CONTENT_MSG_ERROR ||
-	     event->type == CONTENT_MSG_ERRORCODE)) {
+	     event->type == CONTENT_MSG_ERROR)) {
 		/* all objects have arrived */
 		content__reformat(&c->base, false, c->base.available_width,
 				c->base.available_height);

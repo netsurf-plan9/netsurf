@@ -12,6 +12,7 @@ class Window {
 	private struct browser_window * win;
 	private struct html_content * htmlc;
 	private struct window_schedule_s * schedule_ring;
+	private bool closed_down;
 	prologue %{
 #include "utils/corestrings.h"
 #include "utils/nsurl.h"
@@ -216,8 +217,8 @@ window_remove_callback_by_handle(duk_context *ctx,
 	} RING_ITERATE_END(window->schedule_ring, sched);
 }
 
-/* This is the dodgy compartment closedown method */
-static duk_ret_t dukky_window_closedown_compartment(duk_context *ctx)
+/* This is the dodgy thread closedown method */
+static duk_ret_t dukky_window_closedown_thread(duk_context *ctx)
 {
 	window_private_t *priv = NULL;
 
@@ -230,7 +231,9 @@ static duk_ret_t dukky_window_closedown_compartment(duk_context *ctx)
 		return 0;
 	}
 
-	NSLOG(dukky, DEEPDEBUG, "Closing down compartment");
+	priv->closed_down = true;
+
+	NSLOG(dukky, DEEPDEBUG, "Closing down thread");
 	while (priv->schedule_ring != NULL) {
 		window_remove_callback_by_handle(ctx,
 						 priv,
@@ -249,6 +252,7 @@ init Window(struct browser_window *win, struct html_content *htmlc)
 	priv->win = win;
 	priv->htmlc = htmlc;
 	priv->schedule_ring = NULL;
+	priv->closed_down = false;
 	NSLOG(netsurf, DEEPDEBUG, "win=%p htmlc=%p", priv->win, priv->htmlc);
 
 	NSLOG(netsurf, DEEPDEBUG,
@@ -271,31 +275,100 @@ prototype Window()
 #define EXPOSE(v) \
 	duk_get_global_string(ctx, #v); \
 	duk_put_prop_string(ctx, 0, #v)
-	/* steal undefined */
+	/* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects */
+	/* ** Value properties */
+	EXPOSE(Infinity);
+	EXPOSE(NaN);
 	EXPOSE(undefined);
+	EXPOSE(null);
+	EXPOSE(globalThis);
+
+	/* ** Function properties */
 	EXPOSE(eval);
-	EXPOSE(Object);
-	EXPOSE(parseInt);
+	/* EXPOSE(uneval); */ /* Not standard, maybe not available */
+	EXPOSE(isFinite);
+	EXPOSE(isNaN);
 	EXPOSE(parseFloat);
-	EXPOSE(Array);
-	EXPOSE(Date);
-	EXPOSE(RegExp);
-	EXPOSE(Math);
-	EXPOSE(Function);
-	EXPOSE(Proxy);
-	EXPOSE(String);
-	EXPOSE(Number);
-	EXPOSE(Error);
+	EXPOSE(parseInt);
+	EXPOSE(decodeURI);
+	EXPOSE(decodeURIComponent);
 	EXPOSE(encodeURI);
 	EXPOSE(encodeURIComponent);
-	EXPOSE(NaN);
-	EXPOSE(isNaN);
-	EXPOSE(isFinite);
+	EXPOSE(escape);
+	EXPOSE(unescape);
+
+	/* ** Fundamental Objects */
+	EXPOSE(Object);
+	EXPOSE(Function);
+	EXPOSE(Boolean);
+	EXPOSE(Symbol);
+	EXPOSE(Error);
+	EXPOSE(EvalError);
+	EXPOSE(InternalError);
+	EXPOSE(RangeError);
+	EXPOSE(ReferenceError);
+	EXPOSE(SyntaxError);
+	EXPOSE(TypeError);
+	EXPOSE(URIError);
+
+	/* ** Numbers and Dates */
+	EXPOSE(Number);
+	EXPOSE(BigInt);
+	EXPOSE(Math);
+	EXPOSE(Date);
+
+	/* ** Text Processing */
+	EXPOSE(String);
+	EXPOSE(RegExp);
+
+	/* ** Indexed Collections */
+	EXPOSE(Array);
+	EXPOSE(Int8Array);
+	EXPOSE(Uint8Array);
+	EXPOSE(Uint8ClampedArray);
+	EXPOSE(Int16Array);
+	EXPOSE(Uint16Array);
+	EXPOSE(Int32Array);
+	EXPOSE(Uint32Array);
+	EXPOSE(Float32Array);
+	EXPOSE(Float64Array);
+	/* EXPOSE(BigInt64Array); */ /* Duktape lacks this - nonstandard API */
+	/* EXPOSE(BigUint64Array); */ /* Duktape lacks this - nonstandard API */
+
+	/* ** Keyed Collections */
+	/* EXPOSE(Map); */ /* Duktape lacks this - ES6 */
+	/* EXPOSE(Set); */ /* Duktape lacks this - ES6 */
+	/* EXPOSE(WeakMap); */ /* Duktape lacks this - ES6 */
+	/* EXPOSE(WeakSet); */ /* Duktape lacks this - ES6 */
+
+	/* Structured Data */
+	EXPOSE(ArrayBuffer);
+	/* EXPOSE(SharedArrayBuffer); */ /* Duktape lacks this - experimental API */
+	/* EXPOSE(Atomics); */ /* Duktape lacks this - experimental API */
+	EXPOSE(DataView);
+	EXPOSE(JSON);
+
+	/* ** Control abstraction properties */
+	/* EXPOSE(Promise); */ /* Probably ought to be one of ours? Also ES6 */
+	/* EXPOSE(Generator); */ /* Duktape and async? ES6 */
+	/* EXPOSE(GeneratorFunction); */ /* Duktape and async? ES6 */
+	/* EXPOSE(AsyncFunction); */ /* Duktape lacks this - experimental API */
+
+	/* Reflection */
+	EXPOSE(Reflect);
+	EXPOSE(Proxy);
+
+	/* ** Internationalisation */
+	/* Duktape lacks Intl - Maybe polyfill it? */
+	/* There is suggestion that cdn.polyfill.io exists for it */
+
+	/* ** WebAssembly */
+	/* As yet, Duktape lacks WA */
 #undef EXPOSE
-	/* Add s3kr1t method to close the compartment */
+	/* Add s3kr1t method to close the JS thread (browsing context) */
 	duk_dup(ctx, 0);
-	duk_push_string(ctx, MAGIC(closedownCompartment));
-	duk_push_c_function(ctx, dukky_window_closedown_compartment, DUK_VARARGS);
+	duk_push_string(ctx, MAGIC(closedownThread));
+	duk_push_c_function(ctx, dukky_window_closedown_thread, DUK_VARARGS);
 	duk_def_prop(ctx, -3,
 		     DUK_DEFPROP_HAVE_VALUE |
 		     DUK_DEFPROP_HAVE_WRITABLE |
@@ -411,13 +484,16 @@ method Window::alert()
 method Window::setTimeout()
 %{
 	duk_idx_t argc = duk_get_top(ctx);
-	if (argc < 2) {
-		/* not enough arguments */
-		return duk_error(ctx, DUK_RET_TYPE_ERROR, dukky_error_fmt_argument, 2, argc);
+	duk_int_t timeout = 10;
+
+	if (priv->closed_down == true) {
+		return 0; /* coerced to undefined */
 	}
 
-	/* func, timeout, args... */
-	duk_int_t timeout = duk_get_int(ctx, 1);
+	if (argc >= 2) {
+		timeout = duk_get_int(ctx, 1);
+	}
+	/* func, [timeout, args...] */
 	if (timeout < 10) { timeout = 10; }
 	size_t handle = window_alloc_new_callback(ctx, priv, false, (int)timeout);
 
@@ -428,13 +504,16 @@ method Window::setTimeout()
 method Window::setInterval()
 %{
 	duk_idx_t argc = duk_get_top(ctx);
-	if (argc < 2) {
-		/* not enough arguments */
-		return duk_error(ctx, DUK_RET_TYPE_ERROR, dukky_error_fmt_argument, 2, argc);
+	duk_int_t timeout = 10;
+
+	if (priv->closed_down == true) {
+		return 0; /* coerced to undefined */
 	}
 
-	/* func, timeout, args... */
-	duk_int_t timeout = duk_get_int(ctx, 1);
+	if (argc >= 2) {
+		timeout = duk_get_int(ctx, 1);
+	}
+	/* func, [timeout, args...] */
 	if (timeout < 10) { timeout = 10; }
 	size_t handle = window_alloc_new_callback(ctx, priv, true, (int)timeout);
 

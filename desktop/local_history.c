@@ -28,17 +28,17 @@
 #include "utils/nsurl.h"
 #include "netsurf/types.h"
 #include "netsurf/layout.h"
+#include "netsurf/browser_window.h"
 #include "netsurf/core_window.h"
 #include "netsurf/plotters.h"
+#include "netsurf/keypress.h"
 
+#include "desktop/cw_helper.h"
 #include "desktop/gui_internal.h"
 #include "desktop/system_colour.h"
 #include "desktop/browser_private.h"
 #include "desktop/browser_history.h"
 #include "desktop/local_history.h"
-
-#define WIDTH 100
-#define HEIGHT 86
 
 /**
  * local history viewer context
@@ -47,6 +47,7 @@ struct local_history_session {
 	struct browser_window *bw;
 	struct core_window_callback_table *cw_t;
 	void *core_window_handle;
+	struct history_entry *cursor;
 };
 
 
@@ -86,6 +87,15 @@ static plot_style_t pstyle_rect_sel = {
 
 
 /**
+ * plot style for drawing rectangle round the cursor node
+ */
+static plot_style_t pstyle_rect_cursor = {
+	.stroke_type = PLOT_OP_TYPE_DASH,
+	.stroke_width = plot_style_int_to_fixed(3),
+};
+
+
+/**
  * plot style for font on unselected nodes
  */
 static plot_font_style_t pfstyle_node = {
@@ -120,6 +130,7 @@ static plot_font_style_t pfstyle_node_sel = {
 static nserror
 redraw_entry(struct history *history,
 	     struct history_entry *entry,
+	     struct history_entry *cursor,
 	     struct rect *clip,
 	     int x, int y,
 	     const struct redraw_context *ctx)
@@ -149,7 +160,8 @@ redraw_entry(struct history *history,
 					entry->page.bitmap,
 					entry->x + x,
 					entry->y + y,
-					WIDTH, HEIGHT,
+					LOCAL_HISTORY_WIDTH,
+					LOCAL_HISTORY_HEIGHT,
 					0xffffff,
 					0);
 		if (res != NSERROR_OK) {
@@ -159,15 +171,24 @@ redraw_entry(struct history *history,
 
 	rect.x0 = entry->x - 1 + x;
 	rect.y0 = entry->y - 1 + y;
-	rect.x1 = entry->x + x + WIDTH;
-	rect.y1 = entry->y + y + HEIGHT;
+	rect.x1 = entry->x + x + LOCAL_HISTORY_WIDTH;
+	rect.y1 = entry->y + y + LOCAL_HISTORY_HEIGHT;
 	res = ctx->plot->rectangle(ctx, pstyle, &rect);
 	if (res != NSERROR_OK) {
 		return res;
 	}
 
+	/* If this is the cursor, show that */
+	if (entry == cursor) {
+		rect.x0 -= 1;
+		rect.y0 -= 1;
+		rect.x1 += 2;
+		rect.y1 += 2;
+		ctx->plot->rectangle(ctx, &pstyle_rect_cursor, &rect);
+	}
+
 	res = guit->layout->position(plot_style_font, entry->page.title,
-				     strlen(entry->page.title), WIDTH,
+				     strlen(entry->page.title), LOCAL_HISTORY_WIDTH,
 				     &char_offset, &actual_x);
 	if (res != NSERROR_OK) {
 		return res;
@@ -176,7 +197,7 @@ redraw_entry(struct history *history,
 	res = ctx->plot->text(ctx,
 			      pfstyle,
 			      entry->x + x,
-			      entry->y + HEIGHT + 12 + y,
+			      entry->y + LOCAL_HISTORY_HEIGHT + 12 + y,
 			      entry->page.title,
 			      char_offset);
 	if (res != NSERROR_OK) {
@@ -185,34 +206,34 @@ redraw_entry(struct history *history,
 
 	/* for each child node draw a line and recurse redraw into it */
 	for (child = entry->forward; child; child = child->next) {
-		rect.x0 = entry->x + WIDTH + x;
-		rect.y0 = entry->y + HEIGHT / 2 + y;
-		rect.x1 = entry->x + WIDTH + tailsize + x;
-		rect.y1 = entry->y + HEIGHT / 2 + y;
+		rect.x0 = entry->x + LOCAL_HISTORY_WIDTH + x;
+		rect.y0 = entry->y + LOCAL_HISTORY_HEIGHT / 2 + y;
+		rect.x1 = entry->x + LOCAL_HISTORY_WIDTH + tailsize + x;
+		rect.y1 = entry->y + LOCAL_HISTORY_HEIGHT / 2 + y;
 		res = ctx->plot->line(ctx, &pstyle_line, &rect);
 		if (res != NSERROR_OK) {
 			return res;
 		}
 
-		rect.x0 = entry->x + WIDTH + tailsize + x;
-		rect.y0 = entry->y + HEIGHT / 2 + y;
+		rect.x0 = entry->x + LOCAL_HISTORY_WIDTH + tailsize + x;
+		rect.y0 = entry->y + LOCAL_HISTORY_HEIGHT / 2 + y;
 		rect.x1 = child->x - tailsize + x;
-		rect.y1 = child->y + HEIGHT / 2 + y;
+		rect.y1 = child->y + LOCAL_HISTORY_HEIGHT / 2 + y;
 		res = ctx->plot->line(ctx, &pstyle_line, &rect);
 		if (res != NSERROR_OK) {
 			return res;
 		}
 
 		rect.x0 = child->x - tailsize + x;
-		rect.y0 = child->y + HEIGHT / 2 + y;
+		rect.y0 = child->y + LOCAL_HISTORY_HEIGHT / 2 + y;
 		rect.x1 = child->x + x;
-		rect.y1 = child->y + HEIGHT / 2 + y;
+		rect.y1 = child->y + LOCAL_HISTORY_HEIGHT / 2 + y;
 		res = ctx->plot->line(ctx, &pstyle_line, &rect);
 		if (res != NSERROR_OK) {
 			return res;
 		}
 
-		res = redraw_entry(history, child, clip, x, y, ctx);
+		res = redraw_entry(history, child, cursor, clip, x, y, ctx);
 		if (res != NSERROR_OK) {
 			return res;
 		}
@@ -241,9 +262,9 @@ find_entry_position(struct history_entry *entry, int x, int y)
 	}
 
 	if ((entry->x <= x) &&
-	    (x <= entry->x + WIDTH) &&
+	    (x <= entry->x + LOCAL_HISTORY_WIDTH) &&
 	    (entry->y <= y) &&
-	    (y <= entry->y + HEIGHT)) {
+	    (y <= entry->y + LOCAL_HISTORY_HEIGHT)) {
 		return entry;
 	}
 
@@ -257,6 +278,27 @@ find_entry_position(struct history_entry *entry, int x, int y)
 	return NULL;
 }
 
+/* exported interface documented in desktop/local_history.h */
+nserror
+local_history_scroll_to_cursor(struct local_history_session *session)
+{
+	rect cursor;
+
+	if (session->cursor == NULL) {
+		return NSERROR_OK;
+	}
+
+	cursor.x0 = session->cursor->x - LOCAL_HISTORY_RIGHT_MARGIN / 2;
+	cursor.y0 = session->cursor->y - LOCAL_HISTORY_BOTTOM_MARGIN / 2;
+	cursor.x1 = cursor.x0 + LOCAL_HISTORY_WIDTH +
+			LOCAL_HISTORY_RIGHT_MARGIN / 2;
+	cursor.y1 = cursor.y0 + LOCAL_HISTORY_HEIGHT +
+			LOCAL_HISTORY_BOTTOM_MARGIN / 2;
+
+	return cw_helper_scroll_visible(session->cw_t,
+			session->core_window_handle,
+			&cursor);
+}
 
 /* exported interface documented in desktop/local_history.h */
 nserror
@@ -282,11 +324,16 @@ local_history_init(struct core_window_callback_table *cw_t,
 	pstyle_rect.stroke_colour = pstyle_line.stroke_colour;
 	pfstyle_node.foreground = pstyle_line.stroke_colour;
 
-	res = ns_system_colour_char("Highlight", &pstyle_rect_sel.stroke_colour);
+	res = ns_system_colour_char("ButtonText", &pstyle_rect_sel.stroke_colour);
 	if (res != NSERROR_OK) {
 		return res;
 	}
 	pfstyle_node_sel.foreground = pstyle_rect_sel.stroke_colour;
+
+	res = ns_system_colour_char("Highlight", &pstyle_rect_cursor.stroke_colour);
+	if (res != NSERROR_OK) {
+		return res;
+	}
 
 	nses = calloc(1, sizeof(struct local_history_session));
 	if (nses == NULL) {
@@ -338,11 +385,13 @@ local_history_redraw(struct local_history_session *session,
 	ctx->plot->clip(ctx, &r);
 	ctx->plot->rectangle(ctx, &pstyle_bg, &r);
 
-	return redraw_entry(session->bw->history,
-		     session->bw->history->start,
-		     clip,
-		     x, y,
-		     ctx);
+	return redraw_entry(
+		session->bw->history,
+		session->bw->history->start,
+		session->cursor,
+		clip,
+		x, y,
+		ctx);
 }
 
 /* exported interface documented in desktop/local_history.h */
@@ -385,10 +434,120 @@ local_history_mouse_action(struct local_history_session *session,
 	return NSERROR_OK;
 }
 
+/**
+ * Determine the point on the parent line where this history line branches.
+ *
+ * If `branch_point` gets set then there is a guarantee that (a) `ent` is
+ * a transitive child (forward) of that point. and (b) `branch_point` has a
+ * parent.
+ *
+ * \param[in] ent The entry to work backward from
+ * \param[out] branch_point The entry to set to the branch point if one is found
+ */
+static void
+_local_history_find_branch_point(struct history_entry *ent,
+				 struct history_entry **branch_point)
+{
+	if (ent->back == NULL) {
+		/* We're at the root, nothing to do */
+		return;
+	}
+	/* Start from our immediate parent */
+	ent = ent->back;
+	while (ent->back != NULL) {
+		if (ent->back->forward != ent->back->forward_last) {
+			/* This point is a branch */
+			*branch_point = ent;
+			break;
+		}
+		ent = ent->back;
+	}
+}
+
 /* exported interface documented in desktop/local_history.h */
 bool
 local_history_keypress(struct local_history_session *session, uint32_t key)
 {
+	switch (key) {
+	case NS_KEY_NL:
+	case NS_KEY_CR:
+		/* pressed enter */
+		if (session->cursor != session->bw->history->current) {
+			browser_window_history_go(session->bw, session->cursor,
+						  false);
+			local_history_scroll_to_cursor(session);
+			session->cw_t->invalidate(session->core_window_handle, NULL);
+		}
+		/* We have handled this keypress */
+		return true;
+	case NS_KEY_LEFT:
+		/* Go to parent */
+		if (session->cursor->back != NULL) {
+			session->cursor = session->cursor->back;
+			local_history_scroll_to_cursor(session);
+			session->cw_t->invalidate(session->core_window_handle, NULL);
+		}
+		/* We have handled this keypress */
+		return true;
+	case NS_KEY_RIGHT:
+		/* Go to preferred child if there is one */
+		if (session->cursor->forward_pref != NULL) {
+			session->cursor = session->cursor->forward_pref;
+			local_history_scroll_to_cursor(session);
+			session->cw_t->invalidate(session->core_window_handle, NULL);
+		}
+		/* We have handled this keypress */
+		return true;
+	case NS_KEY_DOWN:
+		/* Go to next sibling down, if there is one */
+		if (session->cursor->next != NULL) {
+			session->cursor = session->cursor->next;
+		} else {
+			struct history_entry *branch_point = NULL;
+			_local_history_find_branch_point(
+				session->cursor,
+				&branch_point);
+			if (branch_point != NULL) {
+				if (branch_point->next != NULL) {
+					branch_point = branch_point->next;
+				}
+				session->cursor = branch_point;
+			}
+		}
+		/* We have handled this keypress */
+		local_history_scroll_to_cursor(session);
+		session->cw_t->invalidate(session->core_window_handle, NULL);
+		return true;
+	case NS_KEY_UP:
+		/* Go to next sibling up, if there is one */
+		if (session->cursor->back != NULL) {
+			struct history_entry *ent = session->cursor->back->forward;
+			while (ent != session->cursor &&
+			       ent->next != NULL &&
+			       ent->next != session->cursor) {
+				ent = ent->next;
+			}
+			if (session->cursor != ent) {
+				session->cursor = ent;
+			} else {
+				struct history_entry *branch_point = NULL;
+				_local_history_find_branch_point(
+					session->cursor,
+					&branch_point);
+				if (branch_point != NULL) {
+					struct history_entry *ent = branch_point->back->forward;
+					while (ent->next != NULL && ent->next != branch_point) {
+						ent = ent->next;
+					}
+					session->cursor = ent;
+				}
+			}
+		}
+		/* We have handled this keypress */
+		local_history_scroll_to_cursor(session);
+		session->cw_t->invalidate(session->core_window_handle, NULL);
+		return true;
+	}
 	return false;
 }
 
@@ -398,12 +557,16 @@ local_history_set(struct local_history_session *session,
 		  struct browser_window *bw)
 {
 	session->bw = bw;
+	session->cursor = NULL;
+
 	if (bw != NULL) {
 		assert(session->bw->history != NULL);
+		session->cursor = bw->history->current;
 
 		session->cw_t->update_size(session->core_window_handle,
 					   session->bw->history->width,
 					   session->bw->history->height);
+		local_history_scroll_to_cursor(session);
 	}
 
 	return NSERROR_OK;

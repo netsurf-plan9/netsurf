@@ -16,7 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** \file
+/**
+ * \file
  * Compatibility functions for older GTK versions (interface)
  */
 
@@ -40,9 +41,6 @@
 #define NSGTK_STOCK_CANCEL "_Cancel"
 #define NSGTK_STOCK_CLEAR "edit-clear"
 #define NSGTK_STOCK_CLOSE "window-close"
-#define NSGTK_STOCK_FIND "edit-find"
-#define NSGTK_STOCK_GO_BACK "go-previous"
-#define NSGTK_STOCK_GO_FORWARD "go-next"
 #define NSGTK_STOCK_HOME "go-home"
 #define NSGTK_STOCK_INFO "dialog-information"
 #define NSGTK_STOCK_REFRESH "view-refresh"
@@ -51,14 +49,12 @@
 #define NSGTK_STOCK_STOP "process-stop"
 #define NSGTK_STOCK_OK "_OK"
 #define NSGTK_STOCK_OPEN "_Open"
+#define NSGTK_STOCK_OPEN_MENU "open-menu"
 #else
 #define NSGTK_STOCK_ADD GTK_STOCK_ADD
 #define NSGTK_STOCK_CANCEL GTK_STOCK_CANCEL
 #define NSGTK_STOCK_CLEAR GTK_STOCK_CLEAR
 #define NSGTK_STOCK_CLOSE GTK_STOCK_CLOSE
-#define NSGTK_STOCK_FIND GTK_STOCK_FIND
-#define NSGTK_STOCK_GO_BACK GTK_STOCK_GO_BACK
-#define NSGTK_STOCK_GO_FORWARD GTK_STOCK_GO_FORWARD
 #define NSGTK_STOCK_HOME GTK_STOCK_HOME
 #define NSGTK_STOCK_INFO GTK_STOCK_INFO
 #define NSGTK_STOCK_REFRESH GTK_STOCK_REFRESH
@@ -67,6 +63,7 @@
 #define NSGTK_STOCK_STOP GTK_STOCK_STOP
 #define NSGTK_STOCK_OK GTK_STOCK_OK
 #define NSGTK_STOCK_OPEN GTK_STOCK_OPEN
+#define NSGTK_STOCK_OPEN_MENU GTK_STOCK_JUSTIFY_FILL
 #endif
 
 /* widget alignment only available since 3.0 */
@@ -176,16 +173,16 @@ enum {
 
 
 /**
- * Sets the icon shown in the entry at the specified position from a
- * stock image.
+ * Sets the icon shown in the entry at the specified position from an
+ *   icon name.
  *
- * Compatability interface for original deprecated in GTK 3.10
+ * Compatability interface for original introduced in 2.16
  *
  * \param entry The entry widget to set the icon on.
  * \param icon_pos The position of the icon.
  * \param stock_id the name of the stock item.
  */
-void nsgtk_entry_set_icon_from_stock(GtkWidget *entry, GtkEntryIconPosition icon_pos, const gchar *stock_id);
+void nsgtk_entry_set_icon_from_icon_name(GtkWidget *entry, GtkEntryIconPosition icon_pos, const gchar *stock_id);
 
 /**
  * Creates a GtkImage displaying a stock icon.

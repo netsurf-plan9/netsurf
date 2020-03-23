@@ -30,6 +30,7 @@
 #include "desktop/searchweb.h"
 
 #include "gtk/compat.h"
+#include "gtk/toolbar_items.h"
 #include "gtk/window.h"
 #include "gtk/gui.h"
 #include "gtk/scaffolding.h"
@@ -411,12 +412,6 @@ TOGGLEBUTTON_SIGNALS(checkHideAdverts, block_advertisements)
 /* enable javascript */
 TOGGLEBUTTON_SIGNALS(checkEnableJavascript, enable_javascript)
 
-/* disable plugins */
-TOGGLEBUTTON_SIGNALS(checkDisablePlugins, disable_plugins)
-
-/* high quality image scaling */
-TOGGLEBUTTON_SIGNALS(checkResampleImages, render_resample)
-
 /* load and display of images */
 G_MODULE_EXPORT void
 nsgtk_preferences_comboboxLoadImages_changed(GtkComboBox *combo,
@@ -480,9 +475,6 @@ nsgtk_preferences_comboboxLoadImages_realize(GtkWidget *widget,
 /* enable animation */
 TOGGLEBUTTON_SIGNALS(checkEnableAnimations, animate_images)
 
-/* frame time */
-SPINBUTTON_SIGNALS(spinAnimationSpeed, minimum_gif_delay, 100.0)
-
 /* Fonts */
 
 /* default font */
@@ -511,7 +503,7 @@ SPINBUTTON_SIGNALS(spinDefaultSize, font_size, 10.0)
 G_MODULE_EXPORT void
 nsgtk_preferences_fontPreview_clicked(GtkButton *button, struct ppref *priv)
 {
-	nsgtk_reflow_all_windows();
+	nsgtk_window_update_all();
 }
 
 
@@ -713,7 +705,7 @@ nsgtk_preferences_checkShowSingleTab_toggled(GtkToggleButton *togglebutton,
 {
 	nsoption_set_bool(show_single_tab,
 			  gtk_toggle_button_get_active(togglebutton));
-	nsgtk_reflow_all_windows();
+	nsgtk_window_update_all();
 }
 
 G_MODULE_EXPORT void
@@ -735,20 +727,11 @@ G_MODULE_EXPORT void
 nsgtk_preferences_comboTabPosition_changed(GtkComboBox *widget,
 					   struct ppref *priv)
 {
-	struct nsgtk_scaffolding *current;
-
 	/* set the option */
 	nsoption_set_int(position_tab, gtk_combo_box_get_active(widget));
 
-	/* update all notebooks in all scaffolds */
-	current = nsgtk_scaffolding_iterate(NULL);
-	while (current)	{
-		nsgtk_scaffolding_reset_offset(current);
-
-		nsgtk_reflow_all_windows();
-
-		current = nsgtk_scaffolding_iterate(current);
-	}
+	/* update all windows */
+	nsgtk_window_update_all();
 }
 
 G_MODULE_EXPORT void
@@ -791,18 +774,10 @@ G_MODULE_EXPORT void
 nsgtk_preferences_comboButtonType_changed(GtkComboBox *widget,
 					   struct ppref *priv)
 {
-	struct nsgtk_scaffolding *current;
-
 	nsoption_set_int(button_type, gtk_combo_box_get_active(widget) + 1);
 
-	current = nsgtk_scaffolding_iterate(NULL);
-	while (current != NULL)	{
-		nsgtk_scaffolding_reset_offset(current);
-
-		nsgtk_scaffolding_toolbars(current, nsoption_int(button_type));
-
-		current = nsgtk_scaffolding_iterate(current);
-	}
+	/* update all windows to adopt change */
+	nsgtk_window_update_all();
 }
 
 G_MODULE_EXPORT void

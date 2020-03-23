@@ -72,7 +72,6 @@
 
 
 wimp_w dialog_info, dialog_saveas,
-	dialog_401li,
 	dialog_zoom, dialog_pageinfo, dialog_objinfo, dialog_tooltip,
 	dialog_warning,
 	dialog_folder, dialog_entry, dialog_search, dialog_print,
@@ -113,9 +112,6 @@ void ro_gui_dialog_init(void)
 
 	/* configure window */
 	ro_gui_configure_initialise();
-
-	/* 401 login window */
-	ro_gui_401login_init();
 
 	/* theme installation */
 	dialog_theme_install = ro_gui_dialog_create("theme_inst");
@@ -339,12 +335,16 @@ void ro_gui_dialog_close(wimp_w close)
 {
 	int i;
 	wimp_caret caret;
+	wimp_w parent = -1;
 	os_error *error;
 
 	/* Check if we're a persistent window */
 	for (i = 0; i < MAX_PERSISTENT; i++) {
 		if (persistent_dialog[i].dialog == close) {
 			/* We are => invalidate record */
+			if (persistent_dialog[i].parent != NULL) {
+				parent = persistent_dialog[i].parent;
+			}
 			persistent_dialog[i].parent = NULL;
 			persistent_dialog[i].dialog = NULL;
 			break;
@@ -367,7 +367,7 @@ void ro_gui_dialog_close(wimp_w close)
 		/* Check if we are a persistent window */
 		if (i < MAX_PERSISTENT) {
 			error = xwimp_set_caret_position(
-					persistent_dialog[i].parent,
+					parent,
 					wimp_ICON_WINDOW, -100, -100,
 					32, -1);
 			/* parent may have been closed first */

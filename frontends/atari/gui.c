@@ -54,7 +54,6 @@
 #include "atari/cookies.h"
 #include "atari/certview.h"
 #include "atari/history.h"
-#include "atari/login.h"
 #include "atari/encoding.h"
 #include "atari/res/netsurf.rsh"
 #include "atari/plot/plot.h"
@@ -299,15 +298,11 @@ void gui_window_destroy(struct gui_window *gw)
  * \param gw The gui window to measure content area of.
  * \param width receives width of window
  * \param height receives height of window
- * \param scaled whether to return scaled values
  * \return NSERROR_OK on sucess and width and height updated
  *          else error code.
  */
 static nserror
-gui_window_get_dimensions(struct gui_window *gw,
-			  int *width,
-			  int *height,
-			  bool scaled)
+gui_window_get_dimensions(struct gui_window *gw, int *width, int *height)
 {
     GRECT rect;
     window_get_grect(gw->root, BROWSER_AREA_CONTENT, &rect);
@@ -766,38 +761,9 @@ static void gui_set_clipboard(const char *buffer, size_t length,
     }
 }
 
-static nserror gui_401login_open(nsurl *url, const char *realm,
-        const char *username, const char *password,
-        nserror (*cb)(const char *username,
-                const char *password,
-                void *pw),
-        void *cbpw)
-{
-    bool bres;
-    char * u_out = NULL;
-    char * p_out = NULL;
-
-    bres = login_form_do(url, (char*)realm, &u_out, &p_out);
-    if (bres) {
-        NSLOG(netsurf, INFO, "url: %s, realm: %s, auth: %s:%s\n",
-                nsurl_access(url), realm, u_out, p_out);
-    }
-    if (cb != NULL) {
-        cb(u_out, p_out, cbpw);
-    }
-    if (u_out != NULL) {
-        free(u_out);
-    }
-    if (p_out != NULL) {
-        free(p_out);
-    }
-
-    return NSERROR_OK;
-}
-
 static nserror
-gui_cert_verify(nsurl *url, const struct ssl_cert_info *certs,
-		unsigned long num, nserror (*cb)(bool proceed, void *pw),
+gui_cert_verify(nsurl *url, const struct cert_chain *chain,
+		nserror (*cb)(bool proceed, void *pw),
 		void *cbpw)
 {
         struct sslcert_session_data *data;
@@ -815,8 +781,7 @@ gui_cert_verify(nsurl *url, const struct ssl_cert_info *certs,
                 cb(false, cbpw);
         } else if(b == 3) {
                 // Inspect
-                sslcert_viewer_create_session_data(num, url, cb, cbpw, certs,
-                                                   &data);
+                sslcert_viewer_create_session_data(url, cb, cbpw, chain, &data);
                 atari_sslcert_viewer_open(data);
         }
 	return NSERROR_OK;
@@ -1074,6 +1039,45 @@ static void gui_init(int argc, char** argv)
     toolbar_init();
 }
 
+
+/**
+ * process miscellaneous window events
+ *
+ * \param gw The window receiving the event.
+ * \param event The event code.
+ * \return NSERROR_OK when processed ok
+ */
+static nserror
+gui_window_event(struct gui_window *gw, enum gui_window_event event)
+{
+	switch (event) {
+	case GW_EVENT_UPDATE_EXTENT:
+		gui_window_update_extent(gw);
+		break;
+
+	case GW_EVENT_REMOVE_CARET:
+		gui_window_remove_caret(gw);
+		break;
+
+	case GW_EVENT_NEW_CONTENT:
+		gui_window_new_content(gw);
+		break;
+
+	case GW_EVENT_START_THROBBER:
+		gui_window_start_throbber(gw);
+		break;
+
+	case GW_EVENT_STOP_THROBBER:
+		gui_window_stop_throbber(gw);
+		break;
+
+	default:
+		break;
+	}
+	return NSERROR_OK;
+}
+
+
 static struct gui_window_table atari_window_table = {
     .create = gui_window_create,
     .destroy = gui_window_destroy,
@@ -1081,7 +1085,7 @@ static struct gui_window_table atari_window_table = {
     .get_scroll = gui_window_get_scroll,
     .set_scroll = gui_window_set_scroll,
     .get_dimensions = gui_window_get_dimensions,
-    .update_extent = gui_window_update_extent,
+    .event = gui_window_event,
 
     .set_title = gui_window_set_title,
     .set_url = gui_window_set_url,
@@ -1089,10 +1093,6 @@ static struct gui_window_table atari_window_table = {
     .set_status = atari_window_set_status,
     .set_pointer = gui_window_set_pointer,
     .place_caret = gui_window_place_caret,
-    .remove_caret = gui_window_remove_caret,
-    .new_content = gui_window_new_content,
-    .start_throbber = gui_window_start_throbber,
-    .stop_throbber = gui_window_stop_throbber,
 };
 
 static struct gui_clipboard_table atari_clipboard_table = {
@@ -1108,11 +1108,8 @@ static struct gui_fetch_table atari_fetch_table = {
 
 static struct gui_misc_table atari_misc_table = {
     .schedule = atari_schedule,
-    .warning = atari_warn_user,
 
     .quit = gui_quit,
-    .cert_verify = gui_cert_verify,
-    .login = gui_401login_open,
 };
 
 /* #define WITH_DBG_LOGFILE 1 */

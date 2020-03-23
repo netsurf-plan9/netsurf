@@ -353,13 +353,25 @@ void box_dump(FILE *stream, struct box *box, unsigned int depth, bool style);
  */
 bool box_extract_link(const struct html_content *content, const struct dom_string *dsrel, struct nsurl *base, struct nsurl **result);
 
-bool box_handle_scrollbars(struct content *c, struct box *box,
+/**
+ * Applies the given scroll setup to a box. This includes scroll
+ * creation/deletion as well as scroll dimension updates.
+ *
+ * \param c		content in which the box is located
+ * \param box		the box to handle the scrolls for
+ * \param bottom	whether the horizontal scrollbar should be present
+ * \param right		whether the vertical scrollbar should be present
+ * \return		true on success false otherwise
+ */
+nserror box_handle_scrollbars(struct content *c, struct box *box,
 		bool bottom, bool right);
+
 bool box_vscrollbar_present(const struct box *box);
 bool box_hscrollbar_present(const struct box *box);
 
 nserror dom_to_box(struct dom_node *n, struct html_content *c,
-		box_construct_complete_cb cb);
+		   box_construct_complete_cb cb, void **box_conversion_context);
+nserror cancel_dom_to_box(void *box_conversion_context);
 
 bool box_normalise_block(
 		struct box *block,
@@ -376,5 +388,13 @@ static inline bool box_is_first_child(struct box *b)
 {
 	return (b->parent == NULL || b == b->parent->children);
 }
+
+/**
+ * Retrieve the box for a dom node, if there is one
+ *
+ * \param node The DOM node
+ * \return The box if there is one
+ */
+struct box *box_for_node(struct dom_node *node);
 
 #endif

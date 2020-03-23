@@ -28,15 +28,21 @@
 #include "utils/config.h"
 #include "utils/nsurl.h"
 #include "utils/inet.h"
+#include "netsurf/ssl_certs.h"
 
 struct content;
 struct fetch;
 struct ssl_cert_info;
 
+/**
+ * Fetcher message types
+ */
 typedef enum {
 	FETCH_PROGRESS,
+	FETCH_CERTS,
 	FETCH_HEADER,
 	FETCH_DATA,
+	/* Anything after here is a completed fetch of some kind. */
 	FETCH_FINISHED,
 	FETCH_TIMEDOUT,
 	FETCH_ERROR,
@@ -47,6 +53,22 @@ typedef enum {
 	FETCH_SSL_ERR
 } fetch_msg_type;
 
+/** Minimum finished message type.
+ *
+ * If a fetch does not progress this far, it's an error and the fetch machinery
+ * will send FETCH_ERROR to the llcache on fetch_free()
+ */
+#define FETCH_MIN_FINISHED_MSG FETCH_FINISHED
+
+/**
+ * This message is actually an internal message used to indicate
+ * that a fetch was aborted.  Do not send this, nor expect it.
+ */
+#define FETCH__INTERNAL_ABORTED FETCH_ERROR
+
+/**
+ * Fetcher message data
+ */
 typedef struct fetch_msg {
 	fetch_msg_type type;
 
@@ -67,10 +89,7 @@ typedef struct fetch_msg {
 			const char *realm;
 		} auth;
 
-		struct {
-			const struct ssl_cert_info *certs;
-			size_t num_certs;
-		} cert_err;
+		const struct cert_chain *chain;
 	} data;
 } fetch_msg;
 
@@ -85,20 +104,6 @@ struct fetch_multipart_data {
 
 	char *rawfile; /**< Raw filename if file is true */
 	bool file; /**< Item is a file */
-};
-
-/**
- * ssl certificate information for certificate error message
- */
-struct ssl_cert_info {
-	long version;		/**< Certificate version */
-	char not_before[32];	/**< Valid from date */
-	char not_after[32];	/**< Valid to date */
-	int sig_type;		/**< Signature type */
-	long serial;		/**< Serial number */
-	char issuer[256];	/**< Issuer details */
-	char subject[256];	/**< Subject details */
-	int cert_type;		/**< Certificate type */
 };
 
 typedef void (*fetch_callback)(const fetch_msg *msg, void *p);
@@ -179,6 +184,30 @@ void fetch_multipart_data_destroy(struct fetch_multipart_data *list);
  * \return Pointer to head of cloned list, or NULL on failure
  */
 struct fetch_multipart_data *fetch_multipart_data_clone(const struct fetch_multipart_data *list);
+
+/**
+ * Find an entry in a fetch_multipart_data
+ *
+ * \param list Pointer to the multipart list
+ * \param name The name to look for in the list
+ * \return The value found, or NULL if not present
+ */
+const char *fetch_multipart_data_find(const struct fetch_multipart_data *list,
+				      const char *name);
+
+/**
+ * Create an entry for a fetch_multipart_data
+ *
+ * If an entry exists of the same name, it will *NOT* be overwritten
+ *
+ * \param list Pointer to the pointer to the current multipart list
+ * \param name The name of the entry to create
+ * \param value The value of the entry to create
+ * \return The result of the attempt
+ */
+nserror fetch_multipart_data_new_kv(struct fetch_multipart_data **list,
+				    const char *name,
+				    const char *value);
 
 /**
  * send message to fetch

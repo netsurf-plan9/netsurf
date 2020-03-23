@@ -22,8 +22,8 @@
  * Browser window creation and manipulation interface.
  */
 
-#ifndef _NETSURF_BROWSER_WINDOW_H_
-#define _NETSURF_BROWSER_WINDOW_H_
+#ifndef NETSURF_BROWSER_WINDOW_H_
+#define NETSURF_BROWSER_WINDOW_H_
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -43,8 +43,8 @@ struct form_control;
 struct nsurl;
 struct rect;
 struct redraw_context;
-//enum content_debug;
-//typedef int content_debug;
+struct cert_chain;
+enum content_debug;
 
 /**
  * type of browser window drag in progess
@@ -59,6 +59,20 @@ typedef enum {
 	DRAGGING_CONTENT_SCROLLBAR,
 	DRAGGING_OTHER
 } browser_drag_type;
+
+/**
+ * Browser window page information states
+ */
+typedef enum {
+	PAGE_STATE_UNKNOWN,		/**< Unable to determine */
+	PAGE_STATE_INTERNAL,		/**< Page loaded from internal handler */
+	PAGE_STATE_LOCAL,		/**< Page loaded from file:/// etc */
+	PAGE_STATE_INSECURE,		/**< Insecure page load */
+	PAGE_STATE_SECURE_OVERRIDE,	/**< Secure load, but had to override */
+	PAGE_STATE_SECURE_ISSUES,	/**< Secure load, but has insecure elements */
+	PAGE_STATE_SECURE,		/**< Secure load */
+	PAGE_STATE__COUNT,		/**< Count of number of valid page states */
+} browser_window_page_info_state;
 
 typedef enum {
 	BW_EDITOR_NONE		=  0,		/**< No selection, no editing */
@@ -97,6 +111,12 @@ enum browser_window_create_flags {
 	 *    have that option.
 	 */
 	BW_CREATE_UNVERIFIABLE		= (1 << 3),
+
+	/** Request foreground opening. */
+	BW_CREATE_FOREGROUND		= (1 << 4),
+
+	/** Request location bar focus. */
+	BW_CREATE_FOCUS_LOCATION	= (1 << 5),
 };
 
 /** flags to browser_window_navigate  */
@@ -122,7 +142,10 @@ enum browser_window_nav_flags {
 	BW_NAVIGATE_UNVERIFIABLE	= (1 << 2),
 
 	/** suppress initial history updates (used by back/fwd/etc) */
-	BW_NAVIGATE_NO_TERMINAL_HISTORY_UPDATE = (1 << 3)
+	BW_NAVIGATE_NO_TERMINAL_HISTORY_UPDATE = (1 << 3),
+
+	/** Internal navigation (set only by core features using such) */
+	BW_NAVIGATE_INTERNAL            = (1 << 4)
 };
 
 /**
@@ -210,7 +233,7 @@ nserror browser_window_navigate_up(struct browser_window *bw, bool new_window);
  *
  * \note guaranteed to return a valid nsurl ptr, never returns NULL.
  */
-struct nsurl* browser_window_access_url(struct browser_window *bw);
+struct nsurl* browser_window_access_url(const struct browser_window *bw);
 
 /**
  * Access a browser window's URL.
@@ -267,6 +290,7 @@ bool browser_window_has_content(struct browser_window *bw);
  */
 struct hlcache_handle *browser_window_get_content(struct browser_window *bw);
 
+
 /**
  * Set the dimensions of the area a browser window occupies
  *
@@ -277,6 +301,7 @@ struct hlcache_handle *browser_window_get_content(struct browser_window *bw);
 void browser_window_set_dimensions(struct browser_window *bw,
 		int width, int height);
 
+
 /**
  * Redraw browser window, set extent to content, and update title.
  *
@@ -285,13 +310,6 @@ void browser_window_set_dimensions(struct browser_window *bw,
  */
 void browser_window_update(struct browser_window *bw, bool scroll_to_top);
 
-/**
- * update an area of a browser window.
- *
- * \param bw The browser window to update.
- * \param rect The area to redraw
- */
-void browser_window_update_box(struct browser_window *bw, struct rect *rect);
 
 /**
  * Stop all fetching activity in a browser window.
@@ -300,13 +318,16 @@ void browser_window_update_box(struct browser_window *bw, struct rect *rect);
  */
 void browser_window_stop(struct browser_window *bw);
 
+
 /**
  * Reload the page in a browser window.
  *
- * \param  bw  browser window
- * \param  all whether to reload all objects associated with the page
+ * \param bw browser window
+ * \param all whether to reload all objects associated with the page
+ * \return NSERROR_OK on success else error code.
  */
-void browser_window_reload(struct browser_window *bw, bool all);
+nserror browser_window_reload(struct browser_window *bw, bool all);
+
 
 /**
  * Close and destroy a browser window.
@@ -339,9 +360,10 @@ void browser_window_reformat(struct browser_window *bw, bool background, int wid
  *
  * \param bw The browser window to scale.
  * \param scale The new scale.
- * \param all Scale all windows in the tree (ie work up as well as down)
+ * \param absolute If the scale value is absolute or relative to current value
+ * \return NSERROR_OK and scale applied else other error code caused by reflow etc.
  */
-void browser_window_set_scale(struct browser_window *bw, float scale, bool all);
+nserror browser_window_set_scale(struct browser_window *bw, float scale, bool absolute);
 
 
 /**
@@ -351,6 +373,7 @@ void browser_window_set_scale(struct browser_window *bw, float scale, bool all);
  * \return The scale of the window.
  */
 float browser_window_get_scale(struct browser_window *bw);
+
 
 /**
  * Get access to any page features at the given coordinates.
@@ -370,6 +393,7 @@ float browser_window_get_scale(struct browser_window *bw);
 nserror browser_window_get_features(struct browser_window *bw,
 		int x, int y, struct browser_window_features *data);
 
+
 /**
  * Send a scroll request to a browser window at a particular point.  The
  * 'deepest' scrollable object which can be scrolled in the requested
@@ -385,6 +409,7 @@ nserror browser_window_get_features(struct browser_window *bw,
 bool browser_window_scroll_at_point(struct browser_window *bw,
 		int x, int y, int scrx, int scry);
 
+
 /**
  * Drop a file onto a browser window at a particular point, or determine if a
  * file may be dropped onto the content at given point.
@@ -398,6 +423,7 @@ bool browser_window_scroll_at_point(struct browser_window *bw,
 bool browser_window_drop_file_at_point(struct browser_window *bw,
 		int x, int y, char *file);
 
+
 /**
  * set filename on form control.
  *
@@ -408,12 +434,14 @@ bool browser_window_drop_file_at_point(struct browser_window *bw,
 void browser_window_set_gadget_filename(struct browser_window *bw,
 		struct form_control *gadget, const char *fn);
 
+
 /**
  * Update URL bar for a given browser window to bw's content's URL
  *
  * \param bw Browser window to update URL bar for.
  */
 nserror browser_window_refresh_url_bar(struct browser_window *bw);
+
 
 /**
  * Handle mouse clicks in a browser window.
@@ -425,6 +453,7 @@ nserror browser_window_refresh_url_bar(struct browser_window *bw);
  */
 void browser_window_mouse_click(struct browser_window *bw,
 		browser_mouse_state mouse, int x, int y);
+
 
 /**
  * Handle non-click mouse action in a browser window. (drag ends, movements)
@@ -468,26 +497,6 @@ nserror browser_window_schedule_reformat(struct browser_window *bw);
 
 
 /**
- * callback for select menu widget
- *
- * \todo This API needs investigating
- */
-void browser_select_menu_callback(void *client_data,
-		int x, int y, int width, int height);
-
-/**
- * Redraw a rectangular region of a browser window.
- *
- * \param  bw	  browser window to be redrawn
- * \param  x	  x co-ord of top-left
- * \param  y	  y co-ord of top-left
- * \param  width  width of rectangle
- * \param  height height of rectangle
- */
-void browser_window_redraw_rect(struct browser_window *bw, int x, int y,
-		int width, int height);
-
-/**
  * Change the shape of the mouse pointer
  *
  * \param bw Browser window to set shape in
@@ -495,6 +504,7 @@ void browser_window_redraw_rect(struct browser_window *bw, int x, int y,
  */
 void browser_window_set_pointer(struct browser_window *bw,
 		browser_pointer_shape shape);
+
 
 /**
  * Start drag scrolling the contents of the browser window
@@ -505,6 +515,7 @@ void browser_window_set_pointer(struct browser_window *bw,
  */
 void browser_window_page_drag_start(struct browser_window *bw, int x, int y);
 
+
 /**
  * Check availability of Back action for a given browser window
  *
@@ -512,6 +523,7 @@ void browser_window_page_drag_start(struct browser_window *bw, int x, int y);
  * \return true if Back action is available
  */
 bool browser_window_back_available(struct browser_window *bw);
+
 
 /**
  * Check availability of Forward action for a given browser window
@@ -521,6 +533,7 @@ bool browser_window_back_available(struct browser_window *bw);
  */
 bool browser_window_forward_available(struct browser_window *bw);
 
+
 /**
  * Check availability of Reload action for a given browser window
  *
@@ -529,6 +542,7 @@ bool browser_window_forward_available(struct browser_window *bw);
  */
 bool browser_window_reload_available(struct browser_window *bw);
 
+
 /**
  * Check availability of Stop action for a given browser window
  *
@@ -536,6 +550,7 @@ bool browser_window_reload_available(struct browser_window *bw);
  * \return true if Stop action is available
  */
 bool browser_window_stop_available(struct browser_window *bw);
+
 
 /**
  * Redraw an area of a window.
@@ -560,6 +575,7 @@ bool browser_window_stop_available(struct browser_window *bw);
  */
 bool browser_window_redraw(struct browser_window *bw, int x, int y,
 		const struct rect *clip, const struct redraw_context *ctx);
+
 
 /**
  * Check whether browser window is ready for redraw
@@ -668,19 +684,6 @@ bool browser_window_is_frameset(struct browser_window *bw);
 nserror browser_window_get_scrollbar_type(struct browser_window *bw,
 		browser_scrolling *h, browser_scrolling *v);
 
-/**
- * Set the DPI of the browser.
- *
- * \param dpi The DPI to set.
- */
-nserror browser_set_dpi(int dpi);
-
-/**
- * Get the browser DPI.
- *
- * \return The DPI in use.
- */
-int browser_get_dpi(void);
 
 /**
  * Dump debug info concerning the browser window's contents to file
@@ -758,5 +761,63 @@ nserror browser_window_console_log(struct browser_window *bw,
 				   const char *msg,
 				   size_t msglen,
 				   browser_window_console_flags flags);
+
+/**
+ * Request the current browser window page info state.
+ *
+ * The page information state is an indicator enumeration to be used by
+ * frontends to indicate to the user if the page they are viewing is able
+ * to be trusted.  This is often shown as a padlock of some kind.
+ *
+ * This is also used by the internal page information corewindow to render
+ * to the user what the situation is.
+ *
+ * \param bw The browser window
+ * \return The state of the browser window
+ */
+browser_window_page_info_state browser_window_get_page_info_state(
+		const struct browser_window *bw);
+
+/**
+ * Request the current browser window SSL certificate chain.
+ *
+ * When the page has SSL information, this will retrieve the certificate chain.
+ *
+ * If there is no chain available, this will return NSERROR_NOT_FOUND
+ *
+ * \param bw The browser window
+ * \param chain Pointer to be filled out with certificate chain
+ * \return Whether or not the chain is available
+ */
+nserror browser_window_get_ssl_chain(struct browser_window *bw, struct cert_chain **chain);
+
+/**
+ * Get the number of cookies in use for the current page.
+ *
+ * \param bw  A browser window.
+ * \return Number of cookies in use, or 0 on error.
+ */
+int browser_window_get_cookie_count(
+		const struct browser_window *bw);
+
+/**
+ * Open cookie viewer for the current page.
+ *
+ * \param bw  A browser window.
+ * \return NSERROR_OK, or appropriate error otherwise.
+ */
+nserror browser_window_show_cookies(
+		const struct browser_window *bw);
+
+/**
+ * Show the certificate page for the current page.
+ *
+ * Does nothing for a page without certificates.
+ *
+ * \param bw  A browser window.
+ * \return NSERROR_OK, or appropriate error otherwise.
+ */
+nserror browser_window_show_certificates(
+		struct browser_window *bw);
 
 #endif

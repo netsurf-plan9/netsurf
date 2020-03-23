@@ -16,15 +16,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _NETSURF_GTK_OPTIONS_H_
-#define _NETSURF_GTK_OPTIONS_H_
+#ifndef NETSURF_GTK_OPTIONS_H_
+#define NETSURF_GTK_OPTIONS_H_
 
 /* currently nothing here */
 
 #endif
-
-/* High quality image scaling */
-NSOPTION_BOOL(render_resample, true)
 
 /* clear downloads */
 NSOPTION_BOOL(downloads_clear, false)
@@ -46,9 +43,6 @@ NSOPTION_INTEGER(button_type, 0)
 
 /* disallow popup windows */
 NSOPTION_BOOL(disable_popups, false)
-
-/* disable content plugins */
-NSOPTION_BOOL(disable_plugins, false)
 
 /* number of days to keep history data */
 NSOPTION_INTEGER(history_age, 0)
@@ -72,4 +66,7 @@ NSOPTION_INTEGER(developer_view, 0)
 NSOPTION_INTEGER(position_tab, 0)
 
 /* Toolbar customisation */
-NSOPTION_STRING(toolbar_order, NULL)
+NSOPTION_STRING(toolbar_items, NULL)
+
+/* The menu and tool bars that are shown */
+NSOPTION_STRING(bar_show, NULL)

@@ -361,7 +361,8 @@ static nserror hlcache_migrate_ctx(hlcache_retrieval_ctx *ctx,
 				hlcache_event hlevent;
 
 				hlevent.type = CONTENT_MSG_ERROR;
-				hlevent.data.error = messages_get("MiscError");
+				hlevent.data.errordata.errorcode = NSERROR_UNKNOWN;
+				hlevent.data.errordata.errormsg = messages_get("MiscError");
 
 				ctx->handle->cb(ctx->handle, &hlevent,
 						ctx->handle->pw);
@@ -393,7 +394,8 @@ static nserror hlcache_migrate_ctx(hlcache_retrieval_ctx *ctx,
 			hlcache_event hlevent;
 
 			hlevent.type = CONTENT_MSG_ERROR;
-			hlevent.data.error = messages_get("UnacceptableType");
+			hlevent.data.errordata.errorcode = NSERROR_UNKNOWN;
+			hlevent.data.errordata.errormsg = messages_get("UnacceptableType");
 
 			ctx->handle->cb(ctx->handle, &hlevent,
 					ctx->handle->pw);
@@ -421,8 +423,10 @@ static nserror hlcache_migrate_ctx(hlcache_retrieval_ctx *ctx,
  * \param pw	  Pointer to client-specific data
  * \return NSERROR_OK on success, appropriate error otherwise
  */
-static nserror hlcache_llcache_callback(llcache_handle *handle,
-		const llcache_event *event, void *pw)
+static nserror
+hlcache_llcache_callback(llcache_handle *handle,
+			 const llcache_event *event,
+			 void *pw)
 {
 	hlcache_retrieval_ctx *ctx = pw;
 	lwc_string *effective_type = NULL;
@@ -431,6 +435,17 @@ static nserror hlcache_llcache_callback(llcache_handle *handle,
 	assert(ctx->llcache == handle);
 
 	switch (event->type) {
+	case LLCACHE_EVENT_GOT_CERTS:
+		/* Pass them on upward */
+		if (ctx->handle->cb != NULL) {
+			hlcache_event hlevent;
+
+			hlevent.type = CONTENT_MSG_SSL_CERTS;
+			hlevent.data.chain = event->data.chain;
+
+			ctx->handle->cb(ctx->handle, &hlevent, ctx->handle->pw);
+		}
+		break;
 	case LLCACHE_EVENT_HAD_HEADERS:
 		error = mimesniff_compute_effective_type(llcache_handle_get_header(handle, "Content-Type"), NULL, 0,
 				ctx->flags & HLCACHE_RETRIEVE_SNIFF_TYPE,
@@ -489,8 +504,9 @@ static nserror hlcache_llcache_callback(llcache_handle *handle,
 		if (ctx->handle->cb != NULL) {
 			hlcache_event hlevent;
 
-			hlevent.type = CONTENT_MSG_ERRORCODE;
-			hlevent.data.errorcode = error;
+			hlevent.type = CONTENT_MSG_ERROR;
+			hlevent.data.errordata.errorcode = error;
+			hlevent.data.errordata.errormsg = NULL;
 
 			ctx->handle->cb(ctx->handle, &hlevent, ctx->handle->pw);
 		}
@@ -500,7 +516,8 @@ static nserror hlcache_llcache_callback(llcache_handle *handle,
 			hlcache_event hlevent;
 
 			hlevent.type = CONTENT_MSG_ERROR;
-			hlevent.data.error = event->data.msg;
+			hlevent.data.errordata.errorcode = event->data.error.code;
+			hlevent.data.errordata.errormsg = event->data.error.msg;
 
 			ctx->handle->cb(ctx->handle, &hlevent, ctx->handle->pw);
 		}
@@ -643,6 +660,9 @@ void hlcache_finalise(void)
 
 	NSLOG(netsurf, INFO, "hit/miss %d/%d", hlcache->hit_count,
 	      hlcache->miss_count);
+
+	/* De-schedule ourselves */
+	guit->misc->schedule(-1, hlcache_clean, NULL);
 
 	free(hlcache);
 	hlcache = NULL;

@@ -1225,7 +1225,6 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	struct rect rect;
 	int x_scrolled, y_scrolled;
 	struct box *bg_box = NULL;
-	bool has_x_scroll, has_y_scroll;
 	css_computed_clip_rect css_rect;
 	enum css_overflow_e overflow_x = CSS_OVERFLOW_VISIBLE;
 	enum css_overflow_e overflow_y = CSS_OVERFLOW_VISIBLE;
@@ -1787,8 +1786,8 @@ bool html_redraw_box(const html_content *html, struct box *box,
 	} else if (box->iframe) {
 		/* Offset is passed to browser window redraw unscaled */
 		browser_window_redraw(box->iframe,
-				(x + padding_left) / scale,
-				(y + padding_top) / scale, &r, ctx);
+				x + padding_left,
+				y + padding_top, &r, ctx);
 
 	} else if (box->gadget && box->gadget->type == GADGET_CHECKBOX) {
 		if (!html_redraw_checkbox(x + padding_left, y + padding_top,
@@ -1842,20 +1841,29 @@ bool html_redraw_box(const html_content *html, struct box *box,
 
 	/* scrollbars */
 	if (((box->style && box->type != BOX_BR &&
-			box->type != BOX_TABLE && box->type != BOX_INLINE &&
-			(overflow_x == CSS_OVERFLOW_SCROLL ||
-			 overflow_x == CSS_OVERFLOW_AUTO ||
-			 overflow_y == CSS_OVERFLOW_SCROLL ||
-			 overflow_y == CSS_OVERFLOW_AUTO)) ||
-			(box->object && content_get_type(box->object) ==
-			CONTENT_HTML)) && box->parent != NULL) {
+	      box->type != BOX_TABLE && box->type != BOX_INLINE &&
+	      (box->gadget == NULL || box->gadget->type != GADGET_TEXTAREA) &&
+	      (overflow_x == CSS_OVERFLOW_SCROLL ||
+	       overflow_x == CSS_OVERFLOW_AUTO ||
+	       overflow_y == CSS_OVERFLOW_SCROLL ||
+	       overflow_y == CSS_OVERFLOW_AUTO)) ||
+	     (box->object && content_get_type(box->object) ==
+	      CONTENT_HTML)) && box->parent != NULL) {
+		nserror res;
+		bool has_x_scroll = (overflow_x == CSS_OVERFLOW_SCROLL);
+		bool has_y_scroll = (overflow_y == CSS_OVERFLOW_SCROLL);
 
-		has_x_scroll = box_hscrollbar_present(box);
-		has_y_scroll = box_vscrollbar_present(box);
+		has_x_scroll |= (overflow_x == CSS_OVERFLOW_AUTO) &&
+				box_hscrollbar_present(box);
+		has_y_scroll |= (overflow_y == CSS_OVERFLOW_AUTO) &&
+				box_vscrollbar_present(box);
 
-		if (!box_handle_scrollbars((struct content *)html,
-				box, has_x_scroll, has_y_scroll))
+		res = box_handle_scrollbars((struct content *)html,
+					    box, has_x_scroll, has_y_scroll);
+		if (res != NSERROR_OK) {
+			NSLOG(netsurf, INFO, "%s", messages_get_errorcode(res));
 			return false;
+		}
 
 		if (box->scroll_x != NULL)
 			scrollbar_redraw(box->scroll_x,

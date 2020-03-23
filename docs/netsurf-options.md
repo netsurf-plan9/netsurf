@@ -42,9 +42,9 @@ General Options
  memory_cache_size    | int    | 12MiB     | Preferred maximum size of memory cache in bytes. 
  disc_cache_size      | uint   | 1GiB      | Preferred expiry size of disc cache in bytes. 
  disc_cache_age       | int    | 28        | Preferred expiry age of disc cache in days. 
+ disc_cache_path      | string |  NULL     | Path to disc cache, NULL means to use system path |
  block_advertisements | bool   | false     | Whether to block advertisements  
  do_not_track         | bool   | false     | Disable website tracking [1]     
- minimum_gif_delay    | int    | 10        | Minimum GIF animation delay      
  send_referer         | bool   | true      | Whether to send the referer HTTP header.
  foreground_images    | bool   | true      | Whether to fetch foreground images 
  background_images    | bool   | true      | Whether to fetch background images 

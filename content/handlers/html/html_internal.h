@@ -31,8 +31,10 @@
 #include "content/content_protected.h"
 #include "desktop/selection.h"
 
+
 struct gui_layout_table;
 struct scrollbar_msg_data;
+struct content_redraw_data;
 
 typedef enum {
 	HTML_DRAG_NONE,			/** No drag */
@@ -85,11 +87,6 @@ union html_focus_owner {
 	struct box *content;
 };
 
-struct html_scrollbar_data {
-	struct content *c;
-	struct box *box;
-};
-
 /**
  * Data specific to CONTENT_HTML.
  */
@@ -127,6 +124,9 @@ typedef struct html_content {
 	/** Whether a layout (reflow) is in progress */
 	bool reflowing;
 
+	/** Whether an initial layout has been done */
+	bool had_initial_layout;
+
 	/** Whether scripts are enabled for this content */
 	bool enable_scripting;
 
@@ -135,6 +135,10 @@ typedef struct html_content {
 
 	/** A talloc context purely for the render box tree */
 	int *bctx;
+	/** A context pointer for the box conversion, NULL if no conversion
+	 * is in progress.
+	 */
+	void *box_conversion_context;
 	/** Box tree, or NULL. */
 	struct box *layout;
 	/** Document background colour. */
@@ -147,8 +151,8 @@ typedef struct html_content {
 	unsigned int scripts_count;
 	/** Scripts */
 	struct html_script *scripts;
-	/** javascript context */
-	struct jscontext *jscontext;
+	/** javascript thread in use */
+	struct jsthread *jsthread;
 
 	/** Number of entries in stylesheet_content. */
 	unsigned int stylesheet_count;
@@ -293,19 +297,6 @@ bool html_redraw_inline_borders(struct box *box, struct rect b,
 		const struct rect *clip, float scale, bool first, bool last,
 		const struct redraw_context *ctx);
 
-/* in html/html_interaction.c */
-void html_mouse_track(struct content *c, struct browser_window *bw,
-			browser_mouse_state mouse, int x, int y);
-void html_mouse_action(struct content *c, struct browser_window *bw,
-			browser_mouse_state mouse, int x, int y);
-bool html_keypress(struct content *c, uint32_t key);
-void html_overflow_scroll_callback(void *client_data,
-		struct scrollbar_msg_data *scrollbar_data);
-void html_search(struct content *c, void *context,
-		search_flags_t flags, const char *string);
-void html_search_clear(struct content *c);
-
-
 /* in html/html_script.c */
 dom_hubbub_error html_process_script(void *ctx, dom_node *node);
 
@@ -330,12 +321,9 @@ nserror html_script_exec(html_content *htmlc, bool allow_defer);
 nserror html_script_free(html_content *htmlc);
 
 /**
- * Ensure the html content javascript context is invalidated.
- *
- * \param htmlc html content.
- * \return NSERROR_OK or error code.
+ * Check if any of the scripts loaded were insecure
  */
-nserror html_script_invalidate_ctx(html_content *htmlc);
+bool html_saw_insecure_scripts(html_content *htmlc);
 
 /* in html/html_forms.c */
 struct form *html_forms_get_forms(const char *docenc, dom_html_document *doc);
@@ -355,6 +343,9 @@ void html_css_fini(void);
 nserror html_css_new_stylesheets(html_content *c);
 nserror html_css_quirks_stylesheets(html_content *c);
 nserror html_css_free_stylesheets(html_content *html);
+
+/** Return if any of the stylesheets were loaded insecurely */
+bool html_saw_insecure_stylesheets(html_content *html);
 
 bool html_css_process_link(html_content *htmlc, dom_node *node);
 bool html_css_process_style(html_content *htmlc, dom_node *node);
@@ -397,13 +388,25 @@ nserror html_object_close_objects(html_content *html);
 nserror html_object_open_objects(html_content *html, struct browser_window *bw);
 nserror html_object_abort_objects(html_content *html);
 
+/**
+ * Complete the HTML content state machine *iff* all scripts are finished
+ */
+nserror html_proceed_to_done(html_content *html);
+
+
 /* Events */
 /**
  * Construct an event and fire it at the DOM
  *
  */
-bool fire_dom_event(dom_string *type, dom_node *target,
+bool fire_generic_dom_event(dom_string *type, dom_node *target,
 		    bool bubbles, bool cancelable);
+
+/**
+ * Construct a keyboard event and fire it at the DOM
+ */
+bool fire_dom_keyboard_event(dom_string *type, dom_node *target,
+		bool bubbles, bool cancelable, uint32_t key);
 
 /* Useful dom_string pointers */
 struct dom_string;

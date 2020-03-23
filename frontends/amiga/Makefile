@@ -12,7 +12,7 @@ endif
 
 $(eval $(call feature_enabled,AMIGA_ICON,-DWITH_AMIGA_ICON,,Amiga icon))
 $(eval $(call feature_enabled,AMIGA_DATATYPES,-DWITH_AMIGA_DATATYPES,,DataTypes))
-$(eval $(call feature_enabled,AMISSL,-DWITH_AMISSL -D__NO_NET_API -D__NO_NETINCLUDE_ERRNO -I$(GCCSDK_INSTALL_ENV)/netinclude,-lamisslauto,AmiSSL))
+$(eval $(call feature_enabled,AMISSL,-DWITH_AMISSL -DWITH_OPENSSL -D__NO_NET_API -D__NO_NETINCLUDE_ERRNO -I$(GCCSDK_INSTALL_ENV)/netinclude,-lamisslauto,AmiSSL))
 
 CFLAGS += -I$(GCCSDK_INSTALL_ENV)/include
 CFLAGS += $(shell $(PKG_CONFIG) --cflags tre)
@@ -44,7 +44,7 @@ MESSAGES_FILTER=ami
 
 # sources purely for the Amiga build
 S_FRONTEND := gui.c history.c hotlist.c schedule.c file.c	\
-	misc.c bitmap.c font.c filetype.c utf8.c login.c memory.c	\
+	misc.c bitmap.c font.c filetype.c utf8.c memory.c	\
 	plotters.c object.c menu.c save_pdf.c arexx.c version.c		\
 	cookies.c ctxmenu.c clipboard.c help.c font_scan.c		\
 	launch.c search.c history_local.c download.c iff_dr2d.c		\

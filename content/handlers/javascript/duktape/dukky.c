@@ -39,6 +39,7 @@
 
 #include "duktape/binding.h"
 #include "duktape/generics.js.inc"
+#include "duktape/polyfill.js.inc"
 
 #include "duktape.h"
 #include "dukky.h"
@@ -50,14 +51,28 @@
 #define HANDLER_MAGIC MAGIC(HANDLER_MAP)
 #define EVENT_LISTENER_JS_MAGIC MAGIC(EVENT_LISTENER_JS_MAP)
 #define GENERICS_MAGIC MAGIC(GENERICS_TABLE)
+#define THREAD_MAP MAGIC(THREAD_MAP)
 
 /**
- * dukky javascript context
+ * dukky javascript heap
  */
-struct jscontext {
+struct jsheap {
 	duk_context *ctx; /**< duktape base context */
-	duk_context *thread; /**< duktape compartment */
+	duk_uarridx_t next_thread; /**< monotonic thread counter */
+	bool pending_destroy; /**< Whether this heap is pending destruction */
+	unsigned int live_threads; /**< number of live threads */
 	uint64_t exec_start_time;
+};
+
+/**
+ * dukky javascript thread
+ */
+struct jsthread {
+	bool pending_destroy; /**< Whether this thread is pending destruction */
+	unsigned int in_use; /**< The number of times this thread is in use */
+	jsheap *heap; /**< The heap this thread belongs to */
+	duk_context *ctx; /**< The duktape thread context */
+	duk_uarridx_t thread_idx; /**< The thread number */
 };
 
 static duk_ret_t dukky_populate_object(duk_context *ctx, void *udata)
@@ -68,17 +83,20 @@ static duk_ret_t dukky_populate_object(duk_context *ctx, void *udata)
 	/* ... obj args protoname */
 	duk_get_global_string(ctx, PROTO_MAGIC);
 	/* .. obj args protoname prototab */
-	duk_insert(ctx, -2);
-	/* ... obj args prototab protoname */
+	duk_dup(ctx, -2);
+	/* ... obj args protoname prototab protoname */
 	duk_get_prop(ctx, -2);
-	/* ... obj args prototab {proto/undefined} */
+	/* ... obj args protoname prototab {proto/undefined} */
 	if (duk_is_undefined(ctx, -1)) {
 		NSLOG(dukky, WARNING,
-		      "RuhRoh, couldn't find a prototype, HTMLUnknownElement it is");
+		      "Unable to find dukky prototype for `%s` - falling back to HTMLUnknownElement",
+		      duk_get_string(ctx, -3) + 2 /* Skip the two unprintables */);
 		duk_pop(ctx);
 		duk_push_string(ctx, PROTO_NAME(HTMLUNKNOWNELEMENT));
 		duk_get_prop(ctx, -2);
 	}
+	/* ... obj args protoname prototab proto */
+	duk_remove(ctx, -3);
 	/* ... obj args prototab proto */
 	duk_dup(ctx, -1);
 	/* ... obj args prototab proto proto */
@@ -175,7 +193,7 @@ dukky_push_node_stacked(duk_context *ctx)
 	/* ... node nodeptr klass nodes */
 	duk_pop_3(ctx);
 	/* ... node */
-	{
+	if (NSLOG_COMPILED_MIN_LEVEL <= NSLOG_LEVEL_DEEPDEBUG) {
 		duk_dup(ctx, -1);
 		const char * what = duk_safe_to_string(ctx, -1);
 		NSLOG(dukky, DEEPDEBUG, "Created: %s", what);
@@ -223,7 +241,7 @@ static void dukky_html_element_class_from_tag_type(dom_html_element_type type,
 		SET_HTML_CLASS(LINK)
 		break;
 	case DOM_HTML_ELEMENT_TYPE_BUTTON:
-		SET_HTML_CLASS(BUTTOM)
+		SET_HTML_CLASS(BUTTON)
 		break;
 	case DOM_HTML_ELEMENT_TYPE_INPUT:
 		SET_HTML_CLASS(INPUT)
@@ -475,7 +493,7 @@ dukky_push_node(duk_context *ctx, struct dom_node *node)
 		/* ... node nodes */
 		duk_pop(ctx);
 		/* ... node */
-		{
+		if (NSLOG_COMPILED_MIN_LEVEL <= NSLOG_LEVEL_DEEPDEBUG) {
 			duk_dup(ctx, -1);
 			const char * what = duk_safe_to_string(ctx, -1);
 			NSLOG(dukky, DEEPDEBUG, "Found it memoised: %s", what);
@@ -552,36 +570,6 @@ static void dukky_free_function(void *udata, void *ptr)
 		free(ptr);
 }
 
-
-#define CTX (ctx->thread)
-
-/**
- * close current compartment
- *
- * \param ctx javascript context
- * \return NSERROR_OK on sucess.
- */
-static nserror dukky_closecompartment(jscontext *ctx)
-{
-	/* ensure there is an active compartment */
-	if (ctx->thread == NULL) {
-		return NSERROR_OK;
-	}
-
-	/* Closing down the extant compartment */
-	NSLOG(dukky, DEEPDEBUG, "Closing down extant compartment...");
-	duk_get_global_string(ctx->thread, MAGIC(closedownCompartment));
-	dukky_pcall(CTX, 0, true);
-	NSLOG(dukky, DEEPDEBUG, "Popping the thread off the stack");
-	duk_set_top(ctx->ctx, 0);
-	duk_gc(ctx->ctx, 0);
-	duk_gc(ctx->ctx, DUK_GC_COMPACT);
-
-	ctx->thread = NULL;
-
-	return NSERROR_OK;
-}
-
 /* exported interface documented in js.h */
 void js_initialise(void)
 {
@@ -604,12 +592,12 @@ void js_finalise(void)
 
 /* exported interface documented in js.h */
 nserror
-js_newcontext(int timeout, jscallback *cb, void *cbctx, jscontext **jsctx)
+js_newheap(int timeout, jsheap **heap)
 {
 	duk_context *ctx;
-	jscontext *ret = calloc(1, sizeof(*ret));
-	*jsctx = NULL;
-	NSLOG(dukky, DEBUG, "Creating new duktape javascript context");
+	jsheap *ret = calloc(1, sizeof(*ret));
+	*heap = NULL;
+	NSLOG(dukky, DEBUG, "Creating new duktape javascript heap");
 	if (ret == NULL) return NSERROR_NOMEM;
 	ctx = ret->ctx = duk_create_heap(
 		dukky_alloc_function,
@@ -625,36 +613,62 @@ js_newcontext(int timeout, jscallback *cb, void *cbctx, jscontext **jsctx)
 	duk_put_global_string(ctx, PROTO_MAGIC);
 	/* Create prototypes here */
 	dukky_create_prototypes(ctx);
+	/* Now create the thread map */
+	duk_push_object(ctx);
+	duk_put_global_string(ctx, THREAD_MAP);
 
-	*jsctx = ret;
+	*heap = ret;
 	return NSERROR_OK;
 }
 
 
-/* exported interface documented in js.h */
-void js_destroycontext(jscontext *ctx)
+static void dukky_destroyheap(jsheap *heap)
 {
+	assert(heap->pending_destroy == true);
+	assert(heap->live_threads == 0);
 	NSLOG(dukky, DEBUG, "Destroying duktape javascript context");
-	dukky_closecompartment(ctx);
-	duk_destroy_heap(ctx->ctx);
-	free(ctx);
+	duk_destroy_heap(heap->ctx);
+	free(heap);
 }
 
+/* exported interface documented in js.h */
+void js_destroyheap(jsheap *heap)
+{
+	heap->pending_destroy = true;
+	if (heap->live_threads == 0) {
+		dukky_destroyheap(heap);
+	}
+}
+
+/* Just for here, the CTX is in ret, not thread */
+#define CTX (ret->ctx)
 
 /* exported interface documented in js.h */
-jsobject *js_newcompartment(jscontext *ctx, void *win_priv, void *doc_priv)
+nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **thread)
 {
-	assert(ctx != NULL);
+	jsthread *ret;
+	assert(heap != NULL);
+	assert(heap->pending_destroy == false);
+
+	ret = calloc(1, sizeof (*ret));
+	if (ret == NULL) {
+		NSLOG(dukky, ERROR, "Unable to allocate new JS thread structure");
+		return NSERROR_NOMEM;
+	}
+
 	NSLOG(dukky, DEBUG,
-	      "New javascript/duktape compartment, win_priv=%p, doc_priv=%p",
+	      "New javascript/duktape thread, win_priv=%p, doc_priv=%p",
 	      win_priv, doc_priv);
 
-	/* Pop any active thread off */
-	dukky_closecompartment(ctx);
-
-	/* create new compartment thread */
-	duk_push_thread(ctx->ctx);
-	ctx->thread = duk_require_context(ctx->ctx, -1);
+	/* create new thread */
+	duk_get_global_string(heap->ctx, THREAD_MAP); /* ... threads */
+	duk_push_thread(heap->ctx); /* ... threads thread */
+	ret->heap = heap;
+	ret->ctx = duk_require_context(heap->ctx, -1);
+	ret->thread_idx = heap->next_thread++;
+	duk_put_prop_index(heap->ctx, -2, ret->thread_idx);
+	heap->live_threads++;
+	duk_pop(heap->ctx); /* ... */
 	duk_push_int(CTX, 0);
 	duk_push_int(CTX, 1);
 	duk_push_int(CTX, 2);
@@ -678,6 +692,27 @@ jsobject *js_newcompartment(jscontext *ctx, void *win_priv, void *doc_priv)
 	duk_push_object(CTX);
 	duk_put_global_string(CTX, EVENT_MAGIC);
 
+	/* Now load the polyfills */
+	/* ... */
+	duk_push_string(CTX, "polyfill.js");
+	/* ..., polyfill.js */
+	if (duk_pcompile_lstring_filename(CTX, DUK_COMPILE_EVAL,
+					  (const char *)polyfill_js, polyfill_js_len) != 0) {
+		NSLOG(dukky, CRITICAL, "%s", duk_safe_to_string(CTX, -1));
+		NSLOG(dukky, CRITICAL, "Unable to compile polyfill.js, thread aborted");
+		js_destroythread(ret);
+		return NSERROR_INIT_FAILED;
+	}
+	/* ..., (generics.js) */
+	if (dukky_pcall(CTX, 0, true) != 0) {
+		NSLOG(dukky, CRITICAL, "Unable to run polyfill.js, thread aborted");
+		js_destroythread(ret);
+		return NSERROR_INIT_FAILED;
+	}
+	/* ..., result */
+	duk_pop(CTX);
+	/* ... */
+
 	/* Now load the NetSurf table in */
 	/* ... */
 	duk_push_string(CTX, "generics.js");
@@ -685,13 +720,15 @@ jsobject *js_newcompartment(jscontext *ctx, void *win_priv, void *doc_priv)
 	if (duk_pcompile_lstring_filename(CTX, DUK_COMPILE_EVAL,
 					  (const char *)generics_js, generics_js_len) != 0) {
 		NSLOG(dukky, CRITICAL, "%s", duk_safe_to_string(CTX, -1));
-		NSLOG(dukky, CRITICAL, "Unable to compile generics.js, compartment aborted");
-		return NULL;
+		NSLOG(dukky, CRITICAL, "Unable to compile generics.js, thread aborted");
+		js_destroythread(ret);
+		return NSERROR_INIT_FAILED;
 	}
 	/* ..., (generics.js) */
 	if (dukky_pcall(CTX, 0, true) != 0) {
-		NSLOG(dukky, CRITICAL, "Unable to run generics.js, compartment aborted");
-		return NULL;
+		NSLOG(dukky, CRITICAL, "Unable to run generics.js, thread aborted");
+		js_destroythread(ret);
+		return NSERROR_INIT_FAILED;
 	}
 	/* ..., result */
 	duk_pop(CTX);
@@ -706,15 +743,101 @@ jsobject *js_newcompartment(jscontext *ctx, void *win_priv, void *doc_priv)
 	duk_pop(CTX);
 	/* ... */
 
-	dukky_log_stack_frame(CTX, "New compartment created");
+	dukky_log_stack_frame(CTX, "New thread created");
+	NSLOG(dukky, DEBUG, "New thread is %p in heap %p", thread, heap);
+	*thread = ret;
 
-	return (jsobject *)ctx;
+	return NSERROR_OK;
+}
+
+/* Now switch to the long term CTX behaviour */
+#undef CTX
+#define CTX (thread->ctx)
+
+/* exported interface documented in js.h */
+nserror js_closethread(jsthread *thread)
+{
+	/* We can always close down a thread, it might just confuse
+	 * the code running, though we don't mind since we're in the
+	 * process of destruction at this point
+	 */
+	duk_int_t top = duk_get_top(CTX);
+
+	/* Closing down the extant thread */
+	NSLOG(dukky, DEBUG, "Closing down extant thread %p in heap %p", thread, thread->heap);
+	duk_get_global_string(CTX, MAGIC(closedownThread));
+	dukky_pcall(CTX, 0, true);
+
+	/* Restore whatever stack we had */
+	duk_set_top(CTX, top);
+
+	return NSERROR_OK;
+}
+
+/**
+ * Destroy a Duktape thread
+ */
+static void dukky_destroythread(jsthread *thread)
+{
+	jsheap *heap = thread->heap;
+
+	assert(thread->in_use == 0);
+	assert(thread->pending_destroy = true);
+
+	/* Closing down the extant thread */
+	NSLOG(dukky, DEBUG, "Closing down extant thread %p in heap %p", thread, heap);
+	duk_get_global_string(CTX, MAGIC(closedownThread));
+	dukky_pcall(CTX, 0, true);
+
+	/* Now delete the thread from the heap */
+	duk_get_global_string(heap->ctx, THREAD_MAP); /* ... threads */
+	duk_del_prop_index(heap->ctx, -1, thread->thread_idx);
+	duk_pop(heap->ctx); /* ... */
+
+	/* We can now free the thread object */
+	free(thread);
+
+	/* Finally give the heap a chance to clean up */
+	duk_gc(heap->ctx, 0);
+	duk_gc(heap->ctx, DUK_GC_COMPACT);
+	heap->live_threads--;
+
+	/* And if the heap should now go, blow it away */
+	if (heap->pending_destroy == true && heap->live_threads == 0) {
+		dukky_destroyheap(heap);
+	}
+}
+
+/* exported interface documented in js.h */
+void js_destroythread(jsthread *thread)
+{
+	thread->pending_destroy = true;
+	if (thread->in_use == 0) {
+		dukky_destroythread(thread);
+	}
+}
+
+static void dukky_enter_thread(jsthread *thread)
+{
+	assert(thread != NULL);
+	thread->in_use++;
+}
+
+static void dukky_leave_thread(jsthread *thread)
+{
+	assert(thread != NULL);
+	assert(thread->in_use > 0);
+
+	thread->in_use--;
+	if (thread->in_use == 0 && thread->pending_destroy == true) {
+		dukky_destroythread(thread);
+	}
 }
 
 duk_bool_t dukky_check_timeout(void *udata)
 {
 #define JS_EXEC_TIMEOUT_MS 10000 /* 10 seconds */
-	jscontext *ctx = (jscontext *) udata;
+	jsheap *heap = (jsheap *) udata;
 	uint64_t now;
 
 	(void) nsu_getmonotonic_ms(&now);
@@ -723,60 +846,34 @@ duk_bool_t dukky_check_timeout(void *udata)
 	 * so only test for execution timeout if we've recorded a
 	 * start time.
 	 */
-	return ctx->exec_start_time != 0 &&
-			now > (ctx->exec_start_time + JS_EXEC_TIMEOUT_MS);
-}
-
-static duk_ret_t dukky_safe_get(duk_context *ctx, void *udata)
-{
-	duk_get_prop_string(ctx, 0, udata);
-	return 1;
+	return heap->exec_start_time != 0 &&
+			now > (heap->exec_start_time + JS_EXEC_TIMEOUT_MS);
 }
 
 static void dukky_dump_error(duk_context *ctx)
 {
 	/* stack is ..., errobj */
-	duk_idx_t stacktop = duk_get_top(ctx);
-	if (!duk_is_error(ctx, -1)) {
-		NSLOG(dukky, INFO, "Uncaught non-Error derived error in JS: %s", duk_safe_to_string(ctx, -1));
-	} else {
-#define GETTER(what)						\
-		if (duk_has_prop_string(ctx, stacktop - 1, what)) {	\
-			NSLOG(dukky, DEEPDEBUG, "Fetching " what); \
-			duk_dup(ctx, stacktop - 1);			\
-			if (duk_safe_call(ctx, dukky_safe_get, (void *)what, 1, 1) != DUK_EXEC_SUCCESS) { \
-				NSLOG(dukky, DEBUG, "Error fetching " what ": %s", duk_safe_to_string(ctx, -1)); \
-			} else { \
-				NSLOG(dukky, DEEPDEBUG, "Success fetching " what);	\
-			}						\
-		} else {						\
-			NSLOG(dukky, DEBUG, "Faking " what);		\
-			duk_push_string(ctx, "?" what "?");		\
-		}
-		GETTER("name");
-		GETTER("message");
-		GETTER("fileName");
-		GETTER("lineNumber");
-		GETTER("stack");
-		NSLOG(dukky, DEBUG, "Uncaught error in JS: %s: %s",
-		      duk_safe_to_string(ctx, -5), duk_safe_to_string(ctx, -4));
-		NSLOG(dukky, DEBUG, "              was at: %s line %s",
-		duk_safe_to_string(ctx, -3), duk_safe_to_string(ctx, -2));
-		NSLOG(dukky, DEBUG, "         Stack trace: %s",
-		      duk_safe_to_string(ctx, -1));
-#undef GETTER
-	}
-	duk_set_top(ctx, stacktop);
+	duk_dup_top(ctx);
+	/* ..., errobj, errobj */
+	NSLOG(jserrors, WARNING, "Uncaught error in JS: %s", duk_safe_to_stacktrace(ctx, -1));
+	/* ..., errobj, errobj.stackstring */
+	duk_pop(ctx);
+	/* ..., errobj */
+}
+
+static void dukky_reset_start_time(duk_context *ctx)
+{
+	duk_memory_functions funcs;
+	jsheap *heap;
+	duk_get_memory_functions(ctx, &funcs);
+	heap = funcs.udata;
+	(void) nsu_getmonotonic_ms(&heap->exec_start_time);
 }
 
 duk_int_t dukky_pcall(duk_context *ctx, duk_size_t argc, bool reset_timeout)
 {
 	if (reset_timeout) {
-		duk_memory_functions funcs;
-		jscontext *jsctx;
-		duk_get_memory_functions(ctx, &funcs);
-		jsctx = funcs.udata;
-		(void) nsu_getmonotonic_ms(&jsctx->exec_start_time);
+		dukky_reset_start_time(ctx);
 	}
 
 	duk_int_t ret = duk_pcall(ctx, argc);
@@ -819,19 +916,22 @@ void dukky_log_stack_frame(duk_context *ctx, const char * reason)
 
 /* exported interface documented in js.h */
 bool
-js_exec(jscontext *ctx, const uint8_t *txt, size_t txtlen, const char *name)
+js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *name)
 {
-	assert(ctx);
+	bool ret = false;
+	assert(thread);
 
 	if (txt == NULL || txtlen == 0) {
 		return false;
 	}
 
+	dukky_enter_thread(thread);
+
 	duk_set_top(CTX, 0);
 	NSLOG(dukky, DEEPDEBUG, "Running %"PRIsizet" bytes from %s", txtlen, name);
 	/* NSLOG(dukky, DEEPDEBUG, "\n%s\n", txt); */
 
-	(void) nsu_getmonotonic_ms(&ctx->exec_start_time);
+	dukky_reset_start_time(CTX);
 	if (name != NULL) {
 		duk_push_string(CTX, name);
 	} else {
@@ -853,11 +953,44 @@ js_exec(jscontext *ctx, const uint8_t *txt, size_t txtlen, const char *name)
 	if (duk_get_top(CTX) == 0) duk_push_boolean(CTX, false);
 	NSLOG(dukky, DEEPDEBUG, "Returning %s",
 	      duk_get_boolean(CTX, 0) ? "true" : "false");
-	return duk_get_boolean(CTX, 0);
+	ret = duk_get_boolean(CTX, 0);
+	goto out;
 
 handle_error:
 	dukky_dump_error(CTX);
-	return false;
+out:
+	dukky_leave_thread(thread);
+	return ret;
+}
+
+static const char* dukky_event_proto(dom_event *evt)
+{
+	const char *ret = PROTO_NAME(EVENT);
+	dom_string *type = NULL;
+	dom_exception err;
+
+	err = dom_event_get_type(evt, &type);
+	if (err != DOM_NO_ERR) {
+		goto out;
+	}
+
+	if (dom_string_isequal(type, corestring_dom_keydown)) {
+		ret = PROTO_NAME(KEYBOARDEVENT);
+		goto out;
+	} else if (dom_string_isequal(type, corestring_dom_keyup)) {
+		ret = PROTO_NAME(KEYBOARDEVENT);
+		goto out;
+	} else if (dom_string_isequal(type, corestring_dom_keypress)) {
+		ret = PROTO_NAME(KEYBOARDEVENT);
+		goto out;
+	}
+
+out:
+	if (type != NULL) {
+		dom_string_unref(type);
+	}
+
+	return ret;
 }
 
 /*** New style event handling ***/
@@ -876,7 +1009,7 @@ void dukky_push_event(duk_context *ctx, dom_event *evt)
 		duk_pop(ctx);
 		/* ... events */
 		duk_push_pointer(ctx, evt);
-		if (dukky_create_object(ctx, PROTO_NAME(EVENT), 1) != DUK_EXEC_SUCCESS) {
+		if (dukky_create_object(ctx, dukky_event_proto(evt), 1) != DUK_EXEC_SUCCESS) {
 			/* ... events err */
 			duk_pop(ctx);
 			/* ... events */
@@ -1001,19 +1134,13 @@ bool dukky_get_current_value_of_event_handler(duk_context *ctx,
 
 static void dukky_generic_event_handler(dom_event *evt, void *pw)
 {
-	duk_memory_functions funcs;
 	duk_context *ctx = (duk_context *)pw;
-	jscontext *jsctx;
 	dom_string *name;
 	dom_exception exc;
 	dom_event_target *targ;
 	dom_event_flow_phase phase;
 	duk_uarridx_t idx;
 	event_listener_flags flags;
-
-	/* Retrieve the JS context from the Duktape context */
-	duk_get_memory_functions(ctx, &funcs);
-	jsctx = funcs.udata;
 
 	NSLOG(dukky, DEBUG, "Handling an event in duktape interface...");
 	exc = dom_event_get_type(evt, &name);
@@ -1062,7 +1189,7 @@ static void dukky_generic_event_handler(dom_event *evt, void *pw)
 	/* ... handler node */
 	dukky_push_event(ctx, evt);
 	/* ... handler node event */
-	(void) nsu_getmonotonic_ms(&jsctx->exec_start_time);
+	dukky_reset_start_time(ctx);
 	if (duk_pcall_method(ctx, 1) != 0) {
 		/* Failed to run the method */
 		/* ... err */
@@ -1161,7 +1288,7 @@ handle_extras:
 		/* ... copy handler callback node */
 		dukky_push_event(ctx, evt);
 		/* ... copy handler callback node event */
-		(void) nsu_getmonotonic_ms(&jsctx->exec_start_time);
+		dukky_reset_start_time(ctx);
 		if (duk_pcall_method(ctx, 1) != 0) {
 			/* Failed to run the method */
 			/* ... copy handler err */
@@ -1333,9 +1460,9 @@ void dukky_shuffle_array(duk_context *ctx, duk_uarridx_t idx)
 }
 
 
-void js_handle_new_element(jscontext *ctx, struct dom_element *node)
+void js_handle_new_element(jsthread *thread, struct dom_element *node)
 {
-	assert(ctx);
+	assert(thread);
 	assert(node);
 	dom_namednodemap *map;
 	dom_exception exc;
@@ -1357,6 +1484,8 @@ void js_handle_new_element(jscontext *ctx, struct dom_element *node)
 	exc = dom_node_get_attributes(node, &map);
 	if (exc != DOM_NO_ERR) return;
 	if (map == NULL) return;
+
+	dukky_enter_thread(thread);
 
 	exc = dom_namednodemap_get_length(map, &siz);
 	if (exc != DOM_NO_ERR) goto out;
@@ -1407,11 +1536,14 @@ out:
 		dom_node_unref(attr);
 
 	dom_namednodemap_unref(map);
+
+	dukky_leave_thread(thread);
 }
 
-void js_event_cleanup(jscontext *ctx, struct dom_event *evt)
+void js_event_cleanup(jsthread *thread, struct dom_event *evt)
 {
-	assert(ctx);
+	assert(thread);
+	dukky_enter_thread(thread);
 	/* ... */
 	duk_get_global_string(CTX, EVENT_MAGIC);
 	/* ... EVENT_MAP */
@@ -1421,9 +1553,10 @@ void js_event_cleanup(jscontext *ctx, struct dom_event *evt)
 	/* ... EVENT_MAP */
 	duk_pop(CTX);
 	/* ... */
+	dukky_leave_thread(thread);
 }
 
-bool js_fire_event(jscontext *ctx, const char *type, struct dom_document *doc, struct dom_node *target)
+bool js_fire_event(jsthread *thread, const char *type, struct dom_document *doc, struct dom_node *target)
 {
 	dom_exception exc;
 	dom_event *evt;
@@ -1459,6 +1592,7 @@ bool js_fire_event(jscontext *ctx, const char *type, struct dom_document *doc, s
 		dom_event_unref(evt);
 		return true;
 	}
+	dukky_enter_thread(thread);
 	/* ... */
 	duk_get_global_string(CTX, HANDLER_MAGIC);
 	/* ... handlers */
@@ -1475,6 +1609,7 @@ bool js_fire_event(jscontext *ctx, const char *type, struct dom_document *doc, s
 		exc = dom_html_document_get_body(doc, &body);
 		if (exc != DOM_NO_ERR) {
 			dom_event_unref(evt);
+			dukky_leave_thread(thread);
 			return true;
 		}
 		dukky_push_node(CTX, (struct dom_node *)body);
@@ -1485,6 +1620,7 @@ bool js_fire_event(jscontext *ctx, const char *type, struct dom_document *doc, s
 			dom_node_unref(body);
 			/* ... handlers */
 			duk_pop(CTX);
+			dukky_leave_thread(thread);
 			return true;
 		}
 		/* Unref the body, we don't need it any more */
@@ -1501,7 +1637,7 @@ bool js_fire_event(jscontext *ctx, const char *type, struct dom_document *doc, s
 	/* ... handler Window */
 	dukky_push_event(CTX, evt);
 	/* ... handler Window event */
-	(void) nsu_getmonotonic_ms(&ctx->exec_start_time);
+	dukky_reset_start_time(CTX);
 	if (duk_pcall_method(CTX, 1) != 0) {
 		/* Failed to run the handler */
 		/* ... err */
@@ -1524,14 +1660,16 @@ bool js_fire_event(jscontext *ctx, const char *type, struct dom_document *doc, s
 
 		duk_pop_n(CTX, 6);
 		/* ... */
-		js_event_cleanup(ctx, evt);
+		js_event_cleanup(thread, evt);
 		dom_event_unref(evt);
+		dukky_leave_thread(thread);
 		return true;
 	}
 	/* ... result */
 	duk_pop(CTX);
 	/* ... */
-	js_event_cleanup(ctx, evt);
+	js_event_cleanup(thread, evt);
 	dom_event_unref(evt);
+	dukky_leave_thread(thread);
 	return true;
 }

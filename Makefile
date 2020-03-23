@@ -105,11 +105,11 @@ endif
 
 # Default target is GTK backend
 ifeq ($(TARGET),)
-  TARGET := gtk
+  TARGET := gtk3
 endif
 
 # valid values for the TARGET
-VLDTARGET := riscos gtk gtk3 beos amiga amigaos3 framebuffer windows atari monkey
+VLDTARGET := riscos gtk2 gtk3 beos amiga amigaos3 framebuffer windows atari monkey
 
 # Check for valid TARGET
 ifeq ($(filter $(VLDTARGET),$(TARGET)),)
@@ -301,14 +301,10 @@ else
                   override NETSURF_GTK_MAJOR := 3
                   SUBTARGET = $(NETSURF_GTK_MAJOR)
                 else
-	          ifeq ($(TARGET),gtk)
-                    ifeq ($(origin NETSURF_GTK_MAJOR),undefined)
-                      override NETSURF_GTK_MAJOR := 2
-                    else
-                      ifneq ($(NETSURF_GTK_MAJOR),2)
-                        SUBTARGET = $(NETSURF_GTK_MAJOR)
-                      endif
-                    endif
+	          ifeq ($(TARGET),gtk2)
+                    override TARGET := gtk
+                    override NETSURF_GTK_MAJOR := 2
+                    SUBTARGET = $(NETSURF_GTK_MAJOR)
                   endif
                 endif
               endif
@@ -528,7 +524,6 @@ $(eval $(call feature_switch,DUKTAPE,Javascript (Duktape),,,,,))
 $(eval $(call pkg_config_find_and_add,libcss,CSS))
 $(eval $(call pkg_config_find_and_add,libdom,DOM))
 $(eval $(call pkg_config_find_and_add,libnsutils,nsutils))
-$(eval $(call pkg_config_find_and_add,libutf8proc,utf8proc))
 
 # Common libraries without pkg-config support
 LDFLAGS += -lz
@@ -554,6 +549,7 @@ else
 endif
 $(eval $(call pkg_config_find_and_add_enabled,OPENSSL,openssl,OpenSSL))
 
+$(eval $(call pkg_config_find_and_add_enabled,UTF8PROC,libutf8proc,utf8))
 $(eval $(call pkg_config_find_and_add_enabled,WEBP,libwebp,WEBP))
 $(eval $(call pkg_config_find_and_add_enabled,PNG,libpng,PNG))
 $(eval $(call pkg_config_find_and_add_enabled,BMP,libnsbmp,BMP))

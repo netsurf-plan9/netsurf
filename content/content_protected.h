@@ -52,9 +52,9 @@ struct content_handler {
 	void (*reformat)(struct content *c, int width, int height);
 	void (*destroy)(struct content *c);
 	void (*stop)(struct content *c);
-	void (*mouse_track)(struct content *c, struct browser_window *bw,
+	nserror (*mouse_track)(struct content *c, struct browser_window *bw,
 			browser_mouse_state mouse, int x, int y);
-	void (*mouse_action)(struct content *c, struct browser_window *bw,
+	nserror (*mouse_action)(struct content *c, struct browser_window *bw,
 			browser_mouse_state mouse, int x, int y);
 	bool (*keypress)(struct content *c, uint32_t key);
 	bool (*redraw)(struct content *c, struct content_redraw_data *data,
@@ -83,6 +83,7 @@ struct content_handler {
 	void (*add_user)(struct content *c);
 	void (*remove_user)(struct content *c);
 	bool (*exec)(struct content *c, const char *src, size_t srclen);
+	bool (*saw_insecure_objects)(struct content *c);
 
         /** handler dependant content sensitive internal data interface. */
 	void * (*get_internal)(const struct content *c, void *context);
@@ -174,9 +175,13 @@ void content_set_status(struct content *c, const char *status_message);
 void content_broadcast(struct content *c, content_msg msg,
 		const union content_msg_data *data);
 /**
- * Send an errorcode message to all users.
+ * Send an error message to all users.
+ *
+ * \param c The content whose users should be informed of an error
+ * \param errorcode The nserror code to send
+ * \param msg The error message to send alongside
  */
-void content_broadcast_errorcode(struct content *c, nserror errorcode);
+void content_broadcast_error(struct content *c, nserror errorcode, const char *msg);
 
 void content_add_error(struct content *c, const char *token,
 		unsigned int line);

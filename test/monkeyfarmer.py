@@ -32,6 +32,44 @@ import socket
 import subprocess
 import time
 import errno
+import sys
+
+class StderrEcho(asyncore.dispatcher):
+    def __init__(self, sockend):
+        asyncore.dispatcher.__init__(self, sock=sockend)
+        self.incoming = b""
+
+    def handle_connect(self):
+        pass
+
+    def handle_close(self):
+        # the pipe to the monkey process has closed
+        self.close()
+
+    def handle_read(self):
+        try:
+            got = self.recv(8192)
+            if not got:
+                return
+        except socket.error as error:
+            if error.errno == errno.EAGAIN or error.errno == errno.EWOULDBLOCK:
+                return
+            else:
+                raise
+
+        self.incoming += got
+        if b"\n" in self.incoming:
+            lines = self.incoming.split(b"\n")
+            self.incoming = lines.pop()
+            for line in lines:
+                try:
+                    line = line.decode('utf-8')
+                except UnicodeDecodeError:
+                    print("WARNING: Unicode decode error")
+                    line = line.decode('utf-8', 'replace')
+
+                sys.stderr.write("{}\n".format(line))
+
 
 class MonkeyFarmer(asyncore.dispatcher):
 
@@ -42,6 +80,10 @@ class MonkeyFarmer(asyncore.dispatcher):
 
         asyncore.dispatcher.__init__(self, sock=mine)
 
+        (mine2, monkeyserr) = socket.socketpair()
+
+        self._errwrapper = StderrEcho(mine2)
+
         if wrapper is not None:
             new_cmd = list(wrapper)
             new_cmd.extend(monkey_cmd)
@@ -51,9 +93,11 @@ class MonkeyFarmer(asyncore.dispatcher):
             monkey_cmd,
             stdin=monkeys,
             stdout=monkeys,
-            close_fds=[mine])
+            stderr=monkeyserr,
+            close_fds=[mine, mine2])
 
         monkeys.close()
+        monkeyserr.close()
 
         self.buffer = b""
         self.incoming = b""
@@ -81,8 +125,11 @@ class MonkeyFarmer(asyncore.dispatcher):
                 if self.monkey.poll() is None:
                     self.monkey.terminate()
                     self.monkey.wait()
-                self.lines.insert(0, "GENERIC EXIT {}".format(
+                print("Handling an exit {}".format(self.monkey.returncode))
+                print("The following are present in the queue: {}".format(self.lines))
+                self.lines.append("GENERIC EXIT {}".format(
                     self.monkey.returncode).encode('utf-8'))
+                print("The queue is now: {}".format(self.lines))
                 return
         except socket.error as error:
             if error.errno == errno.EAGAIN or error.errno == errno.EWOULDBLOCK:
@@ -94,7 +141,7 @@ class MonkeyFarmer(asyncore.dispatcher):
         if b"\n" in self.incoming:
             lines = self.incoming.split(b"\n")
             self.incoming = lines.pop()
-            self.lines = lines
+            self.lines.extend(lines)
 
     def writable(self):
         return len(self.buffer) > 0
@@ -112,7 +159,11 @@ class MonkeyFarmer(asyncore.dispatcher):
         self.buffer += cmd.encode('utf-8')
 
     def monkey_says(self, line):
-        line = line.decode('utf-8')
+        try:
+            line = line.decode('utf-8')
+        except UnicodeDecodeError:
+            print("WARNING: Unicode decode error")
+            line = line.decode('utf-8', 'replace')
         if not self.quiet:
             print("<<< {}".format(line))
         self.discussion.append(("<", line))
@@ -145,10 +196,10 @@ class MonkeyFarmer(asyncore.dispatcher):
                 asyncore.loop(timeout=next_event - now, count=1)
             else:
                 asyncore.loop(count=1)
-            if len(self.lines) > 0:
+            while len(self.lines) > 0:
                 self.monkey_says(self.lines.pop(0))
-            if once:
-                break
+                if once or self.deadmonkey:
+                    return
 
 
 class Browser:
@@ -403,6 +454,7 @@ class BrowserWindow:
         self.plotted = []
         self.plotting = False
         self.log_entries = []
+        self.page_info_state = "UNKNOWN"
 
     def kill(self):
         self.browser.farmer.tell_monkey("WINDOW DESTROY %s" % self.winid)
@@ -412,6 +464,10 @@ class BrowserWindow:
         while self.alive:
             self.browser.farmer.loop(once=True)
             if (time.time() - now) > timeout:
+                print("*** Timed out waiting for window to be destroyed")
+                print("*** URL was: {}".format(self.url))
+                print("*** Title was: {}".format(self.title))
+                print("*** Status was: {}".format(self.status))
                 break
 
     def go(self, url, referer=None):
@@ -426,8 +482,13 @@ class BrowserWindow:
     def stop(self):
         self.browser.farmer.tell_monkey("WINDOW STOP %s" % (self.winid))
 
-    def reload(self):
-        self.browser.farmer.tell_monkey("WINDOW RELOAD %s" % self.winid)
+    def reload(self, all=False):
+        all = " ALL" if all else ""
+        self.browser.farmer.tell_monkey("WINDOW RELOAD %s%s" % (self.winid, all))
+        self.wait_start_loading()
+
+    def click(self, x, y, button="LEFT", kind="SINGLE"):
+        self.browser.farmer.tell_monkey("WINDOW CLICK WIN %s X %s Y %s BUTTON %s KIND %s" % (self.winid, x, y, button, kind))
 
     def js_exec(self, src):
         self.browser.farmer.tell_monkey("WINDOW EXEC WIN %s %s" % (self.winid, src))
@@ -510,6 +571,9 @@ class BrowserWindow:
 
     def handle_window_CONSOLE_LOG(self, _src, src, folding, level, *msg):
         self.log_entries.append((src, folding == "FOLDABLE", level, " ".join(msg)))
+
+    def handle_window_PAGE_STATUS(self, _status, status):
+        self.page_info_state = status
 
     def load_page(self, url=None, referer=None):
         if url is not None:

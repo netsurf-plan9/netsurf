@@ -22,14 +22,10 @@
  * Browser window private structure.
  */
 
-#ifndef _NETSURF_DESKTOP_BROWSER_PRIVATE_H_
-#define _NETSURF_DESKTOP_BROWSER_PRIVATE_H_
+#ifndef NETSURF_DESKTOP_BROWSER_PRIVATE_H_
+#define NETSURF_DESKTOP_BROWSER_PRIVATE_H_
 
-#include <libwapcaplet/libwapcaplet.h>
-
-#include "netsurf/types.h"
-#include "netsurf/browser_window.h"
-
+#include "content/fetch.h"
 #include "desktop/frame_types.h"
 
 struct box;
@@ -81,6 +77,20 @@ struct history {
 };
 
 /**
+ * The parameters for a fetch.
+ */
+struct browser_fetch_parameters {
+	struct nsurl *url;                           /**< The URL to fetch */
+	struct nsurl *referrer;			     /**< Optional refererer */
+	enum browser_window_nav_flags flags;	     /**< Navigation flags */
+	char *post_urlenc;			     /**< URL encoded post data */
+	struct fetch_multipart_data *post_multipart; /**< Multipart post data */
+	char *parent_charset;			     /**< Optional parent character set */
+	bool parent_quirks;			     /**< Optional parent quirks */
+};
+
+
+/**
  * Browser window data.
  */
 struct browser_window {
@@ -89,11 +99,32 @@ struct browser_window {
 	 *  READY or DONE status or NULL for no content.
 	 */
 	struct hlcache_handle *current_content;
+
+	/**
+	 * The fetch parameters for the current content
+	 */
+	struct browser_fetch_parameters current_parameters;
+
+	/**
+	 * The certificate chain for the current content
+	 */
+	struct cert_chain *current_cert_chain;
+
 	/**
 	 * Content handle of page in process of being loaded or NULL
 	 * if no page is being loaded.
 	 */
 	struct hlcache_handle *loading_content;
+
+	/**
+	 * The fetch parameters for the loading content
+	 */
+	struct browser_fetch_parameters loading_parameters;
+
+	/**
+	 * The certificate chain for the loading content
+	 */
+	struct cert_chain *loading_cert_chain;
 
 	/**
 	 * Favicon
@@ -129,6 +160,8 @@ struct browser_window {
 	bool throbbing;
 	/** Add loading_content to the window history when it loads. */
 	bool history_add;
+	/** Internal navigation, do not update URL etc */
+	bool internal_nav;
 
 	/** Fragment identifier for current_content. */
 	lwc_string *frag_id;
@@ -230,7 +263,7 @@ struct browser_window {
 	bool can_edit;
 
 	/** current javascript context */
-	struct jscontext *jsctx;
+	struct jsheap *jsheap;
 
 	/** cache of the currently displayed status text. */
 	struct {
@@ -250,7 +283,8 @@ struct browser_window {
  * \param existing  The existing window if cloning, else NULL
  */
 nserror browser_window_initialise_common(enum browser_window_create_flags flags,
-		struct browser_window *bw, struct browser_window *existing);
+		struct browser_window *bw,
+		const struct browser_window *existing);
 
 
 /**
@@ -259,10 +293,10 @@ nserror browser_window_initialise_common(enum browser_window_create_flags flags,
  * \param  bw      The browser window to get dimensions of
  * \param  width   Updated to the browser window viewport width
  * \param  height  Updated to the browser window viewport height
- * \param  scaled  Whether we want the height with scale applied
+ * \return NSERROR_OK and width and height updated otherwise error code
  */
-void browser_window_get_dimensions(struct browser_window *bw,
-		int *width, int *height, bool scaled);
+nserror browser_window_get_dimensions(struct browser_window *bw,
+		int *width, int *height);
 
 
 /**
@@ -272,6 +306,15 @@ void browser_window_get_dimensions(struct browser_window *bw,
  * \param bw browser_window to update the extent of
  */
 void browser_window_update_extent(struct browser_window *bw);
+
+
+/**
+ * update an area of a browser window.
+ *
+ * \param bw The browser window to update.
+ * \param rect The area to redraw
+ */
+void browser_window_update_box(struct browser_window *bw, struct rect *rect);
 
 
 /**
@@ -289,7 +332,8 @@ void browser_window_set_status(struct browser_window *bw, const char *text);
  * \param  bw     browser window to set the type of the current drag for
  * \return  root browser window
  */
-struct browser_window * browser_window_get_root(struct browser_window *bw);
+struct browser_window * browser_window_get_root(
+		struct browser_window *bw);
 
 
 /**
@@ -354,5 +398,16 @@ nserror browser_window_history_get_scroll(struct browser_window *bw,
  */
 void browser_window_history_destroy(struct browser_window *bw);
 
+/**
+ * Type for handling query responses short-term
+ */
+typedef nserror (*browser_window_query_callback)(bool proceed, void *pw);
+
+/**
+ * Navigate a browser window to the current parameters
+ *
+ * \param bw The browser window to cause to navigate
+ */
+nserror browser_window__reload_current_parameters(struct browser_window *bw);
 
 #endif

@@ -36,6 +36,7 @@
 #include "netsurf/mouse.h"
 #include "netsurf/form.h"
 #include "netsurf/window.h"
+#include "netsurf/browser_window.h"
 #include "netsurf/keypress.h"
 #include "html/box.h"
 #include "html/html_internal.h"
@@ -92,13 +93,14 @@ void browser_window_remove_caret(struct browser_window *bw, bool only_hide)
 	root_bw = browser_window_get_root(bw);
 	assert(root_bw != NULL);
 
-	if (only_hide)
+	if (only_hide) {
 		root_bw->can_edit = true;
-	else
+	} else {
 		root_bw->can_edit = false;
+	}
 
 	if (root_bw->window) {
-		guit->window->remove_caret(root_bw->window);
+		guit->window->event(root_bw->window, GW_EVENT_REMOVE_CARET);
 	}
 }
 

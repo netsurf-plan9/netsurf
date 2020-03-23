@@ -84,7 +84,7 @@ static nserror nsgif_create_gif_data(nsgif_content *c)
 	/* Initialise our data structure */
 	c->gif = calloc(sizeof(gif_animation), 1);
 	if (c->gif == NULL) {
-		content_broadcast_errorcode(&c->base, NSERROR_NOMEM);
+		content_broadcast_error(&c->base, NSERROR_NOMEM, NULL);
 		return NSERROR_NOMEM;
 	}
 	gif_create(c->gif, &gif_bitmap_callbacks);
@@ -154,8 +154,10 @@ static void nsgif_animate(void *p)
 	/* Continue animating if we should */
 	if (gif->gif->loop_count >= 0) {
 		delay = gif->gif->frames[gif->current_frame].frame_delay;
-		if (delay < nsoption_int(minimum_gif_delay))
-			delay = nsoption_int(minimum_gif_delay);
+		if (delay <= 1) {
+			/* Assuming too fast to be intended, set default. */
+			delay = 10;
+		}
 		guit->misc->schedule(delay * 10, nsgif_animate, gif);
 	}
 
@@ -173,11 +175,9 @@ static void nsgif_animate(void *p)
 
 	/* redraw background (true) or plot on top (false) */
 	if (gif->current_frame > 0) {
-		data.redraw.full_redraw = 
-				gif->gif->frames[f - 1].redraw_required;
 		/* previous frame needed clearing: expand the redraw area to
 		 * cover it */
-		if (data.redraw.full_redraw) {
+		if (gif->gif->frames[f - 1].redraw_required) {
 			if (data.redraw.x >
 					(int)(gif->gif->frames[f - 1].redraw_x)) {
 				data.redraw.width += data.redraw.x -
@@ -207,27 +207,7 @@ static void nsgif_animate(void *p)
 					data.redraw.y +
 					gif->gif->frames[f - 1].redraw_height;
 		}
-	} else {
-		/* do advanced check */
-		if ((data.redraw.x == 0) && (data.redraw.y == 0) &&
-				(data.redraw.width == (int)(gif->gif->width)) &&
-				(data.redraw.height == (int)(gif->gif->height))) {
-			data.redraw.full_redraw = !gif->gif->frames[f].opaque;
-		} else {
-			data.redraw.full_redraw = true;
-			data.redraw.x = 0;
-			data.redraw.y = 0;
-			data.redraw.width = gif->gif->width;
-			data.redraw.height = gif->gif->height;
-		}
 	}
-
-	/* other data */
-	data.redraw.object = (struct content *) gif;
-	data.redraw.object_x = 0;
-	data.redraw.object_y = 0;
-	data.redraw.object_width = gif->base.width;
-	data.redraw.object_height = gif->base.height;
 
 	content_broadcast(&gif->base, CONTENT_MSG_REDRAW, &data);
 }
@@ -259,7 +239,7 @@ static bool nsgif_convert(struct content *c)
 				error = NSERROR_NOMEM;
 				break;
 			}
-			content_broadcast_errorcode(c, error);
+			content_broadcast_error(c, error, NULL);
 			return false;
 		}
 	} while (res != GIF_OK && res != GIF_INSUFFICIENT_FRAME_DATA);
@@ -267,7 +247,7 @@ static bool nsgif_convert(struct content *c)
 	/* Abort on bad GIFs */
 	if ((gif->gif->frame_count_partial == 0) || (gif->gif->width == 0) ||
 			(gif->gif->height == 0)) {
-		content_broadcast_errorcode(c, NSERROR_GIF_ERROR);
+		content_broadcast_error(c, NSERROR_GIF_ERROR, NULL);
 		return false;
 	}
 

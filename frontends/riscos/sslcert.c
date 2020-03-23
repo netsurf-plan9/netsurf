@@ -25,6 +25,7 @@
 #include <oslib/wimp.h>
 
 #include "utils/log.h"
+#include "utils/nsurl.h"
 #include "netsurf/plotters.h"
 #include "desktop/sslcert_viewer.h"
 
@@ -311,8 +312,7 @@ cert_mouse(struct ro_corewindow *ro_cw,
 /* exported interface documented in riscos/sslcert.h */
 nserror
 gui_cert_verify(nsurl *url,
-		const struct ssl_cert_info *certs,
-		unsigned long num,
+		const struct cert_chain *chain,
 		nserror (*cb)(bool proceed, void *pw),
 		void *cbpw)
 {
@@ -326,7 +326,7 @@ gui_cert_verify(nsurl *url,
 	}
 
 	/* initialise certificate viewing interface */
-	res = sslcert_viewer_create_session_data(num, url, cb, cbpw, certs,
+	res = sslcert_viewer_create_session_data(url, cb, cbpw, chain,
 						 &ncwin->ssl_data);
 	if (res != NSERROR_OK) {
 		free(ncwin);

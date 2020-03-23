@@ -33,19 +33,15 @@
 #include "netsurf/layout.h"
 #include "netsurf/content.h"
 #include "netsurf/window.h"
+#include "netsurf/browser_window.h"
 #include "content/hlcache.h"
 #include "content/urldb.h"
 #include "netsurf/bitmap.h"
+#include "utils/corestrings.h"
 
 #include "desktop/gui_internal.h"
-#include "desktop/browser_history.h"
 #include "desktop/browser_private.h"
-
-#define WIDTH 100
-#define HEIGHT 86
-#define RIGHT_MARGIN 50
-#define BOTTOM_MARGIN 30
-
+#include "desktop/browser_history.h"
 
 /**
  * Clone a history entry
@@ -106,8 +102,10 @@ browser_window_history__clone_entry(struct history *history,
 		unsigned char *bmdst_data;
 		size_t bmsize;
 
-		new_entry->page.bitmap = guit->bitmap->create(WIDTH, HEIGHT,
-						BITMAP_NEW | BITMAP_OPAQUE);
+		new_entry->page.bitmap = guit->bitmap->create(
+				LOCAL_HISTORY_WIDTH,
+				LOCAL_HISTORY_HEIGHT,
+				BITMAP_NEW | BITMAP_OPAQUE);
 
 		if (new_entry->page.bitmap != NULL) {
 			bmsrc_data = guit->bitmap->get_buffer(entry->page.bitmap);
@@ -201,26 +199,26 @@ static int browser_window_history__layout_subtree(struct history *history,
 	struct history_entry *child;
 	int y1 = y;
 
-	if (history->width < x + WIDTH)
-		history->width = x + WIDTH;
+	if (history->width < x + LOCAL_HISTORY_WIDTH)
+		history->width = x + LOCAL_HISTORY_WIDTH;
 
 	if (!entry->forward) {
 		entry->x = x;
 		entry->y = y;
-		return y + HEIGHT;
+		return y + LOCAL_HISTORY_HEIGHT;
 	}
 
 	/* layout child subtrees below each other */
 	for (child = entry->forward; child; child = child->next) {
 		y1 = browser_window_history__layout_subtree(history, child,
-				x + WIDTH + RIGHT_MARGIN, y1);
+				x + LOCAL_HISTORY_WIDTH + LOCAL_HISTORY_RIGHT_MARGIN, y1);
 		if (child->next)
-			y1 += BOTTOM_MARGIN;
+			y1 += LOCAL_HISTORY_BOTTOM_MARGIN;
 	}
 
 	/* place ourselves in the middle */
 	entry->x = x;
-	entry->y = (y + y1) / 2 - HEIGHT / 2;
+	entry->y = (y + y1) / 2 - LOCAL_HISTORY_HEIGHT / 2;
 
 	return y1;
 }
@@ -243,12 +241,13 @@ static void browser_window_history__layout(struct history *history)
 	if (history->start)
 		history->height = browser_window_history__layout_subtree(
 				history, history->start,
-				RIGHT_MARGIN / 2, BOTTOM_MARGIN / 2);
+				LOCAL_HISTORY_RIGHT_MARGIN / 2,
+				LOCAL_HISTORY_BOTTOM_MARGIN / 2);
 	else
 		history->height = 0;
 
-	history->width += RIGHT_MARGIN / 2;
-	history->height += BOTTOM_MARGIN / 2;
+	history->width += LOCAL_HISTORY_RIGHT_MARGIN / 2;
+	history->height += LOCAL_HISTORY_BOTTOM_MARGIN / 2;
 }
 
 
@@ -274,7 +273,8 @@ static bool browser_window_history__enumerate_entry(
 	const struct history_entry *child;
 
 	if (!cb(bw, entry->x, entry->y,
-			entry->x + WIDTH, entry->y + HEIGHT,
+			entry->x + LOCAL_HISTORY_WIDTH,
+			entry->y + LOCAL_HISTORY_HEIGHT,
 			entry, ud))
 		return false;
 
@@ -303,8 +303,8 @@ nserror browser_window_history_create(struct browser_window *bw)
 		return NSERROR_NOMEM;
 	}
 
-	history->width = RIGHT_MARGIN / 2;
-	history->height = BOTTOM_MARGIN / 2;
+	history->width = LOCAL_HISTORY_RIGHT_MARGIN / 2;
+	history->height = LOCAL_HISTORY_BOTTOM_MARGIN / 2;
 
 	bw->history = history;
 
@@ -385,7 +385,8 @@ browser_window_history_add(struct browser_window *bw,
 	NSLOG(netsurf, DEBUG,
 	      "Creating thumbnail for %s", nsurl_access(entry->page.url));
 
-	entry->page.bitmap = guit->bitmap->create(WIDTH, HEIGHT,
+	entry->page.bitmap = guit->bitmap->create(
+			LOCAL_HISTORY_WIDTH, LOCAL_HISTORY_HEIGHT,
 			BITMAP_NEW | BITMAP_CLEAR_MEMORY | BITMAP_OPAQUE);
 	if (entry->page.bitmap != NULL) {
 		ret = guit->bitmap->render(entry->page.bitmap, content);
@@ -456,11 +457,20 @@ nserror browser_window_history_update(struct browser_window *bw,
 
 	if (bw->window != NULL &&
 	    guit->window->get_scroll(bw->window, &sx, &sy)) {
+		int content_height = content_get_height(content);
+		int content_width = content_get_width(content);
+		/* clamp width and height values */
+		if (content_height < 1) {
+			content_height = 1;
+		}
+		if (content_width < 1) {
+			content_width = 1;
+		}
 		/* Successfully got scroll offsets, update the entry */
 		history->current->page.scroll_x = \
-			(float)sx / (float)content_get_width(content);
+			(float)sx / (float)content_width;
 		history->current->page.scroll_y = \
-			(float)sy / (float)content_get_height(content);
+			(float)sy / (float)content_height;
 		NSLOG(netsurf, INFO, "Updated scroll offsets to %g by %g",
 		      history->current->page.scroll_x,
 		      history->current->page.scroll_y);
@@ -510,6 +520,24 @@ void browser_window_history_destroy(struct browser_window *bw)
 /* exported interface documented in desktop/browser_history.h */
 nserror browser_window_history_back(struct browser_window *bw, bool new_window)
 {
+	if (bw != NULL && bw->internal_nav) {
+		/* All internal nav back operations ignore new_window */
+		if (bw->current_parameters.url != NULL) {
+			/* There are some internal parameters, restart from there */
+			return browser_window__reload_current_parameters(bw);
+		} else {
+			/* No internal parameters, just navigate to about:blank */
+			return browser_window_navigate(
+				bw,
+				corestring_nsurl_about_blank,
+				NULL, /* Referer */
+				BW_NAVIGATE_HISTORY,
+				NULL, /* Post */
+				NULL, /* Post */
+				NULL  /* parent fetch */);
+		}
+	}
+
 	if (!bw || !bw->history || !bw->history->current ||
 	    !bw->history->current->back) {
 		return NSERROR_BAD_PARAMETER;
@@ -627,7 +655,8 @@ void browser_window_history_enumerate_forward(const struct browser_window *bw,
 
 	e = bw->history->current->forward_pref;
 	for (; e != NULL; e = e->forward_pref) {
-		if (!cb(bw, e->x, e->y, e->x + WIDTH, e->y + HEIGHT,
+		if (!cb(bw, e->x, e->y, e->x + LOCAL_HISTORY_WIDTH,
+				e->y + LOCAL_HISTORY_HEIGHT,
 				e, user_data))
 			break;
 	}
@@ -644,7 +673,8 @@ void browser_window_history_enumerate_back(const struct browser_window *bw,
 		return;
 
 	for (e = bw->history->current->back; e != NULL; e = e->back) {
-		if (!cb(bw, e->x, e->y, e->x + WIDTH, e->y + HEIGHT,
+		if (!cb(bw, e->x, e->y, e->x + LOCAL_HISTORY_WIDTH,
+				e->y + LOCAL_HISTORY_HEIGHT,
 				e, user_data))
 			break;
 	}

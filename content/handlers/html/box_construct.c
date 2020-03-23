@@ -163,9 +163,11 @@ static const struct element_entry element_table[] = {
  * \return    netsurf error code indicating status of call
  */
 
-nserror dom_to_box(dom_node *n, html_content *c, box_construct_complete_cb cb)
+nserror dom_to_box(dom_node *n, html_content *c, box_construct_complete_cb cb, void **box_conversion_context)
 {
 	struct box_construct_ctx *ctx;
+
+	assert(box_conversion_context != NULL);
 
 	if (c->bctx == NULL) {
 		/* create a context allocation for this box tree */
@@ -186,8 +188,27 @@ nserror dom_to_box(dom_node *n, html_content *c, box_construct_complete_cb cb)
 	ctx->cb = cb;
 	ctx->bctx = c->bctx;
 
+	*box_conversion_context = ctx;
+
 	return guit->misc->schedule(0, (void *)convert_xml_to_box, ctx);
 }
+
+nserror cancel_dom_to_box(void *box_conversion_context)
+{
+	struct box_construct_ctx *ctx = box_conversion_context;
+	nserror err;
+
+	err = guit->misc->schedule(-1, (void *)convert_xml_to_box, ctx);
+	if (err != NSERROR_OK) {
+		return err;
+	}
+
+	dom_node_unref(ctx->n);
+	free(ctx);
+
+	return NSERROR_OK;
+}
+
 
 /* mapping from CSS display to box type
  * this table must be in sync with libcss' css_display enum */
@@ -211,7 +232,8 @@ static const box_type box_map[] = {
 	BOX_NONE /*CSS_DISPLAY_NONE*/
 };
 
-static inline struct box *box_for_node(dom_node *n)
+/* Exported function, see box.h */
+struct box *box_for_node(dom_node *n)
 {
 	struct box *box = NULL;
 	dom_exception err;
@@ -1827,9 +1849,11 @@ bool box_object(BOX_SPECIAL_PARAMS)
 				/* The first non-param child is the start of
 				 * the alt html. Therefore, we should break
 				 * out of this loop. */
+				dom_string_unref(name);
 				dom_node_unref(c);
 				break;
 			}
+			dom_string_unref(name);
 
 			param = talloc(params, struct object_param);
 			if (param == NULL) {
@@ -2229,8 +2253,13 @@ bool box_create_frameset(struct content_html_frames *f, dom_node *n,
 				dom_string_unref(s);
 			}
 
-			dom_element_has_attribute(c, corestring_dom_noresize,
-					&frame->no_resize);
+			if (dom_element_has_attribute(c, corestring_dom_noresize,
+						      &frame->no_resize) != DOM_NO_ERR) {
+				/* If we can't read the attribute for some reason,
+				 * assume we didn't have it.
+				 */
+				frame->no_resize = false;
+			}
 
 			err = dom_element_get_attribute(c, corestring_dom_frameborder,
 					&s);
@@ -2849,7 +2878,10 @@ bool box_select_add_option(struct form_control *control, dom_node *n)
 	if (value == NULL)
 		goto no_memory;
 
-	dom_element_has_attribute(n, corestring_dom_selected, &selected);
+	if (dom_element_has_attribute(n, corestring_dom_selected, &selected) != DOM_NO_ERR) {
+		/* Assume not selected if we can't read the attribute presence */
+		selected = false;
+	}
 
 	/* replace spaces/TABs with hard spaces to prevent line wrapping */
 	text_nowrap = cnv_space2nbsp(text);
@@ -2968,17 +3000,20 @@ bool box_embed(BOX_SPECIAL_PARAMS)
 
 		err = dom_attr_get_name(attr, &name);
 		if (err != DOM_NO_ERR) {
+			dom_node_unref(attr);
 			dom_namednodemap_unref(attrs);
 			return false;
 		}
 
 		if (dom_string_caseless_lwc_isequal(name, corestring_lwc_src)) {
+			dom_node_unref(attr);
 			dom_string_unref(name);
 			continue;
 		}
 
 		err = dom_attr_get_value(attr, &value);
 		if (err != DOM_NO_ERR) {
+			dom_node_unref(attr);
 			dom_string_unref(name);
 			dom_namednodemap_unref(attrs);
 			return false;
@@ -2986,6 +3021,7 @@ bool box_embed(BOX_SPECIAL_PARAMS)
 
 		param = talloc(content->bctx, struct object_param);
 		if (param == NULL) {
+			dom_node_unref(attr);
 			dom_string_unref(value);
 			dom_string_unref(name);
 			dom_namednodemap_unref(attrs);
@@ -3000,6 +3036,7 @@ bool box_embed(BOX_SPECIAL_PARAMS)
 
 		dom_string_unref(value);
 		dom_string_unref(name);
+		dom_node_unref(attr);
 
 		if (param->name == NULL || param->value == NULL ||
 				param->valuetype == NULL) {

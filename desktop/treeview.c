@@ -22,13 +22,15 @@
  * Treeview handling implementation.
  */
 
+#include "utils/config.h"
+
+#define _GNU_SOURCE /* strcasestr needs this for string.h */
 #include <string.h>
 
 #include "utils/utils.h"
 #include "utils/log.h"
 #include "utils/nsurl.h"
 #include "utils/nsoption.h"
-#include "utils/config.h"
 #include "netsurf/bitmap.h"
 #include "netsurf/content.h"
 #include "netsurf/plotters.h"
@@ -39,11 +41,12 @@
 #include "content/hlcache.h"
 #include "css/utils.h"
 
-#include "desktop/system_colour.h"
 #include "desktop/knockout.h"
 #include "desktop/textarea.h"
 #include "desktop/treeview.h"
+#include "desktop/cw_helper.h"
 #include "desktop/gui_internal.h"
+#include "desktop/system_colour.h"
 
 /**
  * The maximum horizontal size a treeview can possibly be.
@@ -404,9 +407,7 @@ static inline void treeview__cw_scroll_top(
 		.y1 = tree_g.line_height,
 	};
 
-	if (tree->cw_t != NULL) {
-		tree->cw_t->scroll_visible(tree->cw_h, &r);
-	}
+	cw_helper_scroll_visible(tree->cw_t, tree->cw_h, &r);
 }
 
 
@@ -561,6 +562,30 @@ static int treeview_node_y(
 	}
 
 	return y;
+}
+
+
+/**
+ * Corewindow callback_wrapper: Scroll to make node visible
+ *
+ * \param[in] tree  The treeview to scroll.
+ * \param[in] node  The treeview node to scroll to visibility.
+ */
+static inline void treeview__cw_scroll_to_node(
+		const struct treeview *tree,
+		const struct treeview_node *node)
+{
+	struct rect r = {
+		.x0 = 0,
+		.y0 = treeview_node_y(tree, node),
+		.x1 = 1,
+		.y1 = ((node->type == TREE_NODE_ENTRY) ?
+		       node->height : tree_g.line_height),
+	};
+
+	r.y1 += r.y0; /* Apply the Y offset to the second Y coordinate */
+
+	cw_helper_scroll_visible(tree->cw_t, tree->cw_h, &r);
 }
 
 
@@ -1965,7 +1990,7 @@ treeview_create(treeview **tree,
 
 	(*tree)->fields = malloc(sizeof(struct treeview_field) * n_fields);
 	if ((*tree)->fields == NULL) {
-		free(tree);
+		free(*tree);
 		return NSERROR_NOMEM;
 	}
 
@@ -2472,7 +2497,7 @@ static void treeview_redraw_tree(
 		const int x,
 		const int y,
 		int *render_y_in_out,
-		struct rect *r,
+		const struct rect *r,
 		struct content_redraw_data *data,
 		const struct redraw_context *ctx)
 {
@@ -2691,7 +2716,7 @@ static void treeview_redraw_search(
 		const int x,
 		const int y,
 		int *render_y_in_out,
-		struct rect *r,
+		const struct rect *r,
 		struct content_redraw_data *data,
 		const struct redraw_context *ctx)
 {
@@ -3805,12 +3830,15 @@ treeview_keyboard_navigation(treeview *tree, uint32_t key, struct rect *rect)
 	int search_height = treeview__get_search_height(tree);
 	int h = treeview__get_display_height(tree) + search_height;
 	bool redraw = false;
+	struct treeview_node *scroll_to_node = NULL;
 
 	/* Fill out the nav. state struct, by examining the current selection
 	 * state */
 	treeview_walk_internal(tree, tree->root,
 			TREEVIEW_WALK_MODE_DISPLAY, NULL,
 			treeview_node_nav_cb, &ns);
+
+	scroll_to_node = ns.curr;
 
 	if (tree->search.search == false) {
 		if (ns.next == NULL)
@@ -3832,10 +3860,12 @@ treeview_keyboard_navigation(treeview *tree, uint32_t key, struct rect *rect)
 		    ns.curr->parent->type != TREE_NODE_ROOT) {
 			/* Step to parent */
 			ns.curr->parent->flags |= TV_NFLAGS_SELECTED;
+			scroll_to_node = ns.curr->parent;
 
 		} else if (ns.curr != NULL && tree->root->children != NULL) {
 			/* Select first node in tree */
 			tree->root->children->flags |= TV_NFLAGS_SELECTED;
+			scroll_to_node = tree->root->children;
 		}
 		break;
 
@@ -3848,6 +3878,7 @@ treeview_keyboard_navigation(treeview *tree, uint32_t key, struct rect *rect)
 					/* Step to first child */
 					ns.curr->children->flags |=
 						TV_NFLAGS_SELECTED;
+					scroll_to_node = ns.curr->children;
 				} else {
 					/* Retain current node selection */
 					ns.curr->flags |= TV_NFLAGS_SELECTED;
@@ -3869,6 +3900,7 @@ treeview_keyboard_navigation(treeview *tree, uint32_t key, struct rect *rect)
 		if (ns.prev != NULL) {
 			/* Step to previous node */
 			ns.prev->flags |= TV_NFLAGS_SELECTED;
+			scroll_to_node = ns.prev;
 		}
 		break;
 
@@ -3876,12 +3908,15 @@ treeview_keyboard_navigation(treeview *tree, uint32_t key, struct rect *rect)
 		if (ns.next != NULL) {
 			/* Step to next node */
 			ns.next->flags |= TV_NFLAGS_SELECTED;
+			scroll_to_node = ns.next;
 		}
 		break;
 
 	default:
 		break;
 	}
+
+	treeview__cw_scroll_to_node(tree, scroll_to_node);
 
 	/* TODO: Deal with redraw area properly */
 	rect->x0 = 0;
@@ -4804,6 +4839,29 @@ int treeview_get_height(treeview *tree)
 	return height + search_height;
 }
 
+/* Exported interface, documented in treeview.h */
+nserror treeview_set_search_string(
+		treeview *tree,
+		const char *string)
+{
+	if (!(tree->flags & TREEVIEW_SEARCHABLE)) {
+		return NSERROR_BAD_PARAMETER;
+	}
+
+	if (string == NULL || strlen(string) == 0) {
+		tree->search.active = false;
+		tree->search.search = false;
+		return treeview__search(tree, "", 0);
+	}
+
+	tree->search.active = true;
+	tree->search.search = true;
+	if (!textarea_set_text(tree->search.textarea, string)) {
+		return NSERROR_UNKNOWN;
+	}
+
+	return NSERROR_OK;
+}
 
 /**
  * Initialise the plot styles from CSS system colour values.

@@ -29,6 +29,7 @@
 #include "utils/corestrings.h"
 #include "utils/http.h"
 #include "utils/utils.h"
+#include "utils/log.h"
 #include "desktop/download.h"
 #include "netsurf/download.h"
 #include "desktop/gui_internal.h"
@@ -41,7 +42,7 @@ struct download_context {
 	struct gui_window *parent;		/**< Parent window */
 
 	lwc_string *mime_type;			/**< MIME type of download */
-	unsigned long total_length;		/**< Length of data, in bytes */
+	unsigned long long int total_length;	/**< Length of data, in bytes */
 	char *filename;				/**< Suggested filename */
 
 	struct gui_download_window *window;	/**< GUI download window */
@@ -93,7 +94,7 @@ static nserror download_context_process_headers(download_context *ctx)
 {
 	const char *http_header;
 	http_content_type *content_type;
-	unsigned long length;
+	unsigned long long int length;
 	nserror error;
 
 	/* Retrieve and parse Content-Type */
@@ -107,10 +108,11 @@ static nserror download_context_process_headers(download_context *ctx)
 
 	/* Retrieve and parse Content-Length */
 	http_header = llcache_handle_get_header(ctx->llcache, "Content-Length");
-	if (http_header == NULL)
+	if (http_header == NULL) {
 		length = 0;
-	else
-		length = strtoul(http_header, NULL, 10);
+	} else {
+		length = strtoull(http_header, NULL, 10);
+	}
 
 	/* Retrieve and parse Content-Disposition */
 	http_header = llcache_handle_get_header(ctx->llcache, 
@@ -180,6 +182,9 @@ static nserror download_callback(llcache_handle *handle,
 	nserror error = NSERROR_OK;
 
 	switch (event->type) {
+	case LLCACHE_EVENT_GOT_CERTS:
+		/* Nominally not interested in these */
+		break;
 	case LLCACHE_EVENT_HAD_HEADERS:
 		error = download_context_process_headers(ctx);
 		if (error != NSERROR_OK) {
@@ -223,7 +228,7 @@ static nserror download_callback(llcache_handle *handle,
 
 	case LLCACHE_EVENT_ERROR:
 		if (ctx->window != NULL)
-			guit->download->error(ctx->window, event->data.msg);
+			guit->download->error(ctx->window, event->data.error.msg);
 		else
 			download_context_destroy(ctx);
 
@@ -295,7 +300,8 @@ const char *download_context_get_mime_type(const download_context *ctx)
 }
 
 /* See download.h for documentation */
-unsigned long download_context_get_total_length(const download_context *ctx)
+unsigned long long int
+download_context_get_total_length(const download_context *ctx)
 {
 	return ctx->total_length;
 }

@@ -44,6 +44,7 @@
 #include "netsurf/content.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/utf8.h"
+#include "netsurf/keypress.h"
 #include "netsurf/layout.h"
 #include "netsurf/misc.h"
 #include "content/hlcache.h"
@@ -57,6 +58,7 @@
 #include "html/html.h"
 #include "html/html_save.h"
 #include "html/html_internal.h"
+#include "html/interaction.h"
 #include "html/box.h"
 #include "html/form_internal.h"
 #include "html/imagemap.h"
@@ -76,9 +78,31 @@ static const char *html_types[] = {
 	"text/html"
 };
 
+/**
+ * Fire an event at the DOM
+ *
+ * Helper that swallows DOM errors.
+ *
+ * \param[in] event   the event to fire at the DOM
+ * \param[in] target  the event target
+ * \return true on success
+ */
+static bool fire_dom_event(dom_event *event, dom_node *target)
+{
+	dom_exception exc;
+	bool result;
+
+	exc = dom_event_target_dispatch_event(target, event, &result);
+	if (exc != DOM_NO_ERR) {
+		return false;
+	}
+
+	return result;
+}
+
 /* Exported interface, see html_internal.h */
-bool fire_dom_event(dom_string *type, dom_node *target,
-		    bool bubbles, bool cancelable)
+bool fire_generic_dom_event(dom_string *type, dom_node *target,
+		bool bubbles, bool cancelable)
 {
 	dom_exception exc;
 	dom_event *evt;
@@ -93,10 +117,85 @@ bool fire_dom_event(dom_string *type, dom_node *target,
 	}
 	NSLOG(netsurf, INFO, "Dispatching '%*s' against %p",
 	      dom_string_length(type), dom_string_data(type), target);
-	exc = dom_event_target_dispatch_event(target, evt, &result);
-	if (exc != DOM_NO_ERR) {
-		result = false;
+	result = fire_dom_event(evt, target);
+	dom_event_unref(evt);
+	return result;
+}
+
+/* Exported interface, see html_internal.h */
+bool fire_dom_keyboard_event(dom_string *type, dom_node *target,
+		bool bubbles, bool cancelable, uint32_t key)
+{
+	bool is_special = key <= 0x001F || (0x007F <= key && key <= 0x009F);
+	dom_string *dom_key = NULL;
+	dom_keyboard_event *evt;
+	dom_exception exc;
+	bool result;
+
+	if (is_special) {
+		switch (key) {
+		case NS_KEY_ESCAPE:
+			dom_key = dom_string_ref(corestring_dom_Escape);
+			break;
+		case NS_KEY_LEFT:
+			dom_key = dom_string_ref(corestring_dom_ArrowLeft);
+			break;
+		case NS_KEY_RIGHT:
+			dom_key = dom_string_ref(corestring_dom_ArrowRight);
+			break;
+		case NS_KEY_UP:
+			dom_key = dom_string_ref(corestring_dom_ArrowUp);
+			break;
+		case NS_KEY_DOWN:
+			dom_key = dom_string_ref(corestring_dom_ArrowDown);
+			break;
+		case NS_KEY_PAGE_UP:
+			dom_key = dom_string_ref(corestring_dom_PageUp);
+			break;
+		case NS_KEY_PAGE_DOWN:
+			dom_key = dom_string_ref(corestring_dom_PageDown);
+			break;
+		case NS_KEY_TEXT_START:
+			dom_key = dom_string_ref(corestring_dom_Home);
+			break;
+		case NS_KEY_TEXT_END:
+			dom_key = dom_string_ref(corestring_dom_End);
+			break;
+		default:
+			dom_key = NULL;
+			break;
+		}
+	} else {
+		char utf8[6];
+		size_t length = utf8_from_ucs4(key, utf8);
+		utf8[length] = '\0';
+
+		exc = dom_string_create((const uint8_t *)utf8, strlen(utf8),
+				&dom_key);
+		if (exc != DOM_NO_ERR) {
+			return exc;
+		}
 	}
+
+	exc = dom_keyboard_event_create(&evt);
+	if (exc != DOM_NO_ERR) {
+		dom_string_unref(dom_key);
+		return false;
+	}
+
+	exc = dom_keyboard_event_init(evt, type, bubbles, cancelable, NULL,
+			dom_key, NULL, DOM_KEY_LOCATION_STANDARD, false,
+			false, false, false, false, false);
+	dom_string_unref(dom_key);
+	if (exc != DOM_NO_ERR) {
+		dom_event_unref(evt);
+		return false;
+	}
+
+	NSLOG(netsurf, INFO, "Dispatching '%*s' against %p",
+			dom_string_length(type), dom_string_data(type), target);
+
+	result = fire_dom_event((dom_event *) evt, target);
 	dom_event_unref(evt);
 	return result;
 }
@@ -115,14 +214,16 @@ static void html_box_convert_done(html_content *c, bool success)
 
 	NSLOG(netsurf, INFO, "Done XML to box (%p)", c);
 
+	c->box_conversion_context = NULL;
+
 	/* Clean up and report error if unsuccessful or aborted */
 	if ((success == false) || (c->aborted)) {
 		html_object_free_objects(c);
 
 		if (success == false) {
-			content_broadcast_errorcode(&c->base, NSERROR_BOX_CONVERT);
+			content_broadcast_error(&c->base, NSERROR_BOX_CONVERT, NULL);
 		} else {
-			content_broadcast_errorcode(&c->base, NSERROR_STOPPED);
+			content_broadcast_error(&c->base, NSERROR_STOPPED, NULL);
 		}
 
 		content_set_error(&c->base);
@@ -144,7 +245,7 @@ static void html_box_convert_done(html_content *c, bool success)
 		 * like the other error paths
 		 */
 		NSLOG(netsurf, INFO, "error retrieving html element from dom");
-		content_broadcast_errorcode(&c->base, NSERROR_DOM);
+		content_broadcast_error(&c->base, NSERROR_DOM, NULL);
 		content_set_error(&c->base);
 		return;
 	}
@@ -154,7 +255,7 @@ static void html_box_convert_done(html_content *c, bool success)
 	if (err != NSERROR_OK) {
 		NSLOG(netsurf, INFO, "imagemap extraction failed");
 		html_object_free_objects(c);
-		content_broadcast_errorcode(&c->base, err);
+		content_broadcast_error(&c->base, err, NULL);
 		content_set_error(&c->base);
 		dom_node_unref(html);
 		return;
@@ -167,11 +268,31 @@ static void html_box_convert_done(html_content *c, bool success)
 
 	content_set_ready(&c->base);
 
-	if (c->base.active == 0) {
-		content_set_done(&c->base);
-	}
+	html_proceed_to_done(c);
 
 	dom_node_unref(html);
+}
+
+/* Documented in html_internal.h */
+nserror
+html_proceed_to_done(html_content *html)
+{
+	switch (content__get_status(&html->base)) {
+	case CONTENT_STATUS_READY:
+		if (html->base.active == 0) {
+			content_set_done(&html->base);
+			return NSERROR_OK;
+		}
+		break;
+	case CONTENT_STATUS_DONE:
+		/* fallthrough */
+	case CONTENT_STATUS_LOADING:
+		return NSERROR_OK;
+	default:
+		NSLOG(netsurf, ERROR, "Content status unexpectedly not LOADING/READY/DONE");
+		break;
+	}
+	return NSERROR_UNKNOWN;
 }
 
 
@@ -219,7 +340,7 @@ static bool html_process_link(html_content *c, dom_node *node)
 			corestring_dom_hreflang, &atr_string);
 	if ((exc == DOM_NO_ERR) && (atr_string != NULL)) {
 		/* get a lwc string containing the href lang */
-		exc = dom_string_intern(atr_string, &link.hreflang);
+		(void)dom_string_intern(atr_string, &link.hreflang);
 		dom_string_unref(atr_string);
 	}
 
@@ -227,7 +348,7 @@ static bool html_process_link(html_content *c, dom_node *node)
 			corestring_dom_type, &atr_string);
 	if ((exc == DOM_NO_ERR) && (atr_string != NULL)) {
 		/* get a lwc string containing the type */
-		exc = dom_string_intern(atr_string, &link.type);
+		(void)dom_string_intern(atr_string, &link.type);
 		dom_string_unref(atr_string);
 	}
 
@@ -235,7 +356,7 @@ static bool html_process_link(html_content *c, dom_node *node)
 			corestring_dom_media, &atr_string);
 	if ((exc == DOM_NO_ERR) && (atr_string != NULL)) {
 		/* get a lwc string containing the media */
-		exc = dom_string_intern(atr_string, &link.media);
+		(void)dom_string_intern(atr_string, &link.media);
 		dom_string_unref(atr_string);
 	}
 
@@ -243,7 +364,7 @@ static bool html_process_link(html_content *c, dom_node *node)
 			corestring_dom_sizes, &atr_string);
 	if ((exc == DOM_NO_ERR) && (atr_string != NULL)) {
 		/* get a lwc string containing the sizes */
-		exc = dom_string_intern(atr_string, &link.sizes);
+		(void)dom_string_intern(atr_string, &link.sizes);
 		dom_string_unref(atr_string);
 	}
 
@@ -602,7 +723,7 @@ void html_finish_conversion(html_content *htmlc)
 
 	/* Bail out if we've been aborted */
 	if (htmlc->aborted) {
-		content_broadcast_errorcode(&htmlc->base, NSERROR_STOPPED);
+		content_broadcast_error(&htmlc->base, NSERROR_STOPPED, NULL);
 		content_set_error(&htmlc->base);
 		return;
 	}
@@ -626,7 +747,7 @@ void html_finish_conversion(html_content *htmlc)
 	/* create new css selection context */
 	error = html_css_new_selection_context(htmlc, &htmlc->select_ctx);
 	if (error != NSERROR_OK) {
-		content_broadcast_errorcode(&htmlc->base, error);
+		content_broadcast_error(&htmlc->base, error, NULL);
 		content_set_error(&htmlc->base);
 		return;
 	}
@@ -636,8 +757,8 @@ void html_finish_conversion(html_content *htmlc)
 	 * object, but with its target set to the Document object (and
 	 * the currentTarget set to the Window object)
 	 */
-	if (htmlc->jscontext != NULL) {
-		js_fire_event(htmlc->jscontext, "load", htmlc->document, NULL);
+	if (htmlc->jsthread != NULL) {
+		js_fire_event(htmlc->jsthread, "load", htmlc->document, NULL);
 	}
 
 	/* convert dom tree to box tree */
@@ -649,19 +770,19 @@ void html_finish_conversion(html_content *htmlc)
 	exc = dom_document_get_document_element(htmlc->document, (void *) &html);
 	if ((exc != DOM_NO_ERR) || (html == NULL)) {
 		NSLOG(netsurf, INFO, "error retrieving html element from dom");
-		content_broadcast_errorcode(&htmlc->base, NSERROR_DOM);
+		content_broadcast_error(&htmlc->base, NSERROR_DOM, NULL);
 		content_set_error(&htmlc->base);
 		return;
 	}
 
 	html_get_dimensions(htmlc);
 
-	error = dom_to_box(html, htmlc, html_box_convert_done);
+	error = dom_to_box(html, htmlc, html_box_convert_done, &htmlc->box_conversion_context);
 	if (error != NSERROR_OK) {
 		NSLOG(netsurf, INFO, "box conversion failed");
 		dom_node_unref(html);
 		html_object_free_objects(htmlc);
-		content_broadcast_errorcode(&htmlc->base, error);
+		content_broadcast_error(&htmlc->base, error, NULL);
 		content_set_error(&htmlc->base);
 		return;
 	}
@@ -775,20 +896,20 @@ dom_default_action_DOMNodeInserted_cb(struct dom_event *evt, void *pw)
 			}
 			if (htmlc->enable_scripting) {
 				/* ensure javascript context is available */
-				if (htmlc->jscontext == NULL) {
+				if (htmlc->jsthread == NULL) {
 					union content_msg_data msg_data;
 
-					msg_data.jscontext = &htmlc->jscontext;
+					msg_data.jsthread = &htmlc->jsthread;
 					content_broadcast(&htmlc->base,
-							CONTENT_MSG_GETCTX,
+							CONTENT_MSG_GETTHREAD,
 							&msg_data);
 					NSLOG(netsurf, INFO,
 					      "javascript context: %p (htmlc: %p)",
-					      htmlc->jscontext,
+					      htmlc->jsthread,
 					      htmlc);
 				}
-				if (htmlc->jscontext != NULL) {
-					js_handle_new_element(htmlc->jscontext,
+				if (htmlc->jsthread != NULL) {
+					js_handle_new_element(htmlc->jsthread,
 							(dom_element *) node);
 				}
 			}
@@ -829,6 +950,23 @@ dom_default_action_DOMNodeInsertedIntoDocument_cb(struct dom_event *evt, void *p
 	}
 }
 
+/* Deal with input elements being modified by resyncing their gadget
+ * if they have one.
+ */
+static void html_texty_element_update(html_content *htmlc, dom_node *node)
+{
+	struct box *box = box_for_node(node);
+	if (box == NULL) {
+		return; /* No Box (yet?) so no gadget to update */
+	}
+	if (box->gadget == NULL) {
+		return; /* No gadget yet (under construction perhaps?) */
+	}
+	form_gadget_sync_with_dom(box->gadget);
+	/* And schedule a redraw for the box */
+	html__redraw_a_box(htmlc, box);
+}
+
 /* callback for DOMSubtreeModified end type */
 static void
 dom_default_action_DOMSubtreeModified_cb(struct dom_event *evt, void *pw)
@@ -861,6 +999,9 @@ dom_default_action_DOMSubtreeModified_cb(struct dom_event *evt, void *pw)
 			case DOM_HTML_ELEMENT_TYPE_STYLE:
 				html_css_update_style(htmlc, (dom_node *)node);
 				break;
+			case DOM_HTML_ELEMENT_TYPE_TEXTAREA:
+			case DOM_HTML_ELEMENT_TYPE_INPUT:
+				html_texty_element_update(htmlc, (dom_node *)node);
 			default:
 				break;
 			}
@@ -874,8 +1015,8 @@ dom_default_action_finished_cb(struct dom_event *evt, void *pw)
 {
 	html_content *htmlc = pw;
 
-	if (htmlc->jscontext != NULL)
-		js_event_cleanup(htmlc->jscontext, evt);
+	if (htmlc->jsthread != NULL)
+		js_event_cleanup(htmlc->jsthread, evt);
 }
 
 /* callback function selector
@@ -995,7 +1136,7 @@ html_create_html_data(html_content *c, const http_parameter *params)
 	c->search_string = NULL;
 	c->scripts_count = 0;
 	c->scripts = NULL;
-	c->jscontext = NULL;
+	c->jsthread = NULL;
 
 	c->enable_scripting = nsoption_bool(enable_javascript);
 	c->base.active = 1; /* The html content itself is active */
@@ -1110,14 +1251,14 @@ html_create(const content_handler *handler,
 
 	error = html_create_html_data(html, params);
 	if (error != NSERROR_OK) {
-		content_broadcast_errorcode(&html->base, error);
+		content_broadcast_error(&html->base, error, NULL);
 		free(html);
 		return error;
 	}
 
 	error = html_css_new_stylesheets(html);
 	if (error != NSERROR_OK) {
-		content_broadcast_errorcode(&html->base, error);
+		content_broadcast_error(&html->base, error, NULL);
 		free(html);
 		return error;
 	}
@@ -1236,7 +1377,7 @@ html_process_data(struct content *c, const char *data, unsigned int size)
 
 	/* broadcast the error if necessary */
 	if (err != NSERROR_OK) {
-		content_broadcast_errorcode(c, err);
+		content_broadcast_error(c, err, NULL);
 		return false;
 	}
 
@@ -1338,11 +1479,19 @@ html_begin_conversion(html_content *htmlc)
 		NSLOG(netsurf, INFO, "Completing parse (%p)", htmlc);
 		/* complete parsing */
 		error = dom_hubbub_parser_completed(htmlc->parser);
+		if (error == DOM_HUBBUB_HUBBUB_ERR_PAUSED && htmlc->base.active > 0) {
+			/* The act of completing the parse failed because we've
+			 * encountered a sync script which needs to run
+			 */
+			NSLOG(netsurf, INFO, "Completing parse brought synchronous JS to light, cannot complete yet");
+			return true;
+		}
 		if (error != DOM_HUBBUB_OK) {
 			NSLOG(netsurf, INFO, "Parsing failed");
 
-			content_broadcast_errorcode(&htmlc->base,
-						    libdom_hubbub_error_to_nserror(error));
+			content_broadcast_error(&htmlc->base,
+						libdom_hubbub_error_to_nserror(error),
+						NULL);
 
 			return false;
 		}
@@ -1360,7 +1509,7 @@ html_begin_conversion(html_content *htmlc)
 		NSLOG(netsurf, INFO, "Conversion aborted (%p) (active: %u)",
 		      htmlc, htmlc->base.active);
 		content_set_error(&htmlc->base);
-		content_broadcast_errorcode(&htmlc->base, NSERROR_STOPPED);
+		content_broadcast_error(&htmlc->base, NSERROR_STOPPED, NULL);
 		return false;
 	}
 
@@ -1381,15 +1530,17 @@ html_begin_conversion(html_content *htmlc)
 		encoding = dom_hubbub_parser_get_encoding(htmlc->parser,
 					&htmlc->encoding_source);
 		if (encoding == NULL) {
-			content_broadcast_errorcode(&htmlc->base,
-						    NSERROR_NOMEM);
+			content_broadcast_error(&htmlc->base,
+						NSERROR_NOMEM,
+						NULL);
 			return false;
 		}
 
 		htmlc->encoding = strdup(encoding);
 		if (htmlc->encoding == NULL) {
-			content_broadcast_errorcode(&htmlc->base,
-						    NSERROR_NOMEM);
+			content_broadcast_error(&htmlc->base,
+						NSERROR_NOMEM,
+						NULL);
 			return false;
 		}
 	}
@@ -1398,7 +1549,7 @@ html_begin_conversion(html_content *htmlc)
 	exc = dom_document_get_document_element(htmlc->document, (void *) &html);
 	if ((exc != DOM_NO_ERR) || (html == NULL)) {
 		NSLOG(netsurf, INFO, "error retrieving html element from dom");
-		content_broadcast_errorcode(&htmlc->base, NSERROR_DOM);
+		content_broadcast_error(&htmlc->base, NSERROR_DOM, NULL);
 		return false;
 	}
 
@@ -1408,7 +1559,7 @@ html_begin_conversion(html_content *htmlc)
 	    (!dom_string_caseless_lwc_isequal(node_name,
 			corestring_lwc_html))) {
 		NSLOG(netsurf, INFO, "root element not html");
-		content_broadcast_errorcode(&htmlc->base, NSERROR_DOM);
+		content_broadcast_error(&htmlc->base, NSERROR_DOM, NULL);
 		dom_node_unref(html);
 		return false;
 	}
@@ -1434,7 +1585,7 @@ html_begin_conversion(html_content *htmlc)
 		}
 
 		if (ns_error != NSERROR_OK) {
-			content_broadcast_errorcode(&htmlc->base, ns_error);
+			content_broadcast_error(&htmlc->base, ns_error, NULL);
 
 			dom_node_unref(html);
 			return false;
@@ -1444,8 +1595,9 @@ html_begin_conversion(html_content *htmlc)
 		f->action = strdup(nsurl_access(action));
 		nsurl_unref(action);
 		if (f->action == NULL) {
-			content_broadcast_errorcode(&htmlc->base,
-						    NSERROR_NOMEM);
+			content_broadcast_error(&htmlc->base,
+						NSERROR_NOMEM,
+						NULL);
 
 			dom_node_unref(html);
 			return false;
@@ -1455,8 +1607,9 @@ html_begin_conversion(html_content *htmlc)
 		if (f->document_charset == NULL) {
 			f->document_charset = strdup(htmlc->encoding);
 			if (f->document_charset == NULL) {
-				content_broadcast_errorcode(&htmlc->base,
-							    NSERROR_NOMEM);
+				content_broadcast_error(&htmlc->base,
+							NSERROR_NOMEM,
+							NULL);
 				dom_node_unref(html);
 				return false;
 			}
@@ -1483,12 +1636,6 @@ html_begin_conversion(html_content *htmlc)
 static void html_stop(struct content *c)
 {
 	html_content *htmlc = (html_content *) c;
-
-	/* invalidate the html content reference to the javascript context
-	 * as it is about to become invalid and must not be used any
-	 * more.
-	 */
-	html_script_invalidate_ctx(htmlc);
 
 	switch (c->status) {
 	case CONTENT_STATUS_LOADING:
@@ -1560,6 +1707,7 @@ static void html_reformat(struct content *c, int width, int height)
 	selection_reinit(&htmlc->sel, htmlc->layout);
 
 	htmlc->reflowing = false;
+	htmlc->had_initial_layout = true;
 
 	/* calculate next reflow time at three times what it took to reflow */
 	nsu_getmonotonic_ms(&ms_after);
@@ -1677,6 +1825,13 @@ static void html_destroy(struct content *c)
 
 	NSLOG(netsurf, INFO, "content %p", c);
 
+	/* If we're still converting a layout, cancel it */
+	if (html->box_conversion_context != NULL) {
+		if (cancel_dom_to_box(html->box_conversion_context) != NSERROR_OK) {
+			NSLOG(netsurf, CRITICAL, "WARNING, Unable to cancel conversion context, browser may crash");
+		}
+	}
+
 	/* Destroy forms */
 	for (f = html->forms; f != NULL; f = g) {
 		g = f->prev;
@@ -1691,6 +1846,14 @@ static void html_destroy(struct content *c)
 
 	if (html->base_url)
 		nsurl_unref(html->base_url);
+
+	/* At this point we can be moderately confident the JS is offline
+	 * so we destroy the JS thread.
+	 */
+	if (html->jsthread != NULL) {
+		js_destroythread(html->jsthread);
+		html->jsthread = NULL;
+	}
 
 	if (html->parser != NULL) {
 		dom_hubbub_parser_destroy(html->parser);
@@ -1806,6 +1969,7 @@ html_open(struct content *c,
 static nserror html_close(struct content *c)
 {
 	html_content *htmlc = (html_content *) c;
+	nserror ret = NSERROR_OK;
 
 	selection_clear(&htmlc->sel, false);
 
@@ -1816,16 +1980,15 @@ static nserror html_close(struct content *c)
 	/* clear the html content reference to the browser window */
 	htmlc->bw = NULL;
 
-	/* invalidate the html content reference to the javascript context
-	 * as it is about to become invalid and must not be used any
-	 * more.
-	 */
-	html_script_invalidate_ctx(htmlc);
-
 	/* remove all object references from the html content */
 	html_object_close_objects(htmlc);
 
-	return NSERROR_OK;
+	if (htmlc->jsthread != NULL) {
+		/* Close, but do not destroy (yet) the JS thread */
+		ret = js_closethread(htmlc->jsthread);
+	}
+
+	return ret;
 }
 
 
@@ -1925,8 +2088,11 @@ html_get_contextual_content(struct content *c, int x, int y,
 		}
 
 		if (box->iframe) {
+			float scale = browser_window_get_scale(box->iframe);
 			browser_window_get_features(box->iframe,
-					x - box_x, y - box_y, data);
+						    (x - box_x) * scale,
+						    (y - box_y) * scale,
+						    data);
 		}
 
 		if (box->object)
@@ -2001,9 +2167,15 @@ html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
 			continue;
 
 		/* Pass into iframe */
-		if (box->iframe && browser_window_scroll_at_point(box->iframe,
-				x - box_x, y - box_y, scrx, scry) == true)
-			return true;
+		if (box->iframe) {
+			float scale = browser_window_get_scale(box->iframe);
+
+			if (browser_window_scroll_at_point(box->iframe,
+							   (x - box_x) * scale,
+							   (y - box_y) * scale,
+							   scrx, scry) == true)
+				return true;
+		}
 
 		/* Pass into textarea widget */
 		if (box->gadget && (box->gadget->type == GADGET_TEXTAREA ||
@@ -2138,15 +2310,21 @@ static bool html_drop_file_at_point(struct content *c, int x, int y, char *file)
 			&box_x, &box_y)) != NULL) {
 		box = next;
 
-		if (box->style && css_computed_visibility(box->style) ==
-				CSS_VISIBILITY_HIDDEN)
+		if (box->style &&
+		    css_computed_visibility(box->style) == CSS_VISIBILITY_HIDDEN)
 			continue;
 
-		if (box->iframe)
-			return browser_window_drop_file_at_point(box->iframe,
-					x - box_x, y - box_y, file);
+		if (box->iframe) {
+			float scale = browser_window_get_scale(box->iframe);
+			return browser_window_drop_file_at_point(
+				box->iframe,
+				(x - box_x) * scale,
+				(y - box_y) * scale,
+				file);
+		}
 
-		if (box->object && content_drop_file_at_point(box->object,
+		if (box->object &&
+		    content_drop_file_at_point(box->object,
 					x - box_x, y - box_y, file) == true)
 			return true;
 
@@ -2238,10 +2416,11 @@ static bool html_drop_file_at_point(struct content *c, int x, int y, char *file)
 		ret = guit->utf8->local_to_utf8(buffer, file_len, &utf8_buff);
 		if (ret != NSERROR_OK) {
 			/* bad encoding shouldn't happen */
+			NSLOG(netsurf, ERROR,
+			      "local to utf8 encoding failed (%s)",
+			      messages_get_errorcode(ret));
 			assert(ret != NSERROR_BAD_ENCODING);
-			NSLOG(netsurf, INFO, "local to utf8 encoding failed");
 			free(buffer);
-			guit->misc->warning("NoMemory", NULL);
 			return true;
 		}
 
@@ -2607,6 +2786,35 @@ out_no_string:
 	return result;
 }
 
+/* See \ref content_saw_insecure_objects */
+static bool
+html_saw_insecure_objects(struct content *c)
+{
+	html_content *htmlc = (html_content *)c;
+	struct content_html_object *obj = htmlc->object_list;
+
+	/* Check through the object list */
+	while (obj != NULL) {
+		if (obj->content != NULL) {
+			if (content_saw_insecure_objects(obj->content))
+				return true;
+		}
+		obj = obj->next;
+	}
+
+	/* Now check the script list */
+	if (html_saw_insecure_scripts(htmlc)) {
+		return true;
+	}
+
+	/* Now check stylesheets */
+	if (html_saw_insecure_stylesheets(htmlc)) {
+		return true;
+	}
+
+	return false;
+}
+
 /**
  * Compute the type of a content
  *
@@ -2650,6 +2858,7 @@ static const content_handler html_content_handler = {
 	.get_encoding = html_encoding,
 	.type = html_content_type,
 	.exec = html_exec,
+	.saw_insecure_objects = html_saw_insecure_objects,
 	.no_share = true,
 };
 

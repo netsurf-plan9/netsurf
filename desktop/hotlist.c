@@ -890,7 +890,9 @@ static nserror hotlist_load(const char *path, bool *loaded)
 			corestring_lwc_html);
 	if (html == NULL) {
 		dom_node_unref(document);
-		guit->misc->warning("TreeLoadError", "(<html> not found)");
+		NSLOG(netsurf, WARNING,
+		      "%s (<html> not found)",
+		      messages_get("TreeLoadError"));
 		return NSERROR_OK;
 	}
 
@@ -899,7 +901,9 @@ static nserror hotlist_load(const char *path, bool *loaded)
 	if (body == NULL) {
 		dom_node_unref(html);
 		dom_node_unref(document);
-		guit->misc->warning("TreeLoadError", "(<html>...<body> not found)");
+		NSLOG(netsurf, WARNING,
+		      "%s (<html>...<body> not found)",
+		      messages_get("TreeLoadError"));
 		return NSERROR_OK;
 	}
 
@@ -909,8 +913,9 @@ static nserror hotlist_load(const char *path, bool *loaded)
 		dom_node_unref(body);
 		dom_node_unref(html);
 		dom_node_unref(document);
-		guit->misc->warning("TreeLoadError",
-					"(<html>...<body>...<ul> not found.)");
+		NSLOG(netsurf, WARNING,
+		      "%s (<html>...<body>...<ul> not found.)",
+		      messages_get("TreeLoadError"));
 		return NSERROR_OK;
 	}
 
@@ -934,7 +939,9 @@ static nserror hotlist_load(const char *path, bool *loaded)
 	dom_node_unref(document);
 
 	if (err != NSERROR_OK) {
-		guit->misc->warning("TreeLoadError", "(Failed building tree.)");
+		NSLOG(netsurf, WARNING,
+		      "%s (Failed building tree.)",
+		      messages_get("TreeLoadError"));
 		return NSERROR_OK;
 	}
 
@@ -1396,6 +1403,9 @@ nserror hotlist_fini(void)
 
 	/* Destroy the hotlist treeview */
 	err = treeview_destroy(hl_ctx.tree);
+	if (err != NSERROR_OK) {
+		NSLOG(netsurf, INFO, "Problem destroying the hotlist treeview.");
+	}
 	hl_ctx.built = false;
 
 	/* Free hotlist treeview entry fields */

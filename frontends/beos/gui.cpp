@@ -750,11 +750,11 @@ void nsbeos_gui_poll(void)
 	unsigned int fd_count = 0;
 	bigtime_t next_schedule = 0;
 
-        /* get any active fetcher fd */
-	fetch_fdset(&read_fd_set, &write_fd_set, &exc_fd_set, &max_fd);
-
         /* run the scheduler */
 	schedule_run();
+
+        /* get any active fetcher fd */
+	fetch_fdset(&read_fd_set, &write_fd_set, &exc_fd_set, &max_fd);
 
 	// our own event pipe
 	FD_SET(sEventPipe[0], &read_fd_set);
@@ -993,11 +993,10 @@ static struct gui_fetch_table beos_fetch_table = {
 
 static struct gui_misc_table beos_misc_table = {
 	beos_schedule,
-        beos_warn_user,
 	gui_quit,
 	gui_launch_url,
 	NULL, //cert_verify
-	gui_401login_open,
+	NULL, //401login
 	NULL, // pdf_password (if we have Haru support)
 };
 

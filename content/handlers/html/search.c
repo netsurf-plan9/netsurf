@@ -75,8 +75,8 @@ struct search_context {
 
 
 /* Exported function documented in search.h */
-struct search_context * search_create_context(struct content *c,
-		content_type type, void *gui_data)
+struct search_context *
+search_create_context(struct content *c, content_type type, void *gui_data)
 {
 	struct search_context *context;
 	struct list_entry *search_head;
@@ -87,13 +87,11 @@ struct search_context * search_create_context(struct content *c,
 
 	context = malloc(sizeof(struct search_context));
 	if (context == NULL) {
-		guit->misc->warning("NoMemory", 0);
 		return NULL;
 	}
 
 	search_head = malloc(sizeof(struct list_entry));
 	if (search_head == NULL) {
-		guit->misc->warning("NoMemory", 0);
 		free(context);
 		return NULL;
 	}
@@ -271,20 +269,18 @@ static const char *find_pattern(const char *string, int s_len,
  * Add a new entry to the list of matches
  *
  * \param start_idx Offset of match start within textual representation
- * \param end_idx   Offset of match end
- * \param context   The search context to add the entry to.
+ * \param end_idx Offset of match end
+ * \param context The search context to add the entry to.
  * \return Pointer to added entry, NULL iff failed.
  */
-
-static struct list_entry *add_entry(unsigned start_idx, unsigned end_idx,
-		struct search_context *context)
+static struct list_entry *
+add_entry(unsigned start_idx, unsigned end_idx,	struct search_context *context)
 {
 	struct list_entry *entry;
 
 	/* found string in box => add to list */
 	entry = calloc(1, sizeof(*entry));
 	if (!entry) {
-		guit->misc->warning("NoMemory", 0);
 		return NULL;
 	}
 
@@ -295,10 +291,11 @@ static struct list_entry *add_entry(unsigned start_idx, unsigned end_idx,
 	entry->next = 0;
 	entry->prev = context->found->prev;
 
-	if (context->found->prev == NULL)
+	if (context->found->prev == NULL) {
 		context->found->next = entry;
-	else
+	} else {
 		context->found->prev->next = entry;
+	}
 
 	context->found->prev = entry;
 
@@ -422,6 +419,49 @@ static bool find_occurrences_text(const char *pattern, int p_len,
 
 
 /**
+ * Specifies whether all matches or just the current match should
+ * be highlighted in the search text.
+ */
+static void search_show_all(bool all, struct search_context *context)
+{
+	struct list_entry *a;
+
+	for (a = context->found->next; a; a = a->next) {
+		bool add = true;
+		if (!all && a != context->current) {
+			add = false;
+			if (a->sel) {
+				selection_clear(a->sel, true);
+				selection_destroy(a->sel);
+				a->sel = NULL;
+			}
+		}
+		if (add && !a->sel) {
+
+			if (context->is_html == true) {
+				html_content *html = (html_content *)context->c;
+				a->sel = selection_create(context->c, true);
+				if (!a->sel)
+					continue;
+
+				selection_init(a->sel, html->layout,
+						&html->len_ctx);
+			} else {
+				a->sel = selection_create(context->c, false);
+				if (!a->sel)
+					continue;
+
+				selection_init(a->sel, NULL, NULL);
+			}
+
+			selection_set_start(a->sel, a->start_idx);
+			selection_set_end(a->sel, a->end_idx);
+		}
+	}
+}
+
+
+/**
  * Search for a string in the box tree
  *
  * \param string the string to search for
@@ -429,8 +469,11 @@ static bool find_occurrences_text(const char *pattern, int p_len,
  * \param context The search context to add the entry to.
  * \param flags flags to control the search.
  */
-static void search_text(const char *string, int string_len,
-		struct search_context *context, search_flags_t flags)
+static void
+search_text(const char *string,
+	    int string_len,
+	    struct search_context *context,
+	    search_flags_t flags)
 {
 	struct rect bounds;
 	struct box *box = NULL;
@@ -456,7 +499,8 @@ static void search_text(const char *string, int string_len,
 
 
 	/* check if we need to start a new search or continue an old one */
-	if (context->newsearch) {
+	if ((context->newsearch) ||
+	    (context->prev_case_sens != case_sensitive)) {
 		bool res;
 
 		if (context->string != NULL)
@@ -543,16 +587,15 @@ static void search_text(const char *string, int string_len,
 
 
 /* Exported function documented in search.h */
-void search_step(struct search_context *context, search_flags_t flags,
-		const char *string)
+void
+search_step(struct search_context *context,
+	    search_flags_t flags,
+	    const char *string)
 {
 	int string_len;
 	int i = 0;
 
-	if (context == NULL) {
-		guit->misc->warning("SearchError", 0);
-		return;
-	}
+	assert(context != NULL);
 
 	guit->search->add_recent(string, context->gui_p);
 
@@ -598,44 +641,6 @@ bool search_term_highlighted(struct content *c,
 }
 
 
-/* Exported function documented in search.h */
-void search_show_all(bool all, struct search_context *context)
-{
-	struct list_entry *a;
-
-	for (a = context->found->next; a; a = a->next) {
-		bool add = true;
-		if (!all && a != context->current) {
-			add = false;
-			if (a->sel) {
-				selection_clear(a->sel, true);
-				selection_destroy(a->sel);
-				a->sel = NULL;
-			}
-		}
-		if (add && !a->sel) {
-
-			if (context->is_html == true) {
-				html_content *html = (html_content *)context->c;
-				a->sel = selection_create(context->c, true);
-				if (!a->sel)
-					continue;
-
-				selection_init(a->sel, html->layout,
-						&html->len_ctx);
-			} else {
-				a->sel = selection_create(context->c, false);
-				if (!a->sel)
-					continue;
-
-				selection_init(a->sel, NULL, NULL);
-			}
-
-			selection_set_start(a->sel, a->start_idx);
-			selection_set_end(a->sel, a->end_idx);
-		}
-	}
-}
 
 
 /* Exported function documented in search.h */

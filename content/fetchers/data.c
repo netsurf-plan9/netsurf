@@ -23,6 +23,7 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <libwapcaplet/libwapcaplet.h>
 #include <nsutils/base64.h>
@@ -74,6 +75,36 @@ static bool fetch_data_can_fetch(const nsurl *url)
 	return true;
 }
 
+static void fetch_data_send_callback(const fetch_msg *msg,
+		struct fetch_data_context *c)
+{
+	c->locked = true;
+	fetch_send_callback(msg, c->parent_fetch);
+	c->locked = false;
+}
+
+static void fetch_data_send_header(struct fetch_data_context *ctx,
+		const char *fmt, ...)
+{
+	char header[64];
+	fetch_msg msg;
+	va_list ap;
+	int len;
+
+	va_start(ap, fmt);
+	len = vsnprintf(header, sizeof(header), fmt, ap);
+	va_end(ap);
+
+	if (len >= (int)sizeof(header) || len < 0) {
+		return;
+	}
+
+	msg.type = FETCH_HEADER;
+	msg.data.header_or_data.len = len;
+	msg.data.header_or_data.buf = (const uint8_t *)header;
+	fetch_data_send_callback(&msg, ctx);
+}
+
 static void *fetch_data_setup(struct fetch *parent_fetch, nsurl *url,
 		 bool only_2xx, bool downgrade_tls, const char *post_urlenc,
 		 const struct fetch_multipart_data *post_multipart,
@@ -104,7 +135,6 @@ static void fetch_data_free(void *ctx)
 	nsurl_unref(c->url);
 	free(c->data);
 	free(c->mimetype);
-	RING_REMOVE(ring, c);
 	free(ctx);
 }
 
@@ -117,14 +147,6 @@ static void fetch_data_abort(void *ctx)
 	 * The poll loop itself will perform the appropriate cleanup.
 	 */
 	c->aborted = true;
-}
-
-static void fetch_data_send_callback(const fetch_msg *msg, 
-		struct fetch_data_context *c) 
-{
-	c->locked = true;
-	fetch_send_callback(msg, c->parent_fetch);
-	c->locked = false;
 }
 
 static bool fetch_data_process(struct fetch_data_context *c)
@@ -222,13 +244,14 @@ static bool fetch_data_process(struct fetch_data_context *c)
 static void fetch_data_poll(lwc_string *scheme)
 {
 	fetch_msg msg;
-	struct fetch_data_context *c, *next;
-	
-	if (ring == NULL) return;
+	struct fetch_data_context *c, *save_ring = NULL;
 	
 	/* Iterate over ring, processing each pending fetch */
-	c = ring;
-	do {
+	while (ring != NULL) {
+		/* Take the first entry from the ring */
+		c = ring;
+		RING_REMOVE(ring, c);
+
 		/* Ignore fetches that have been flagged as locked.
 		 * This allows safe re-entrant calls to this function.
 		 * Re-entrancy can occur if, as a result of a callback,
@@ -236,14 +259,12 @@ static void fetch_data_poll(lwc_string *scheme)
 		 * again.
 		 */
 		if (c->locked == true) {
-			next = c->r_next;
+			RING_INSERT(save_ring, c);
 			continue;
 		}
 
 		/* Only process non-aborted fetches */
 		if (c->aborted == false && fetch_data_process(c) == true) {
-			char header[64];
-
 			fetch_set_http_code(c->parent_fetch, 200);
 			NSLOG(netsurf, INFO,
 			      "setting data: MIME type to %s, length to %"PRIsizet,
@@ -253,22 +274,18 @@ static void fetch_data_poll(lwc_string *scheme)
 			 * Therefore, we _must_ check for this after _every_
 			 * call to fetch_data_send_callback().
 			 */
-			snprintf(header, sizeof header, "Content-Type: %s",
+			fetch_data_send_header(c, "Content-Type: %s",
 					c->mimetype);
-			msg.type = FETCH_HEADER;
-			msg.data.header_or_data.buf = (const uint8_t *) header;
-			msg.data.header_or_data.len = strlen(header);
-			fetch_data_send_callback(&msg, c); 
 
 			if (c->aborted == false) {
-				snprintf(header, sizeof header, 
-					 "Content-Length: %" PRIsizet,
-					 c->datalen);
-				msg.type = FETCH_HEADER;
-				msg.data.header_or_data.buf = 
-						(const uint8_t *) header;
-				msg.data.header_or_data.len = strlen(header);
-				fetch_data_send_callback(&msg, c);
+				fetch_data_send_header(c, "Content-Length: %"
+						PRIsizet, c->datalen);
+			}
+
+			if (c->aborted == false) {
+				/* Set max-age to 1 year. */
+				fetch_data_send_header(c, "Cache-Control: "
+						"max-age=31536000");
 			}
 
 			if (c->aborted == false) {
@@ -293,18 +310,15 @@ static void fetch_data_poll(lwc_string *scheme)
 			assert(c->locked == false);
 		}
 
-		/* Compute next fetch item at the last possible moment as
-		 * processing this item may have added to the ring.
-		 */
-		next = c->r_next;
-
+		/* And now finish */
 		fetch_remove_from_queues(c->parent_fetch);
 		fetch_free(c->parent_fetch);
+	}
 
-		/* Advance to next ring entry, exiting if we've reached
-		 * the start of the ring or the ring has become empty
-		 */
-	} while ( (c = next) != ring && ring != NULL);
+	/* Finally, if we saved any fetches which were locked, put them back
+	 * into the ring for next time
+	 */
+	ring = save_ring;
 }
 
 nserror fetch_data_register(void)

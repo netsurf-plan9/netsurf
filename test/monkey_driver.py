@@ -174,7 +174,7 @@ def load_test_plan(path):
     plan = []
     with open(path, 'r') as stream:
         try:
-            plan = (yaml.load(stream))
+            plan = (yaml.load(stream, Loader=yaml.CSafeLoader))
         except Exception as exc:
             print(exc)
     return plan
@@ -234,8 +234,12 @@ def run_test_step_action_launch(ctx, step):
     print(get_indent(ctx) + "Action: " + step["action"])
     assert ctx.get('browser') is None
     assert ctx.get('windows') is None
+    monkey_cmd = [ctx["monkey"]]
+    for option in step.get('launch-options', []):
+        monkey_cmd.append("--{}".format(option))
+    print(get_indent(ctx) + "        " + "Command line: " + repr(monkey_cmd))
     ctx['browser'] = DriverBrowser(
-        monkey_cmd=[ctx["monkey"]],
+        monkey_cmd=monkey_cmd,
         quiet=True,
         wrapper=ctx.get("wrapper"))
     assert_browser(ctx)
@@ -265,8 +269,9 @@ def run_test_step_action_window_close(ctx, step):
     tag = step['window']
     assert ctx['windows'].get(tag) is not None
     win = ctx['windows'].pop(tag)
+    timeout = int(step.get('timeout', 30))
     win.kill()
-    win.wait_until_dead()
+    win.wait_until_dead(timeout=timeout)
     assert not win.alive
 
 
@@ -299,6 +304,15 @@ def run_test_step_action_stop(ctx, step):
     win.stop()
 
 
+def run_test_step_action_reload(ctx, step):
+    print(get_indent(ctx) + "Action: " + step["action"])
+    assert_browser(ctx)
+    tag = step['window']
+    win = ctx['windows'].get(tag)
+    assert win is not None
+    win.reload()
+
+
 def run_test_step_action_sleep_ms(ctx, step):
     print(get_indent(ctx) + "Action: " + step["action"])
     conds = step['conditions']
@@ -312,7 +326,7 @@ def run_test_step_action_sleep_ms(ctx, step):
         start = repeat["start"]
         have_repeat = True
     else:
-        sleep = time / 1000
+        sleep = sleep_time / 1000
         start = time.time()
 
     while True:
@@ -371,6 +385,56 @@ def run_test_step_action_repeat(ctx, step):
         ctx["depth"] -= 1
 
 
+def run_test_step_action_click(ctx, step):
+    print(get_indent(ctx) + "Action: " + step["action"])
+    assert_browser(ctx)
+    win = ctx['windows'][step['window']]
+    targets = step['target']
+    if type(targets) == dict:
+        targets = [targets]
+    button = step.get('button', 'left').upper()
+    kind = step.get('kind', 'single').upper()
+    all_text_list = []
+    bitmaps = []
+    for plot in win.redraw():
+        if plot[0] == 'TEXT':
+            all_text_list.append((int(plot[2]), int(plot[4]), " ".join(plot[6:])))
+        if plot[0] == 'BITMAP':
+            bitmaps.append((int(plot[2]), int(plot[4]), int(plot[6]), int(plot[8])))
+
+    x = None
+    y = None
+
+    for target in targets:
+        if 'bitmap' in target:
+            if x is not None:
+                assert False, "Found more than one thing to click on, oh well"
+            bmap = int(target['bitmap'])
+            assert bmap < 0 or bmap >= len(bitmaps)
+            x = bitmaps[bmap][0] + bitmaps[bmap][2] / 2
+            y = bitmaps[bmap][1] + bitmaps[bmap][3] / 2
+        elif 'text' in target:
+            if x is not None:
+                assert False, "Found more than one thing to click on, oh well"
+            text = target['text']
+            for textentry in all_text_list:
+                if text in textentry[2]:
+                    if x is not None:
+                        assert False, "Text {} found more than once".format(text)
+                    x = textentry[0] + 2
+                    y = textentry[1] + 2
+
+    # Now we want to click on the x/y coordinate given
+    print(get_indent(ctx) + "        Clicking at {}, {} (button={} kind={})".format(x, y, button, kind))
+    win.click(x, y, button, kind)
+
+
+def run_test_step_action_wait_loading(ctx, step):
+    print(get_indent(ctx) + "Action: " + step["action"])
+    assert_browser(ctx)
+    win = ctx['windows'][step['window']]
+    win.wait_start_loading()
+
 def run_test_step_action_plot_check(ctx, step):
     print(get_indent(ctx) + "Action: " + step["action"])
     assert_browser(ctx)
@@ -389,13 +453,13 @@ def run_test_step_action_plot_check(ctx, step):
     all_text = " ".join(all_text_list)
     for check in checks:
         if 'text-contains' in check.keys():
-            print("Check {} in {}".format(repr(check['text-contains']), repr(all_text)))
+            print("        Check {} in {}".format(repr(check['text-contains']), repr(all_text)))
             assert check['text-contains'] in all_text
         elif 'text-not-contains' in check.keys():
-            print("Check {} NOT in {}".format(repr(check['text-not-contains']), repr(all_text)))
+            print("        Check {} NOT in {}".format(repr(check['text-not-contains']), repr(all_text)))
             assert check['text-not-contains'] not in all_text
         elif 'bitmap-count' in check.keys():
-            print("Check bitmap count is {}".format(int(check['bitmap-count'])))
+            print("        Check bitmap count is {}".format(int(check['bitmap-count'])))
             assert len(bitmaps) == int(check['bitmap-count'])
         else:
             raise AssertionError("Unknown check: {}".format(repr(check)))
@@ -528,6 +592,16 @@ def run_test_step_action_js_exec(ctx, step):
     win.js_exec(cmd)
 
 
+def run_test_step_action_page_info_state(ctx, step):
+    print(get_indent(ctx) + "Action: " + step["action"])
+    assert_browser(ctx)
+    tag = step['window']
+    win = ctx['windows'].get(tag)
+    assert win is not None
+    match = step['match']
+    assert win.page_info_state == match
+
+
 def run_test_step_action_quit(ctx, step):
     print(get_indent(ctx) + "Action: " + step["action"])
     assert_browser(ctx)
@@ -540,6 +614,7 @@ STEP_HANDLERS = {
     "window-new":    run_test_step_action_window_new,
     "window-close":  run_test_step_action_window_close,
     "navigate":      run_test_step_action_navigate,
+    "reload":        run_test_step_action_reload,
     "stop":          run_test_step_action_stop,
     "sleep-ms":      run_test_step_action_sleep_ms,
     "block":         run_test_step_action_block,
@@ -549,6 +624,8 @@ STEP_HANDLERS = {
     "timer-stop":    run_test_step_action_timer_stop,
     "timer-check":   run_test_step_action_timer_check,
     "plot-check":    run_test_step_action_plot_check,
+    "click":         run_test_step_action_click,
+    "wait-loading":  run_test_step_action_wait_loading,
     "add-auth":      run_test_step_action_add_auth,
     "remove-auth":   run_test_step_action_remove_auth,
     "add-cert":      run_test_step_action_add_cert,
@@ -556,6 +633,8 @@ STEP_HANDLERS = {
     "clear-log":     run_test_step_action_clear_log,
     "wait-log":      run_test_step_action_wait_log,
     "js-exec":       run_test_step_action_js_exec,
+    "page-info-state":
+                     run_test_step_action_page_info_state,
     "quit":          run_test_step_action_quit,
 }
 

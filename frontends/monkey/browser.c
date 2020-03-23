@@ -119,17 +119,17 @@ gui_window_set_title(struct gui_window *g, const char *title)
  * \param g The gui window to measure content area of.
  * \param width receives width of window
  * \param height receives height of window
- * \param scaled whether to return scaled values
  * \return NSERROR_OK on sucess and width and height updated.
  */
 static nserror
-gui_window_get_dimensions(struct gui_window *g, int *width, int *height,
-			  bool scaled)
+gui_window_get_dimensions(struct gui_window *g, int *width, int *height)
 {
-	moutf(MOUT_WINDOW, "GET_DIMENSIONS WIN %u WIDTH %d HEIGHT %d",
-		g->win_num, g->width, g->height);
 	*width = g->width;
 	*height = g->height;
+
+	moutf(MOUT_WINDOW,
+	      "GET_DIMENSIONS WIN %u WIDTH %d HEIGHT %d",
+	      g->win_num, *width, *height);
 
 	return NSERROR_OK;
 }
@@ -404,6 +404,48 @@ gui_window_console_log(struct gui_window *g,
 	      (int)msglen, msg);
 }
 
+static void
+gui_window_report_page_info(struct gui_window *g)
+{
+	const char *state = "***WAH***";
+
+	switch (browser_window_get_page_info_state(g->bw)) {
+	case PAGE_STATE_UNKNOWN:
+		state = "UNKNOWN";
+		break;
+
+	case PAGE_STATE_INTERNAL:
+		state = "INTERNAL";
+		break;
+
+	case PAGE_STATE_LOCAL:
+		state = "LOCAL";
+		break;
+
+	case PAGE_STATE_INSECURE:
+		state = "INSECURE";
+		break;
+
+	case PAGE_STATE_SECURE_OVERRIDE:
+		state = "SECURE_OVERRIDE";
+		break;
+
+	case PAGE_STATE_SECURE_ISSUES:
+		state = "SECURE_ISSUES";
+		break;
+
+	case PAGE_STATE_SECURE:
+		state = "SECURE";
+		break;
+
+	default:
+		assert(0 && "Monkey needs some lovin' here");
+		break;
+	}
+	moutf(MOUT_WINDOW, "PAGE_STATUS WIN %u STATUS %s",
+	      g->win_num, state);
+}
+
 /**** Handlers ****/
 
 static void
@@ -594,6 +636,10 @@ monkey_window_handle_exec(int argc, char **argv)
 			total += strlen(argv[i]) + 1;
 		}
 		char *cmd = calloc(total, 1);
+		if (cmd == NULL) {
+			moutf(MOUT_ERROR, "JS WIN %d RET ENOMEM", atoi(argv[2]));
+			return;
+		}
 		strcpy(cmd, argv[4]);
 		for (int i = 5; i < argc; ++i) {
 			strcat(cmd, " ");
@@ -608,6 +654,48 @@ monkey_window_handle_exec(int argc, char **argv)
 	}
 }
 
+
+static void
+monkey_window_handle_click(int argc, char **argv)
+{
+	/* `WINDOW CLICK WIN` _%id%_ `X` _%num%_ `Y` _%num%_ `BUTTON` _%str%_ `KIND` _%str%_ */
+	/*  0      1     2    3       4  5        6  7        8       9        10    11      */
+	struct gui_window *gw;
+	if (argc != 12) {
+		moutf(MOUT_ERROR, "WINDOW CLICK ARGS BAD\n");
+	}
+
+	gw = monkey_find_window_by_num(atoi(argv[2]));
+
+	if (gw == NULL) {
+		moutf(MOUT_ERROR, "WINDOW NUM BAD");
+	} else {
+		int x = atoi(argv[5]);
+		int y = atoi(argv[7]);
+		browser_mouse_state mouse;
+		const char *button = argv[9];
+		const char *kind = argv[11];
+		if (strcmp(button, "LEFT") == 0) {
+			mouse = BROWSER_MOUSE_CLICK_1;
+		} else if (strcmp(button, "RIGHT") == 0) {
+			mouse = BROWSER_MOUSE_CLICK_2;
+		} else {
+			moutf(MOUT_ERROR, "WINDOW BUTTON BAD");
+			return;
+		}
+		if (strcmp(kind, "SINGLE") == 0) {
+			/* Nothing */
+		} else if (strcmp(kind, "DOUBLE") == 0) {
+			mouse |= BROWSER_MOUSE_DOUBLE_CLICK;
+		} else if (strcmp(kind, "TRIPLE") == 0) {
+			mouse |= BROWSER_MOUSE_TRIPLE_CLICK;
+		} else {
+			moutf(MOUT_ERROR, "WINDOW KIND BAD");
+			return;
+		}
+		browser_window_mouse_click(gw->bw, mouse, x, y);
+	}
+}
 
 void
 monkey_window_handle_command(int argc, char **argv)
@@ -629,10 +717,57 @@ monkey_window_handle_command(int argc, char **argv)
 		monkey_window_handle_reload(argc, argv);
 	} else if (strcmp(argv[1], "EXEC") == 0) {
 		monkey_window_handle_exec(argc, argv);
+	} else if (strcmp(argv[1], "CLICK") == 0) {
+		monkey_window_handle_click(argc, argv);
 	} else {
 		moutf(MOUT_ERROR, "WINDOW COMMAND UNKNOWN %s\n", argv[1]);
 	}
 
+}
+
+/**
+ * process miscellaneous window events
+ *
+ * \param gw The window receiving the event.
+ * \param event The event code.
+ * \return NSERROR_OK when processed ok
+ */
+static nserror
+gui_window_event(struct gui_window *gw, enum gui_window_event event)
+{
+	switch (event) {
+	case GW_EVENT_UPDATE_EXTENT:
+		gui_window_update_extent(gw);
+		break;
+
+	case GW_EVENT_REMOVE_CARET:
+		gui_window_remove_caret(gw);
+		break;
+
+	case GW_EVENT_SCROLL_START:
+		gui_window_scroll_start(gw);
+		break;
+
+	case GW_EVENT_NEW_CONTENT:
+		gui_window_new_content(gw);
+		break;
+
+	case GW_EVENT_START_THROBBER:
+		gui_window_start_throbber(gw);
+		break;
+
+	case GW_EVENT_STOP_THROBBER:
+		gui_window_stop_throbber(gw);
+		break;
+
+	case GW_EVENT_PAGE_INFO_CHANGE:
+		gui_window_report_page_info(gw);
+		break;
+
+	default:
+		break;
+	}
+	return NSERROR_OK;
 }
 
 static struct gui_window_table window_table = {
@@ -642,7 +777,7 @@ static struct gui_window_table window_table = {
 	.get_scroll = gui_window_get_scroll,
 	.set_scroll = gui_window_set_scroll,
 	.get_dimensions = gui_window_get_dimensions,
-	.update_extent = gui_window_update_extent,
+	.event = gui_window_event,
 
 	.set_title = gui_window_set_title,
 	.set_url = gui_window_set_url,
@@ -650,13 +785,8 @@ static struct gui_window_table window_table = {
 	.set_status = gui_window_set_status,
 	.set_pointer = gui_window_set_pointer,
 	.place_caret = gui_window_place_caret,
-	.remove_caret = gui_window_remove_caret,
 	.drag_start = gui_window_drag_start,
 	.save_link = gui_window_save_link,
-	.scroll_start = gui_window_scroll_start,
-	.new_content = gui_window_new_content,
-	.start_throbber = gui_window_start_throbber,
-	.stop_throbber = gui_window_stop_throbber,
 
 	.console_log = gui_window_console_log,
 };

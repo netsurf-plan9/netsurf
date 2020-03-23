@@ -42,8 +42,66 @@
 /** Messages are stored in a fixed-size hash table. */
 #define HASH_SIZE 101
 
-/** The hash table used to store the standard Messages file for the old API */
+/**
+ * The hash table used to store the standard Messages file for the old API
+ */
 static struct hash_table *messages_hash = NULL;
+
+
+/**
+ * Create a message context
+ *
+ * generate a message context populated with english fallbacks for
+ *   some formatted messages.
+ */
+static struct hash_table *messages_create_ctx(int hash_size)
+{
+	struct hash_table *nctx;
+	const struct {
+		const char *key;
+		const char *value;
+	} fallback[] = {
+		{ "LoginDescription",
+		  "The site %s is requesting your username and password. "
+		  "The realm is \"%s\""},
+		{ "PrivacyDescription",
+		  "A privacy error occurred while communicating with %s this "
+		  "may be a site configuration error or an attempt to steal "
+		  "private information (passwords, messages or credit cards)"},
+		{ "TimeoutDescription",
+		  "A connection to %s could not be established. The site may "
+		  "be temporarily unavailable or too busy to respond."},
+		{ "FetchErrorDescription",
+		  "An error occurred when connecting to %s"},
+		{ NULL, NULL}
+	};
+	nctx = hash_create(hash_size);
+
+	if (nctx != NULL) {
+		int floop;
+		for (floop = 0; fallback[floop].key != NULL; floop++) {
+			hash_add(nctx,
+				 fallback[floop].key,
+				 fallback[floop].value);
+		}
+	}
+
+	return nctx;
+}
+
+/**
+ * Free memory used by a messages hash.
+ * The context will not be valid after this function returns.
+ *
+ * \param  ctx  context of messages file to free
+ */
+static void messages_destroy_ctx(struct hash_table *ctx)
+{
+	if (ctx == NULL)
+		return;
+
+	hash_destroy(ctx);
+}
 
 
 /**
@@ -66,7 +124,7 @@ static nserror messages_load_ctx(const char *path, struct hash_table **ctx)
 		return hash_add_file(*ctx, path);
 	}
 
-	nctx = hash_create(HASH_SIZE);
+	nctx = messages_create_ctx(HASH_SIZE);
 	if (nctx == NULL) {
 		NSLOG(netsurf, INFO,
 		      "Unable to create hash table for messages file %s",
@@ -115,21 +173,6 @@ messages_get_ctx(const char *key, struct hash_table *ctx)
 }
 
 
-/**
- * Free memory used by a messages hash.
- * The context will not be valid after this function returns.
- *
- * \param  ctx  context of messages file to free
- */
-static void messages_destroy_ctx(struct hash_table *ctx)
-{
-	if (ctx == NULL)
-		return;
-
-	hash_destroy(ctx);
-}
-
-
 /* exported interface documented in messages.h */
 nserror messages_add_from_file(const char *path)
 {
@@ -148,7 +191,7 @@ nserror messages_add_from_inline(const uint8_t *data, size_t size)
 {
 	/* ensure the hash table is initialised */
 	if (messages_hash == NULL) {
-		messages_hash = hash_create(HASH_SIZE);
+		messages_hash = messages_create_ctx(HASH_SIZE);
 	}
 	if (messages_hash == NULL) {
 		NSLOG(netsurf, INFO, "Unable to create hash table");
@@ -156,6 +199,7 @@ nserror messages_add_from_inline(const uint8_t *data, size_t size)
 	}
 	return hash_add_inline(messages_hash, data, size);
 }
+
 
 /* exported interface documented in messages.h */
 char *messages_get_buff(const char *key, ...)
@@ -165,7 +209,17 @@ char *messages_get_buff(const char *key, ...)
 	int buff_len = 0;
 	va_list ap;
 
-	msg_fmt = messages_get_ctx(key, messages_hash);
+	assert(key != NULL);
+
+	if (messages_hash == NULL) {
+		return NULL;
+	}
+
+	msg_fmt = hash_get(messages_hash, key);
+
+	if (msg_fmt == NULL) {
+		return NULL;
+	}
 
 	va_start(ap, key);
 	buff_len = vsnprintf(buff, buff_len, msg_fmt, ap);
@@ -321,6 +375,22 @@ const char *messages_get_errorcode(nserror code)
 	case NSERROR_UNKNOWN:
 		/* Unknown error */
 		return messages_get_ctx("Unknown", messages_hash);
+
+	case NSERROR_BAD_AUTH:
+		/* Authentication required */
+		return messages_get_ctx("BadAuth", messages_hash);
+
+	case NSERROR_BAD_REDIRECT:
+		/* To many redirects */
+		return messages_get_ctx("TooManyRedirects", messages_hash);
+
+	case NSERROR_BAD_CERTS:
+		/* Certificate chain verification failure */
+		return messages_get_ctx("CertificateVerificationNeeded", messages_hash);
+
+	case NSERROR_TIMEOUT:
+		/* Operation timed out */
+		return messages_get_ctx("Timeout", messages_hash);
 	}
 
 	/* The switch has no default, so the compiler should tell us when we
@@ -331,6 +401,63 @@ const char *messages_get_errorcode(nserror code)
 	return messages_get_ctx("Unknown", messages_hash);
 }
 
+/* exported function documented in utils/messages.h */
+const char *messages_get_sslcode(ssl_cert_err code)
+{
+	switch (code) {
+	case SSL_CERT_ERR_OK:
+		/* Nothing wrong with this certificate */
+		return messages_get_ctx("SSLCertErrOk", messages_hash);
+
+	case SSL_CERT_ERR_UNKNOWN:
+		/* Unknown error */
+		return messages_get_ctx("SSLCertErrUnknown", messages_hash);
+
+	case SSL_CERT_ERR_BAD_ISSUER:
+		/* Bad issuer */
+		return messages_get_ctx("SSLCertErrBadIssuer", messages_hash);
+
+	case SSL_CERT_ERR_BAD_SIG:
+		/* Bad signature on this certificate */
+		return messages_get_ctx("SSLCertErrBadSig", messages_hash);
+
+	case SSL_CERT_ERR_TOO_YOUNG:
+		/* This certificate is not yet valid */
+		return messages_get_ctx("SSLCertErrTooYoung", messages_hash);
+
+	case SSL_CERT_ERR_TOO_OLD:
+		/* This certificate is no longer valid */
+		return messages_get_ctx("SSLCertErrTooOld", messages_hash);
+
+	case SSL_CERT_ERR_SELF_SIGNED:
+		/* This certificate is self signed */
+		return messages_get_ctx("SSLCertErrSelfSigned", messages_hash);
+
+	case SSL_CERT_ERR_CHAIN_SELF_SIGNED:
+		/* This certificate chain is self signed */
+		return messages_get_ctx("SSLCertErrChainSelfSigned", messages_hash);
+
+	case SSL_CERT_ERR_REVOKED:
+		/* This certificate has been revoked */
+		return messages_get_ctx("SSLCertErrRevoked", messages_hash);
+
+	case SSL_CERT_ERR_HOSTNAME_MISMATCH:
+		/* Common name is invalid */
+		return messages_get_ctx("SSLCertErrHostnameMismatch", messages_hash);
+
+	case SSL_CERT_ERR_CERT_MISSING:
+		/* Common name is invalid */
+		return messages_get_ctx("SSLCertErrCertMissing", messages_hash);
+
+	}
+
+	/* The switch has no default, so the compiler should tell us when we
+	 * forget to add messages for new error codes.  As such, we should
+	 * never get here.
+	 */
+	assert(0);
+	return messages_get_ctx("Unknown", messages_hash);
+}
 
 /* exported function documented in utils/messages.h */
 void messages_destroy(void)

@@ -59,13 +59,7 @@ LDFLAGS += -lm
 NSGTK_RESOURCES_DIR := $(FRONTEND_RESOURCES_DIR)
 
 # The gtk binary target.
-ifeq ($(NETSURF_GTK_MAJOR),2)
-    # gtk2 builds have no major suffix
-    EXETARGET := nsgtk
-else
-    # gtk3 and later builds use the major version suffix
-    EXETARGET := nsgtk$(NETSURF_GTK_MAJOR)
-endif
+EXETARGET := nsgtk$(NETSURF_GTK_MAJOR)
 
 # The filter and target for split messages
 MESSAGES_FILTER=gtk
@@ -165,11 +159,11 @@ endif
 
 # S_FRONTEND are sources purely for the GTK frontend
 S_FRONTEND := gui.c schedule.c layout_pango.c bitmap.c plotters.c	\
-	scaffolding.c gdk.c completion.c login.c throbber.c accelerator.c \
+	scaffolding.c gdk.c completion.c throbber.c accelerator.c \
 	selection.c window.c fetch.c download.c menu.c print.c		\
 	search.c tabs.c toolbar.c gettext.c compat.c viewdata.c		\
 	viewsource.c preferences.c about.c resources.c corewindow.c	\
-	local_history.c global_history.c cookies.c hotlist.c ssl_cert.c
+	local_history.c global_history.c cookies.c hotlist.c page_info.c
 
 # This is the final source build list
 # Note this is deliberately *not* expanded here as common and image
@@ -183,9 +177,8 @@ SOURCES = $(S_COMMON) $(S_IMAGE) $(S_BROWSER) $(S_RESOURCE) $(S_FRONTEND)
 GTK_RESOURCES_LIST := \
 	languages SearchEngines ca-bundle.txt \
 	default.css adblock.css quirks.css internal.css \
-	credits.html licence.html welcome.html maps.html Messages \
-	default.ico favicon.png netsurf.png netsurf.xpm netsurf-16x16.xpm \
-	arrow_down_8x32.png
+	credits.html licence.html welcome.html Messages \
+	default.ico favicon.png netsurf.png netsurf.xpm netsurf-16x16.xpm
 
 GTK_RESOURCES_LIST := \
 	$(addprefix $(NSGTK_RESOURCES_DIR)/, $(GTK_RESOURCES_LIST)) \
