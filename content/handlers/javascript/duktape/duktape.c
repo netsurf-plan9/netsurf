@@ -48072,18 +48072,17 @@ duk_heap *duk_heap_alloc(duk_alloc_function alloc_func,
 		 * to do constant folding which might result in the original
 		 * problem.
 		 */
-		volatile double dbl1 = 0.0;
-		volatile double dbl2 = 0.0;
-		duk_computed_nan = dbl1 / dbl2;
+		duk_uint64_t v = 7ff0000000000001;
+		memcpy(&duk_computed_nan, &v, sizeof(v));
 	} while (0);
 #endif
 
 #if defined(DUK_USE_COMPUTED_INFINITY)
 	do {
 		/* Similar workaround for INFINITY. */
-		volatile double dbl1 = 1.0;
-		volatile double dbl2 = 0.0;
-		duk_computed_infinity = dbl1 / dbl2;
+		duk_uint64_t v = 0x7ff0000000000000;
+		memcpy(&duk_computed_infinity, &v, sizeof(v));
+
 	} while (0);
 #endif
 
