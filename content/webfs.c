@@ -10,6 +10,7 @@
 
 #include "utils/nsurl.h"
 #include "content/llcache.h"
+#include "content/fetch.h"
 #include "netsurf/misc.h"
 #include "desktop/gui_internal.h"
 #include "libwapcaplet/libwapcaplet.h"
@@ -35,7 +36,8 @@ struct webfs_data {
 	data_state state;
 	char *err;
 	char *urls;
-	char *pdat;
+	char *urlenc;
+	struct fetch_multipart_data *multipart;
 
 	int ctlfd; // fd for /mnt/web/N/ctl
 	int bodyfd; // fd for /mnt/web/N/body
@@ -85,8 +87,11 @@ void webfs_data_release(struct webfs_data *d) {
 	if(d->urls != NULL) {
 		free(d->urls);
 	}
-	if(d->pdat != NULL) {
-		free(d->pdat);
+	if(d->urlenc != NULL) {
+		free(d->urlenc);
+	}
+	if(d->multipart != NULL) {
+		fetch_multipart_data_destroy(d->multipart);
 	}
 	if(d->ctlfd != -1) {
 		close(d->ctlfd);
@@ -385,22 +390,20 @@ void start_data(struct webfs_data *d) {
 }
 
 void send_request(struct webfs_data *d) {
+	char *s;
+	int fd, n;
+	struct fetch_multipart_data *part;
 
-	if(d->pdat != NULL) {
-		fprintf(stderr, "[DBG]: Setting POST.\n");
-		int n = write(d->ctlfd, "request POST", 12);
-		if(n <= 0) {
-			char *e = strerror(errno);
-			fprintf(stderr, "[DBG]: [%s] Failed to set POST REQUEST. Error: %s\n", d->urls, e);
-			d->state = DATA_STATE_ERROR;
-			d->err = "Failed to clone webfs."; // TODO: report strerror?
-			return;
-		}
+	s = calloc(3+1+strlen(d->urls)+1, sizeof(char));
+	if(s == NULL){
+		fprintf(stderr, "[DBG] send_request: OOM\n");
+		d->state = DATA_STATE_ERROR;
+		d->err = "OOM";
+		return;
 	}
-
-	char urlstr[1024]; // TODO dynamic size?
-	sprintf(urlstr, "url %s", d->urls);
-	int n = write(d->ctlfd, urlstr, strlen(urlstr));
+	sprintf(s, "url %s", d->urls);
+	n = write(d->ctlfd, s, strlen(s));
+	free(s);
 	if(n <= 0) {
 		char *e = strerror(errno);
 		fprintf(stderr, "[DBG]: [%s] Failed to open URL. Error: %s\n", d->urls, e);
@@ -408,7 +411,47 @@ void send_request(struct webfs_data *d) {
 		d->err = "Failed to clone webfs."; // TODO: report strerror?
 		return;
 	}
-
+	/* POST */
+	if(d->urlenc != NULL || d->multipart != NULL) {
+		if(d->multipart != NULL)
+			write(d->ctlfd, "headers Content-Type: multipart/form-data; boundary=HJBOUNDARY", 62);
+		s = calloc(strlen(d->webdir)+8+1, sizeof(char));
+		sprintf(s, "%spostbody", d->webdir);
+		fd = open(s, O_WRONLY);
+		free(s);
+		if(fd < 0) {
+			char *e = strerror(errno);
+			fprintf(stderr, "[DBG] failed to open postbody file; %s\n", e);
+			d->state = DATA_STATE_ERROR;
+			d->err = "Failed to open POST body";
+			return;
+		}
+		if(d->urlenc != NULL) {
+			n = write(fd, d->urlenc, strlen(d->urlenc));
+			if(n <= 0) {
+				close(fd);
+				char *e = strerror(errno);
+				fprintf(stderr, "[DBG] Could not write post data: Error: %s\n", e);
+				d->state = DATA_STATE_ERROR;
+				d->err = "Could not write post data."; // TODO: report strerror?
+				return;
+			}
+		} else if(d->multipart != NULL) {
+			for(part = d->multipart; part; part = part->next) {
+				if(part->file) {
+					fprintf(stderr, "[DBG] webfs::send_request: file part not implemented\n");
+					continue;
+				}
+				n = snprintf(NULL, 0, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n", part->name, part->value);
+				s = malloc((n+1)*sizeof(char));
+				sprintf(s, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n", part->name, part->value);
+				write(fd, s, n);
+				free(s);
+			}
+			write(fd, "--HJBOUNDARY--\r\n", strlen("--HJBOUNDARY--\r\n"));
+		}
+		close(fd);
+	}
 	d->state = DATA_STATE_REQUESTED;
 }
 
@@ -464,6 +507,7 @@ void read_data(struct webfs_data *d) {
 	}
 
 	if(n == 0) {
+		close(d->bodyfd); /* XXX */
 		d->state = DATA_STATE_DONE;
 		return;
 	}
@@ -567,7 +611,6 @@ void update_webfs(void *ignored) {
 	guit->misc->schedule(10, update_webfs, NULL);
 }
 
-
 /**
  * Retrieve a handle for a low-level cache object
  *
@@ -586,16 +629,6 @@ nserror webfs_handle_retrieve(nsurl *url, uint32_t flags,
 		webfs_handle **result) {
 
 	// We are going to ignore flags for now.
-
-	if(post != NULL) {
-		// TODO Implement POST data.
-		if(post->type == LLCACHE_POST_URL_ENCODED) {
-			fprintf(stderr, "[DBG]: POST DATA: [%s]\n", post->data.urlenc);
-		} else {
-			fprintf(stderr, "[DBG]: POST DATA NOT IMPLEMENTED!\n");
-		}
-		return NSERROR_BAD_CONTENT;
-	}
 
 	char *scheme = lwc_string_data(nsurl_get_component(url, NSURL_SCHEME));
 	if(strcmp("http", scheme) != 0 && strcmp("https", scheme) != 0) {
@@ -621,7 +654,21 @@ nserror webfs_handle_retrieve(nsurl *url, uint32_t flags,
 	char *url_cstr = nsurl_access(url);
 	wh->data->urls = malloc(strlen(url_cstr) + 1);
 	strcpy(wh->data->urls, url_cstr);
-	wh->data->pdat = NULL;
+	wh->data->urlenc = NULL;
+	wh->data->multipart = NULL;
+	if(post != NULL) {
+		switch(post->type) {
+		case LLCACHE_POST_URL_ENCODED:
+			wh->data->urlenc = strdup(post->data.urlenc);
+			break;
+		case LLCACHE_POST_MULTIPART:
+			wh->data->multipart = fetch_multipart_data_clone(post->data.multipart);
+			break;
+		default:
+			fprintf(stderr, "[DBG] encode_post_data: unknown post request type %d\n", post->type);
+			break;
+		}
+	}
 	wh->data->ctlfd = -1;
 	wh->data->bodyfd = -1;
 	wh->data->webdir = NULL;
