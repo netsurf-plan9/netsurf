@@ -22,6 +22,7 @@ runs tests in monkey as defined in a yaml file
 
 # pylint: disable=locally-disabled, missing-docstring
 
+import os
 import sys
 import getopt
 import time
@@ -232,18 +233,35 @@ def conds_met(ctx, conds):
 
 def run_test_step_action_launch(ctx, step):
     print(get_indent(ctx) + "Action: " + step["action"])
+
+    # ensure browser is not already launched
     assert ctx.get('browser') is None
     assert ctx.get('windows') is None
+
+    # build command line switches list
     monkey_cmd = [ctx["monkey"]]
     for option in step.get('launch-options', []):
         monkey_cmd.append("--{}".format(option))
     print(get_indent(ctx) + "        " + "Command line: " + repr(monkey_cmd))
+
+    # build command environment
+    monkey_env = os.environ.copy()
+    for envkey, envvalue in step.get('environment', {}).items():
+        monkey_env[envkey] = envvalue
+        print(get_indent(ctx) + "        " + envkey + "=" + envvalue)
+    if 'language' in step.keys():
+        monkey_env['LANGUAGE'] = step['language']
+
+    # create browser object
     ctx['browser'] = DriverBrowser(
         monkey_cmd=monkey_cmd,
+        monkey_env=monkey_env,
         quiet=True,
         wrapper=ctx.get("wrapper"))
     assert_browser(ctx)
     ctx['windows'] = dict()
+
+    # set user options
     for option in step.get('options', []):
         print(get_indent(ctx) + "        " + option)
         ctx['browser'].pass_options(option)
@@ -315,7 +333,7 @@ def run_test_step_action_reload(ctx, step):
 
 def run_test_step_action_sleep_ms(ctx, step):
     print(get_indent(ctx) + "Action: " + step["action"])
-    conds = step['conditions']
+    conds = step.get('conditions', {})
     sleep_time = step['time']
     sleep = 0
     have_repeat = False
@@ -356,32 +374,50 @@ def run_test_step_action_repeat(ctx, step):
     print(get_indent(ctx) + "Action: " + step["action"])
     tag = step['tag']
     assert ctx['repeats'].get(tag) is None
+    # initialise the loop continue conditional
     ctx['repeats'][tag] = {"loop": True, }
 
-    if 'min' in step.keys():
-        ctx['repeats'][tag]["i"] = step["min"]
-    else:
-        ctx['repeats'][tag]["i"] = 0
-
-    if 'step' in step.keys():
-        ctx['repeats'][tag]["step"] = step["step"]
-    else:
-        ctx['repeats'][tag]["step"] = 1
-
     if 'values' in step.keys():
+        # value iterator
         ctx['repeats'][tag]['values'] = step["values"]
+        ctx['repeats'][tag]["max"] = len(step["values"])
+        ctx['repeats'][tag]["i"] = 0
+        ctx['repeats'][tag]["step"] = 1
     else:
+        # numeric iterator
         ctx['repeats'][tag]['values'] = None
+
+        if 'min' in step.keys():
+            ctx['repeats'][tag]["i"] = step["min"]
+        else:
+            ctx['repeats'][tag]["i"] = 0
+
+        if 'step' in step.keys():
+            ctx['repeats'][tag]["step"] = step["step"]
+        else:
+            ctx['repeats'][tag]["step"] = 1
+
+        if 'max' in step.keys():
+            ctx['repeats'][tag]["max"] = step["max"]
+        else:
+            ctx['repeats'][tag]["max"] = None
 
     while ctx['repeats'][tag]["loop"]:
         ctx['repeats'][tag]["start"] = time.time()
         ctx["depth"] += 1
+
+        # run through steps for this iteration
         for stp in step["steps"]:
             run_test_step(ctx, stp)
+
+        # increment iterator
         ctx['repeats'][tag]["i"] += ctx['repeats'][tag]["step"]
-        if ctx['repeats'][tag]['values'] is not None:
-            if ctx['repeats'][tag]["i"] >= len(ctx['repeats'][tag]['values']):
+
+        # check for end condition
+        if ctx['repeats'][tag]["max"] is not None:
+            if ctx['repeats'][tag]["i"] >= ctx['repeats'][tag]["max"]:
                 ctx['repeats'][tag]["loop"] = False
+
         ctx["depth"] -= 1
 
 
@@ -607,6 +643,8 @@ def run_test_step_action_quit(ctx, step):
     assert_browser(ctx)
     browser = ctx.pop('browser')
     assert browser.quit_and_wait()
+    # clean up context as all windows have gone away after browser quit
+    ctx.pop('windows')
 
 
 STEP_HANDLERS = {
