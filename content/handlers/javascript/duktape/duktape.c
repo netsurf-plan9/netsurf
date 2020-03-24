@@ -3807,7 +3807,7 @@ typedef void (*duk_re_range_callback)(void *user, duk_codepoint_t r1, duk_codepo
 #define DUK_TOK_INVALID                           DUK_SMALL_UINT_MAX
 
 /* Convert heap string index to a token (reserved words) */
-#define DUK_STRIDX_TO_TOK(x)                        ((x) - DUK_STRIDX_START_RESERVED + DUK_TOK_START_RESERVED)
+#define DUK_STRIDX_TO_TOK(x)                        (((x) - DUK_STRIDX_START_RESERVED) + DUK_TOK_START_RESERVED)
 
 /* Sanity check */
 #if (DUK_TOK_MAXVAL > 255)
