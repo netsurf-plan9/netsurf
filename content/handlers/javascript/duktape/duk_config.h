@@ -1949,7 +1949,8 @@ typedef duk_uint64_t duk_uintptr_t;
 #define DUK_INTPTR_MIN_COMPUTED
 #define DUK_INTPTR_MAX_COMPUTED
 #else
-#error cannot determine intptr type
+typedef intptr_t duk_intptr_t;
+typedef uintptr_t duk_uintptr_t;
 #endif
 
 /* SIZE_MAX may be missing so use an approximate value for it. */
@@ -2228,7 +2229,7 @@ typedef struct duk_hthread duk_context;
 #elif defined(INFINITY)
 #define DUK_DOUBLE_INFINITY  ((double) INFINITY)
 #elif !defined(DUK_F_VBCC) && !defined(DUK_F_MSVC) && !defined(DUK_F_BCC) && \
-      !defined(DUK_F_OLD_SOLARIS) && !defined(DUK_F_AIX)
+      !defined(DUK_F_OLD_SOLARIS) && !defined(DUK_F_AIX) && !defined(_PLAN9)
 #define DUK_DOUBLE_INFINITY  (1.0 / 0.0)
 #else
 /* In VBCC (1.0 / 0.0) results in a warning and 0.0 instead of infinity.
