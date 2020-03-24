@@ -511,7 +511,6 @@ bool llcache_progress(void *h) {
 	if(wh->data->state == DATA_STATE_ERROR) {
 		wh->state = HANDLE_STATE_DONE;
 		ev.type = LLCACHE_EVENT_ERROR;
-		ev.data.msg = wh->data->err;
 		wh->cb(handle, &ev, wh->pw);
 		return false;
 	}
