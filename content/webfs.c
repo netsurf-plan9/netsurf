@@ -546,7 +546,9 @@ bool llcache_progress(void *h) {
 	llcache_event ev;
 
 	// This handle is done. Do nothing.
-	if(wh->state == HANDLE_STATE_DONE || wh->aborted || wh->released) {
+	if(wh->state == HANDLE_STATE_DONE)
+		return true;
+	if(wh->aborted || wh->released) {
 		return false;
 	}
 
