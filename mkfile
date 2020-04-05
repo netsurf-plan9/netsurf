@@ -132,7 +132,7 @@ OBJ=\
 	frontends/framebuffer/findfile.$O \
 	frontends/framebuffer/corewindow.$O \
 	frontends/framebuffer/local_history.$O \
-	frontends/framebuffer/clipboard.$O \
+	frontends/framebuffer/plan9_clipboard.$O \
 	frontends/framebuffer/fbtk/fbtk.$O \
 	frontends/framebuffer/fbtk/event.$O \
 	frontends/framebuffer/fbtk/fill.$O \
