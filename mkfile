@@ -488,7 +488,7 @@ clean:V:
 	dircp frontends/framebuffer/res/icons 9res/icons
 	dircp frontends/framebuffer/res/pointers 9res/pointers
 
-install:V:
+install:V: 9res
 	mkdir -p /sys/lib/netsurf
 	dircp 9res /sys/lib/netsurf
 	cp $O.nsfb /$objtype/bin/nsfb
