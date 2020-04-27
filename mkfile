@@ -473,12 +473,10 @@ $DUKLIB: $DUKOBJ $LIBS
 	$CC $CFLAGS -c -o $target $stem.c
 
 clean:V:
-	rm -f $OBJ $O.nsfb
-
+	rm -f $OBJ $DUKOBJ $DUKLIB $O.nsfb
 
 # copy resource files into the directory 9res, that
 # is used for install. Run befefore 'mk install'
-
 9res:V:
 	dircp resources 9res
 	dircp resources/en 9res
