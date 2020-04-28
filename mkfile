@@ -491,13 +491,13 @@ install:V: 9res
 	dircp 9res /sys/lib/netsurf
 	cp $O.nsfb /$objtype/bin/nsfb
 
-content/handlers/javascript/duktape/duktape/%.h: content/handlers/javascript/duktape/duktape
+content/handlers/javascript/duktape/duktape/%.h:Q: content/handlers/javascript/duktape/duktape
 	# nothing to do
 
-content/handlers/javascript/duktape/duktape/%.c: content/handlers/javascript/duktape/duktape
+content/handlers/javascript/duktape/duktape/%.c:Q: content/handlers/javascript/duktape/duktape
 	# nothing to do
 
-content/handlers/javascript/duktape/duktape/%.inc: content/handlers/javascript/duktape/duktape
+content/handlers/javascript/duktape/duktape/%.inc:Q: content/handlers/javascript/duktape/duktape
 	# nothing to do
 
 content/handlers/javascript/duktape/duktape:
