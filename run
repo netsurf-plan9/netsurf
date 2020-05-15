@@ -12,11 +12,14 @@
 # before the filename.
 
 
-# Example of loading a page (use absolute paths) logging in two windows
-#8.nsfb file:///usr/XXX/somepage.html >[1]/dev/wsys/1/cons >[2]/dev/wsys/2/cons
+# Example of loading a local page (stderr to window no. 2)
+#8.nsfb file:///usr/XXX/somepage.html >[2]/dev/wsys/2/cons
 
 # Run the browser with logging enabled
-#8.nsfb -v >[1]/dev/wsys/33/cons >[2]/dev/wsys/34/cons
+#8.nsfb -v >[2]/dev/wsys/34/cons
 
-# Start with the welcome screen, surpressing stdout/stderr:
-8.nsfb >/dev/null >[2=1]
+# Go directly to a webpage
+#8.nsfb http://www.9front.org >[2]/dev/null
+
+# Start with the welcome screen:
+8.nsfb >[2]/dev/null
