@@ -3897,7 +3897,7 @@ nserror llcache_handle_retrieve(nsurl *url, uint32_t flags,
 	nsurl *hsts_url;
 	bool hsts_in_use;
 
-	fprintf(stderr, "[DBG]: FETCHING URL: %s\n", nsurl_access(url));
+//	fprintf(stderr, "[DBG]: FETCHING URL: %s\n", nsurl_access(url));
 
 	/* Perform HSTS transform */
 	error = llcache_hsts_transform_url(url, &hsts_url, &hsts_in_use);
