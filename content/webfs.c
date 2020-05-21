@@ -79,7 +79,7 @@ void add_node(struct webfs_handle *n) {
 	handle_head = n;
 	if(!scheduled) {
 		scheduled=true;
-		guit->misc->schedule(10, update_webfs, NULL);
+		guit->misc->schedule(60, update_webfs, NULL);
 	}
 }
 
@@ -609,7 +609,7 @@ void update_webfs(void *ignored) {
 		}
 		wh = next;
 	}
-	guit->misc->schedule(10, update_webfs, NULL);
+	guit->misc->schedule(60, update_webfs, NULL);
 }
 
 /**
