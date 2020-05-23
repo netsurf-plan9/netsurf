@@ -129,13 +129,13 @@ static nserror drawui_init(int argc, char *argv[])
 static void drawui_run(void)
 {
 	enum { Eplumb = 128, };
-	//Plumbmsg *pm;
+//	Plumbmsg *pm;
 	Event ev;
 	int e, timer;
 
 	timer = etimer(0, SCHEDULE_PERIOD);
 	eresized(0);
-	//eplumb(Eplumb, "web");
+//	eplumb(Eplumb, "web");
 	for(;;){
 		e = event(&ev);
 		switch(e){
@@ -146,7 +146,7 @@ static void drawui_run(void)
 /*		case Eplumb:
 			pm = ev.v;
 			if (pm->ndata > 0) {
-				url_entry_activated(pm->data);
+				url_entry_activated(pm->data, current);
 			}
 			plumbfree(pm);
 			break;
@@ -210,7 +210,7 @@ void gui_window_destroy(struct gui_window *gw)
 void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 {
 	Rectangle r;
-	Point p;
+	Point p0, p1;
 	struct rect clip;
 	int x, y;
 	struct redraw_context ctx = {
@@ -229,9 +229,10 @@ void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 	x = dwindow_get_scroll_x(gw->dw);
 	y = dwindow_get_scroll_y(gw->dw);
 	browser_window_redraw(gw->bw, -x, -y, &clip, &ctx);
-	if(gw->caret_height > 0 && ptinrect(gw->caret, clipr)) {
-		p = Pt(gw->caret.x, gw->caret.y + gw->caret_height);
-		line(screen, gw->caret, p, 1, 1, 0, display->black, ZP);
+	if(gw->caret_height > 0 && ptinrect(addpt(gw->caret, Pt(-x, -y)), clipr)) {
+		p0 = addpt(gw->caret, Pt(-x, -y));
+		p1 = addpt(p0, Pt(0, gw->caret_height));
+		line(screen, p0, p1, 1, 1, 0, display->black, ZP);
 	}
 }
 
@@ -244,11 +245,11 @@ void gui_window_resize(struct gui_window *gw)
 
 static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 {
-		if (browser_window_scroll_at_point(gw->bw, x, y, 0, sy) == false) {
-			if (dwindow_try_scroll(gw->dw, 0, sy)) {
-				gui_window_redraw(gw, dwindow_get_view_rect(gw->dw));
-			}
+	if (browser_window_scroll_at_point(gw->bw, x, y, 0, sy) == false) {
+		if (dwindow_try_scroll(gw->dw, 0, sy)) {
+			gui_window_redraw(gw, dwindow_get_view_rect(gw->dw));
 		}
+	}
 }
 
 char *menu3str[] = { "exit", 0 };
@@ -257,6 +258,10 @@ Menu menu3 = { menu3str };
 void browser_mouse_event(Mouse m, void *data)
 {
 	static Mouse lastm;
+	static int in_sel = 0;
+	struct gui_window *gw = data;
+	browser_mouse_state mouse = 0;;
+	int dragging = 0;
 	Rectangle r;
 	int n, x, y, sx, sy;
 
@@ -265,14 +270,34 @@ void browser_mouse_event(Mouse m, void *data)
 	sy = dwindow_get_scroll_y(current->dw);
 	x = sx + m.xy.x - r.min.x;
 	y = sy + m.xy.y - r.min.y;
-	browser_window_mouse_track(current->bw, 0, x, y);
+/*
+	if (in_sel && (abs(x - lastm.xy.x) > 5 || abs(y - lastm.xy.y) > 5)) {
+		if (m.buttons & 1) {
+			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_1, x, y);
+		} else if (m.buttons & 2) {
+			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_2, x, y);
+		}
+		dragging = 1;
+	}
+	if(dragging) {
+		//mouse |= BROWSER_MOUSE_DRAG_ON;
+		if (m.buttons & 1) {
+			mouse |= BROWSER_MOUSE_HOLDING_1;
+		} else if (m.buttons & 2) {
+			mouse |= BROWSER_MOUSE_HOLDING_2;
+		}
+		browser_window_mouse_track(current->bw, mouse, x, y);
+	}
+*/	browser_window_mouse_track(current->bw, mouse, x, y);
 	if (m.buttons == 0) {
+		in_sel = 0;
 		if((m.msec - lastm.msec < 250) && lastm.buttons & 1) {
 			lastm = m;
 			browser_window_mouse_click(current->bw, BROWSER_MOUSE_CLICK_1, x, y);
 		}
 	} else if (m.buttons&1) {
 		lastm = m;
+		in_sel = 1;
 		browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
 	} else if(m.buttons & 4) {
 		n = emenuhit(3, &m, &menu3);
@@ -283,14 +308,6 @@ void browser_mouse_event(Mouse m, void *data)
 		gui_window_scroll_y(current, x, y, -100);
 	} else if(m.buttons&16) {
 		gui_window_scroll_y(current, x, y, 100);
-		
-/*
-		if (browser_window_scroll_at_point(current->bw, x, y, 0, 100) == false) {
-			if (dwindow_try_scroll(current->dw, 0, 100)) {
-				gui_window_redraw(current, dwindow_get_view_rect(current->dw));
-			}
-		}
-*/
 	}
 }
 
@@ -318,6 +335,7 @@ void browser_keyboard_event(int k, void *data)
 		break;
 	case Khome:
 		gui_window_scroll_y(gw, 0, 0, -dwindow_get_scroll_y(gw->dw));
+		break;
 	default:
 		browser_window_key_press(gw->bw, k);
 		break;
@@ -328,18 +346,21 @@ void scrollbar_mouse_event(Mouse m, void *data)
 {
 	struct gui_window *gw = data;
 	Rectangle r;
-	int n, x, y, sx, sy;
+	int n, x, y, sx, sy, dy;
 
 	r = dwindow_get_view_rect(gw->dw);
 	sx = dwindow_get_scroll_x(gw->dw);
 	sy = dwindow_get_scroll_y(gw->dw);
 	x = sx + m.xy.x - r.min.x;
 	y = sy + m.xy.y - r.min.y;
-
+	dy = m.xy.y - r.min.y;
 	if (m.buttons&1) {
-		gui_window_scroll_y(gw, x, y, -100);
+		gui_window_scroll_y(gw, x, y, -dy);
 	} else if (m.buttons & 4) {
-		gui_window_scroll_y(gw, x, y, 100);
+		gui_window_scroll_y(gw, x, y, dy);
+	} else if (m.buttons & 2) {
+		dy = (m.xy.y - r.min.y) * dwindow_get_extent_y(gw->dw) / Dy(r);
+		gui_window_scroll_y(gw, x, y, dy - sy);
 	}
 }
 

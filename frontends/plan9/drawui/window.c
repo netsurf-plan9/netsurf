@@ -166,6 +166,11 @@ void dwindow_set_extents(struct dwindow *window, int x, int y)
 	dscrollbar_set_extents(window->scrollbar, x, y);
 }
 
+int dwindow_get_extent_y(struct dwindow *window)
+{
+	return window->scrollbar->extenty;
+}
+
 int dwindowry_scroll(struct dwindow *window, int sx, int sy)
 {
 	return dscrollbar_try_scroll(window->scrollbar, sx, sy);

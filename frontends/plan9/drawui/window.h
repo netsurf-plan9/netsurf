@@ -22,6 +22,7 @@ void      dwindow_set_extents(struct dwindow *window, int x, int y);
 int       dwindow_try_scroll(struct dwindow *window, int sx, int sy);
 int       dwindow_get_scroll_x(struct dwindow *window);
 int       dwindow_get_scroll_y(struct dwindow *window);
+int       dwindow_get_extent_y(struct dwindow *window);
 void      dwindow_set_scroll(struct dwindow *window, int sx, int sy);
 void      dwindow_set_back_button_mouse_callback(struct dwindow *window, mouse_callback cb, void *data);
 void      dwindow_set_forward_button_mouse_callback(struct dwindow *window, mouse_callback cb, void *data);

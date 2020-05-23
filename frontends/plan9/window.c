@@ -86,11 +86,13 @@ nserror
 window_invalidate(struct gui_window *gw, const struct rect *rect)
 {
 	Rectangle clipr;
+	int sy;
 
 	if (rect == NULL) {
 		clipr = dwindow_get_view_rect(gw->dw);
 	} else {
-		clipr = Rect(rect->x0, rect->y0, rect->x1, rect->y1);
+		sy = dwindow_get_scroll_y(gw->dw);
+		clipr = Rect(rect->x0, rect->y0 - sy, rect->x1, rect->y1 - sy);
 		clipr = dwindow_rect_in_view_rect(gw->dw, clipr);
 	}
 	gui_window_redraw(gw, clipr);
@@ -179,6 +181,7 @@ window_get_dimensions(struct gui_window *gw, int *width, int *height)
 nserror
 window_event(struct gui_window *gw, enum gui_window_event event)
 {
+	Rectangle r;
 	int w, h;
 
 	//DBG("IN window_event - event=%d", event);
@@ -190,8 +193,10 @@ window_event(struct gui_window *gw, enum gui_window_event event)
 		break;
 
 	case GW_EVENT_REMOVE_CARET:
-		gw->caret = ZP;
-		gw->caret_height = -1;
+		if (gw->caret_height != -1) {
+			gw->caret = ZP;
+			gw->caret_height = -1;
+		}
 		break;
 
 	case GW_EVENT_START_SELECTION:
@@ -345,18 +350,22 @@ window_place_caret(struct gui_window *g, int x, int y, int height, const struct 
 {
 	Rectangle r;
 	Point p0, p1;
+	int sx, sy;
 
-	p0 = dwindow_point_in_view_rect(g->dw, Pt(x, y));
-	p1 = dwindow_point_in_view_rect(g->dw, Pt(x, y + height));
+	sx = dwindow_get_scroll_x(g->dw);
+	sy = dwindow_get_scroll_y(g->dw);
+	p0 = dwindow_point_in_view_rect(g->dw, Pt(x - sx, y - sy));
+	p1 = dwindow_point_in_view_rect(g->dw, Pt(x - sx, y - sy + height));
 	if (clip != NULL) {
 		r = Rect(clip->x0, clip->x1, clip->y0, clip->y1);
 	} else {
 		r = Rect(x - 1, y - 1, x + 1, y + height + 1);
 	}
+	r = rectaddpt(r, Pt(-sx, -sy));
 	r = dwindow_rect_in_view_rect(g->dw, r);
 	replclipr(screen, 0, screen->r);
 	line(screen, p0, p1, 1, 1, 0, display->black, ZP);
-	g->caret = p0;
+	g->caret = addpt(p0, Pt(sx, sy));
 	g->caret_height = height;
 }
 
