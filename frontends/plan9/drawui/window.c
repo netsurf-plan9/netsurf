@@ -16,6 +16,8 @@ typedef struct dwindow dwindow;
 struct dwindow
 {
 	Rectangle r;
+	Rectangle iconr;
+	Image *icon;
 	Rectangle titler;
 	char *title;
 	Rectangle statusr;
@@ -59,7 +61,7 @@ void dwindow_destroy(struct dwindow *window)
 void dwindow_resize(struct dwindow *window, Rectangle newr)
 {
 	Rectangle r;
-	int w, h, x, y;
+	int w, h, x, y, ix, iy;
 
 	window->r = newr;
 	w = Dx(window->r);
@@ -68,8 +70,14 @@ void dwindow_resize(struct dwindow *window, Rectangle newr)
 	x = window->r.min.x;
 	y = window->r.min.y;
 
+	h = PADDING+ICON_SIZE;
+	ix = x + ICON_SIZE;
+	r = Rect(x + PADDING, y + PADDING, ix + PADDING, y + PADDING + h);
+	window->iconr = r;
+	ix += PADDING;
+
 	h = PADDING+font->height;
-	r = Rect(x, y, x + w, y + h);
+	r = Rect(ix, y, x + w, y + h);
 	window->titler = r;
 	y += h;
 
@@ -89,6 +97,18 @@ void dwindow_resize(struct dwindow *window, Rectangle newr)
 	dscrollbar_set_rect(window->scrollbar, r);
 	dscrollbar_set_view_size(window->scrollbar, Dx(window->viewr), Dy(window->viewr));
 	dwindow_draw(window);		
+}
+
+static void draw_icon(dwindow *window)
+{
+	Image *i;
+
+	i = bg_color;
+	if (window->icon != NULL) {
+		i = window->icon;
+	}
+	replclipr(screen, 0, window->iconr);
+	draw(screen, window->iconr, i, nil, ZP);
 }
 
 static void draw_title(dwindow *window)
@@ -194,6 +214,12 @@ int dwindow_get_scroll_y(struct dwindow *window)
 int dwindow_try_scroll(struct dwindow *window, int sx, int sy)
 {
 	return dscrollbar_try_scroll(window->scrollbar, sx, sy);
+}
+
+void dwindow_set_icon(struct dwindow *window, Image *icon)
+{
+	window->icon = icon;
+	draw_icon(window);
 }
 
 void dwindow_set_title(struct dwindow *window, const char *text)

@@ -17,6 +17,7 @@
 #include "netsurf/keypress.h"
 #include "plan9/window.h"
 #include "plan9/gui.h"
+#include "plan9/plotter.h"
 #include "plan9/utils.h"
 #include "plan9/drawui/window.h"
 #include "plan9/drawui/data.h"
@@ -95,6 +96,7 @@ window_invalidate(struct gui_window *gw, const struct rect *rect)
 		clipr = Rect(rect->x0, rect->y0 - sy, rect->x1, rect->y1 - sy);
 		clipr = dwindow_rect_in_view_rect(gw->dw, clipr);
 	}
+//DBG("window_invalidate (rect:[%d %d %d %d])", clipr.min.x, clipr.min.y, clipr.max.x, clipr.max.y);
 	gui_window_redraw(gw, clipr);
 	return NSERROR_OK;
 }
@@ -257,7 +259,15 @@ window_set_url(struct gui_window *gw, struct nsurl *url)
 void
 window_set_icon(struct gui_window *gw, struct hlcache_handle *icon)
 {
-	DBG("IN window_set_icon");
+	Image *i;
+	struct bitmap *b;
+
+	i = NULL;
+	if (content_get_type(icon) == CONTENT_IMAGE) {
+		b = content_get_bitmap(icon);
+		i = getimage(b);
+	}
+	dwindow_set_icon(gw->dw, i);
 }
 
 /**

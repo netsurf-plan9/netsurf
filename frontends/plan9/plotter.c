@@ -5,9 +5,12 @@
 #include "netsurf/plotters.h"
 #include "plan9/window.h"
 #include "plan9/plotter.h"
+#include "plan9/bitmap.h"
 #include "plan9/layout.h"
 #include "plan9/utils.h"
 #include "plan9/drawui/window.h"
+
+static Rectangle plot_clipr, saved_clipr;
 
 /**
  * \brief Converts a netsurf colour type to a libdraw image
@@ -29,6 +32,34 @@ static Image* getcolor(colour c)
 }
 
 /**
+ * \brief Converts a bitmap to a libdraw image
+ *
+ * \param b The bitmap
+ * \return Image on success else NULL
+ */
+Image* getimage(struct bitmap *b)
+{
+	Image *i;
+	Rectangle r;
+	int w, h;
+	ulong chan;
+
+	if (b == NULL) {
+		return NULL;
+	}
+	if (b->opaque)
+		chan = XBGR32; //XBGR32;
+	else
+		chan = ABGR32; //ABGR32;
+	w = b->width;
+	h = b->height;
+	r = Rect(0, 0, w, h);
+	i = allocimage(display, r, chan, 0, DBlack);
+	loadimage(i, r, b->data, BITMAP_BPP * w * h);
+	return i;
+}
+
+/**
  * \brief Sets a clip rectangle for subsequent plot operations.
  *
  * \param ctx The current redraw context.
@@ -40,6 +71,17 @@ nserror
 plotter_clip(const struct redraw_context *ctx, const struct rect *clip)
 {
 	/* don't clip here we will do it later */
+	struct dwindow *w;
+	Rectangle r;
+
+	w = ctx->priv;
+	r = Rect(clip->x0, clip->y0, clip->x1, clip->y1);
+	r = dwindow_rect_in_view_rect(w, r);
+	if (eqrect(screen->clipr, r))
+		return NSERROR_OK;
+//DBG("In plotter_clip (rect:[%d %d %d %d] - clipr:[%d %d %d %d])", r.min.x, r.min.y, r.max.x, r.max.y, screen->clipr.min.x, screen->clipr.min.y, screen->clipr.max.x, screen->clipr.max.y);
+	plot_clipr = r;
+	//replclipr(screen, 0, r);
 	return NSERROR_OK;
 }
 
@@ -177,18 +219,23 @@ plotter_rectangle(const struct redraw_context *ctx,
 	Rectangle r;
 	Image *c;
 
+	//saved_clipr = screen->clipr;
+	//replclipr(screen, 0, plot_clipr);
 	w = ctx->priv;
 	r = Rect(rectangle->x0, rectangle->y0, rectangle->x1, rectangle->y1);
 	r = dwindow_rect_in_view_rect(w, r);
-	if(pstyle->fill_type != PLOT_OP_TYPE_NONE){
+	if (pstyle->fill_type != PLOT_OP_TYPE_NONE) {
 		c = getcolor(pstyle->fill_colour);
 		draw(screen, r, c, nil, ZP);
 		freeimage(c);
-	}else{
+//DBG("IN plotter rectangle (fill:%X rect:[%d %d %d %d])", pstyle->fill_colour, r.min.x, r.min.y, r.max.x, r.max.y);
+	}
+	if (pstyle->stroke_type != PLOT_OP_TYPE_NONE) {
 		c = getcolor(pstyle->stroke_colour);
-		border(screen, r, 1, c, ZP);
+		border(screen, r, pstyle->stroke_width, c, ZP);
 		freeimage(c);
 	}
+	//replclipr(screen, 0, saved_clipr);
 	return NSERROR_OK;
 }
 
@@ -296,12 +343,11 @@ plotter_bitmap(const struct redraw_context *ctx,
 	Rectangle r;
 	Image *i;
 
-	DBG("IN plotter_bitmap");
 	w = ctx->priv;
-	i = (Image*)bitmap;
-	r = Rect(x, y, Dx(i->r), Dy(i->r));
+	i = getimage(bitmap);
+	r = Rect(x, y, x + width, y + height);
 	r = dwindow_rect_in_view_rect(w, r);
-	draw(screen, r, (Image*)bitmap, nil, ZP);
+	draw(screen, r, i, nil, ZP);
 	return NSERROR_OK;
 }
 
@@ -330,6 +376,8 @@ plotter_text(const struct redraw_context *ctx,
 	Image *c;
 	Font *f;
 
+	//saved_clipr = screen->clipr;
+	//replclipr(screen, 0, plot_clipr);
 	w = ctx->priv;
 	f = getfont(fstyle);
 	p = dwindow_point_in_view_rect(w, Pt(x, y));
@@ -337,6 +385,8 @@ plotter_text(const struct redraw_context *ctx,
 	c = getcolor(fstyle->foreground);
 	stringn(screen, p, c, ZP, f, text, length);
 	freeimage(c);
+	//replclipr(screen, 0, saved_clipr);
+//DBG("IN plotter_text (fg:%X pt:(%d;%d) text:%s)", fstyle->foreground, p.x, p.y, text);
 	return NSERROR_OK;
 }
 

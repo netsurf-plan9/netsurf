@@ -9,6 +9,7 @@
 #include "netsurf/plotters.h"
 #include "plan9/bitmap.h"
 #include "plan9/plotter.h"
+#include "plan9/gui.h"
 #include "plan9/utils.h"
 
 /**
@@ -22,13 +23,22 @@
 void*
 bitmap_create(int width, int height, unsigned int state)
 {
-	Image *i;
-/*
-	DBG("IN bitmap_create - width=%d height=%d state=%d", width, height, state);
-	i = allocimage(display, Rect(0, 0, width, height), screen->chan, 0, DNofill);
-	DBG("OUT bitmap_create - bitmap=%p", i);
-*/
-	return NULL;
+	struct bitmap *bitmap;
+	ulong chan;
+
+	bitmap = calloc(1, sizeof(struct bitmap));
+	if (bitmap == NULL) {
+		return NULL;
+	}
+	bitmap->data = calloc(BITMAP_BPP * width * height, sizeof (unsigned char));
+	if (bitmap->data == NULL) {
+		return NULL;
+	}
+	bitmap->width = width;
+	bitmap->height = height;
+	bitmap->opaque = (state & BITMAP_OPAQUE) ? 1 : 0;
+	bitmap->modified = 0;
+	return bitmap;
 }
 
 /**
@@ -39,8 +49,10 @@ bitmap_create(int width, int height, unsigned int state)
 void
 bitmap_destroy(void *bitmap)
 {
-	DBG("IN bitmap_destroy");
-//	freeimage(bitmap);
+	struct bitmap *b = bitmap;
+
+	free(b->data);
+	free(b);
 }
 
 /**
@@ -52,7 +64,9 @@ bitmap_destroy(void *bitmap)
 void
 bitmap_set_opaque(void *bitmap, bool opaque)
 {
-	DBG("IN bitmap_set_opaque");
+	struct bitmap *b = bitmap;
+
+	b->opaque = opaque;
 }
 
 /**
@@ -64,8 +78,9 @@ bitmap_set_opaque(void *bitmap, bool opaque)
 bool 
 bitmap_get_opaque(void *bitmap)
 {
-	DBG("IN bitmap_get_opaque");
-	return 0;
+	struct bitmap *b = bitmap;
+
+	return b->opaque;
 }
 
 /**
@@ -77,8 +92,16 @@ bitmap_get_opaque(void *bitmap)
 bool
 bitmap_test_opaque(void *bitmap)
 {
-	DBG("IN bitmap_test_opaque");
-	return 1;
+	struct bitmap *b = bitmap;
+	int i, c;
+
+	c = ((b->width * 32 + 7) / 8) * b->height;
+	for (i = 3; i < c; i += 4) {
+		if (b->data[i] != 0xFF) {
+			return false;
+		}
+	}
+	return true;
 }
 
 /**
@@ -90,8 +113,9 @@ bitmap_test_opaque(void *bitmap)
 unsigned char*
 bitmap_get_buffer(void *bitmap)
 {
-	DBG("IN bitmap_get_buffer");
-	return NULL;
+	struct bitmap *b = bitmap;
+
+	return b->data;
 }
 
 /**
@@ -103,12 +127,10 @@ bitmap_get_buffer(void *bitmap)
 size_t
 bitmap_get_rowstride(void *bitmap)
 {
-	Image *i;
+	struct bitmap *b = bitmap;
+	int depth = 8 * BITMAP_BPP;
 
-	DBG("IN bitmap_get_rowstride");
-	/*i = bitmap;
-	return bytesperline(i->r, i->depth);*/
-	return 0;
+	return (b->width * depth + 8 - 1) / 8;
 }
 
 /**
@@ -120,11 +142,9 @@ bitmap_get_rowstride(void *bitmap)
 int
 bitmap_get_width(void *bitmap)
 {
-	Image *i;
+	struct bitmap *b = bitmap;
 
-	DBG("IN bitmap_get_width");
-	i = bitmap;
-	return Dx(i->r);;
+	return b->width;
 }
 
 /**
@@ -136,13 +156,9 @@ bitmap_get_width(void *bitmap)
 int
 bitmap_get_height(void *bitmap)
 {
-	return 0;
-/*
-	Image *i;
+	struct bitmap *b = bitmap;
 
-	DBG("IN bitmap_get_height");
-	i = bitmap;
-	return Dy(i->r);*/
+	return b->height;
 }
 
 /**
@@ -153,13 +169,7 @@ bitmap_get_height(void *bitmap)
 size_t
 bitmap_get_bpp(void *bitmap)
 {
-	return 0;
-/*
-	Image *i;
-
-	DBG("IN bitmap_get_bpp");
-	i = bitmap;
-	return i->depth/8;*/
+	return BITMAP_BPP;
 }
 
 /**
@@ -184,7 +194,9 @@ bitmap_save(void *bitmap, const char *path, unsigned flags)
 void
 bitmap_modified(void *bitmap)
 {
-	DBG("IN bitmap_modified");
+	struct bitmap *bm = bitmap;
+
+	bm->modified = 1;
 }
 
 /**
@@ -196,8 +208,8 @@ bitmap_modified(void *bitmap)
 nserror
 bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 {
-/*
-	Image *i;
+/* XXX: what is this used for ?
+
 	int w, h;
 	uint8_t *data;
 	size_t sz;
@@ -205,19 +217,13 @@ bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 		.interactive = false,
 		.background_images = true,
 		.plot = plan9_plotter_table,
+		.priv = current,
 	};
 
 	DBG("IN bitmap_render - bitmap=%p title=%s", bitmap, content_get_title(content));
-	i = (Image*)bitmap;
 	w = content_get_width(content);
 	h = content_get_height(content);
-	content_scaled_redraw(content, w, h, &ctx);
-	data = content_get_source_data(content, &sz);
-	if(data != NULL){
-		loadimage(i, Rect(0, 0, w, h), (uchar*)data, sz);
-		DBG("image loaded (%d bytes)", (int)sz);
-	//	draw(screen, Rect(screen->r.min.x, screen->r.min.y, screen->r.min.x+w, screen->r.min.x+h), i, nil, ZP);
-	}
+	//content_scaled_redraw(content, w, h, &ctx);
 */
 	return NSERROR_OK;
 }

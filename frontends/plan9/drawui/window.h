@@ -15,6 +15,7 @@ void      dwindow_resize(struct dwindow *window, Rectangle r);
 Rectangle dwindow_get_view_rect(struct dwindow *window);
 Rectangle dwindow_rect_in_view_rect(struct dwindow *window, Rectangle r);
 Point     dwindow_point_in_view_rect(struct dwindow *window, Point p);
+void	  dwindow_set_icon(struct dwindow *window, Image *icon);
 void      dwindow_set_title(struct dwindow *window, const char *text);
 void      dwindow_set_url(struct dwindow *window, const char *text);
 void      dwindow_set_status(struct dwindow *window, const char *text);
