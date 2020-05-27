@@ -48,9 +48,9 @@ Image* getimage(struct bitmap *b)
 		return NULL;
 	}
 	if (b->opaque)
-		chan = XBGR32; //XBGR32;
+		chan = XBGR32;
 	else
-		chan = ABGR32; //ABGR32;
+		chan = ABGR32;
 	w = b->width;
 	h = b->height;
 	r = Rect(0, 0, w, h);
@@ -341,13 +341,18 @@ plotter_bitmap(const struct redraw_context *ctx,
 {
 	struct dwindow *w;
 	Rectangle r;
-	Image *i;
+	Image *i, *m;
 
+	if (flags != 0)
+		return NSERROR_INVALID;
 	w = ctx->priv;
 	i = getimage(bitmap);
+	m = getcolor(bg);
 	r = Rect(x, y, x + width, y + height);
 	r = dwindow_rect_in_view_rect(w, r);
-	draw(screen, r, i, nil, ZP);
+	draw(screen, r, i, 0, ZP);
+	freeimage(i);
+	freeimage(m);
 	return NSERROR_OK;
 }
 
@@ -376,8 +381,6 @@ plotter_text(const struct redraw_context *ctx,
 	Image *c;
 	Font *f;
 
-	//saved_clipr = screen->clipr;
-	//replclipr(screen, 0, plot_clipr);
 	w = ctx->priv;
 	f = getfont(fstyle);
 	p = dwindow_point_in_view_rect(w, Pt(x, y));
@@ -385,8 +388,6 @@ plotter_text(const struct redraw_context *ctx,
 	c = getcolor(fstyle->foreground);
 	stringn(screen, p, c, ZP, f, text, length);
 	freeimage(c);
-	//replclipr(screen, 0, saved_clipr);
-//DBG("IN plotter_text (fg:%X pt:(%d;%d) text:%s)", fstyle->foreground, p.x, p.y, text);
 	return NSERROR_OK;
 }
 
