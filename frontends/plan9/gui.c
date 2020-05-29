@@ -23,6 +23,7 @@
 #include "netsurf/netsurf.h"
 #include "content/fetch.h"
 #include "content/backing_store.h"
+#include "desktop/search.h"
 #include "plan9/bitmap.h"
 #include "plan9/fetch.h"
 #include "plan9/layout.h"
@@ -104,7 +105,8 @@ static nserror drawui_init(int argc, char *argv[])
 	nsurl *url;
 
 	if(initdraw(nil, nil, "netsurf") < 0) {
-		sysfatal("initdraw: %r");
+		fprintf(stderr, "initdraw failed\n");
+		exit(1);
 	}
 	einit(Emouse|Ekeyboard);
 	data_init();
@@ -128,29 +130,19 @@ static nserror drawui_init(int argc, char *argv[])
 
 static void drawui_run(void)
 {
-	enum { Eplumb = 128, };
-//	Plumbmsg *pm;
 	Event ev;
 	int e, timer;
 
 	timer = etimer(0, SCHEDULE_PERIOD);
 	eresized(0);
-//	eplumb(Eplumb, "web");
 	for(;;){
 		e = event(&ev);
 		switch(e){
 		default:
-			if(e==timer)
+			if(e == timer)
 				schedule_run();
 			break;
-/*		case Eplumb:
-			pm = ev.v;
-			if (pm->ndata > 0) {
-				url_entry_activated(pm->data, current);
-			}
-			plumbfree(pm);
-			break;
-*/		case Ekeyboard:
+		case Ekeyboard:
 			dwindow_keyboard_event(current->dw, ev);
 			break;
 		case Emouse:
@@ -172,7 +164,8 @@ static void drawui_exit(int status)
 void eresized(int new)
 {
 	if (new && getwindow(display, Refnone) < 0) {
-		sysfatal("cannot reattach: %r");
+		fprintf(stderr, "cannot reattach to window\n");
+		exit(1);
 	}
 	if (current != NULL) {
 		gui_window_resize(current);
@@ -182,10 +175,12 @@ void eresized(int new)
 struct gui_window* gui_window_create(struct browser_window *bw)
 {
 	struct gui_window *gw;
+	Rectangle r;
 
 	gw = calloc(1, sizeof *gw);
 	if(gw==NULL)
 		return NULL;
+	current = gw;
 	gw->bw = bw;
 	gw->dw = dwindow_create(screen->r);
 	dwindow_set_back_button_mouse_callback(gw->dw, back_button_mouse_event, gw);
@@ -196,13 +191,16 @@ struct gui_window* gui_window_create(struct browser_window *bw)
 	dwindow_set_scrollbar_mouse_callback(gw->dw, scrollbar_mouse_event, gw);
 	dwindow_set_browser_mouse_callback(gw->dw, browser_mouse_event, gw);
 	dwindow_set_browser_keyboard_callback(gw->dw, browser_keyboard_event, gw);
-	current = gw;
-	gui_window_redraw(gw, dwindow_get_view_rect(gw->dw));
+	r = dwindow_get_view_rect(gw->dw);
+	gw->b = allocimage(display,  Rect(0, 0, Dx(r), Dy(r)), ABGR32, 0, DNofill);
+	gui_window_redraw(gw, gw->b->r);
 	return gw;
 }
 
 void gui_window_destroy(struct gui_window *gw)
 {
+	if (gw->b != NULL)
+		freeimage(gw->b);
 	dwindow_destroy(gw->dw);
 	free(gw);
 }
@@ -217,37 +215,45 @@ void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 		.interactive = true,
 		.background_images = true,
 		.plot = plan9_plotter_table,
-		.priv = gw->dw,
+		.priv = gw->b,
 	};
 
+	clipr = dwindow_rect_in_view_rect(gw->dw, clipr);
 	r = dwindow_get_view_rect(gw->dw);
 	clip.x0 = 0;
 	clip.y0 = 0;
 	clip.x1 = Dx(r);
 	clip.y1 = Dy(r);
-	replclipr(screen, 0, clipr);
 	x = dwindow_get_scroll_x(gw->dw);
 	y = dwindow_get_scroll_y(gw->dw);
 	browser_window_redraw(gw->bw, -x, -y, &clip, &ctx);
-	if(gw->caret_height > 0 && ptinrect(addpt(gw->caret, Pt(-x, -y)), clipr)) {
+	if(gw->caret_height > 0) {
 		p0 = addpt(gw->caret, Pt(-x, -y));
 		p1 = addpt(p0, Pt(0, gw->caret_height));
-		line(screen, p0, p1, 1, 1, 0, display->black, ZP);
+		line(gw->b, p0, p1, 1, 1, 0, display->black, ZP);
 	}
+	replclipr(screen, 0, clipr);
+	draw(screen, r, gw->b, 0, ZP);
 }
 
 void gui_window_resize(struct gui_window *gw)
 {
+	Rectangle r;
+
 	dwindow_resize(gw->dw, screen->r);
+	r = dwindow_get_view_rect(gw->dw);
+	if (gw->b != NULL)
+		freeimage(gw->b);
+	gw->b = allocimage(display, Rect(0, 0, Dx(r), Dy(r)), ABGR32, 0, DNofill);
 	browser_window_schedule_reformat(gw->bw);
-	gui_window_redraw(gw, dwindow_get_view_rect(gw->dw));
+	gui_window_redraw(gw, gw->b->r);
 }
 
 static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 {
 	if (browser_window_scroll_at_point(gw->bw, x, y, 0, sy) == false) {
 		if (dwindow_try_scroll(gw->dw, 0, sy)) {
-			gui_window_redraw(gw, dwindow_get_view_rect(gw->dw));
+			gui_window_redraw(gw, gw->b->r);
 		}
 	}
 }
@@ -258,57 +264,36 @@ Menu menu3 = { menu3str };
 void browser_mouse_event(Mouse m, void *data)
 {
 	static Mouse lastm;
-	static int in_sel = 0;
 	struct gui_window *gw = data;
 	browser_mouse_state mouse = 0;;
-	int dragging = 0;
 	Rectangle r;
 	int n, x, y, sx, sy;
 
 	r = dwindow_get_view_rect(current->dw);
 	sx = dwindow_get_scroll_x(current->dw);
 	sy = dwindow_get_scroll_y(current->dw);
-	x = sx + m.xy.x - r.min.x;
-	y = sy + m.xy.y - r.min.y;
-/*
-	if (in_sel && (abs(x - lastm.xy.x) > 5 || abs(y - lastm.xy.y) > 5)) {
-		if (m.buttons & 1) {
-			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_1, x, y);
-		} else if (m.buttons & 2) {
-			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_2, x, y);
-		}
-		dragging = 1;
-	}
-	if(dragging) {
-		//mouse |= BROWSER_MOUSE_DRAG_ON;
-		if (m.buttons & 1) {
-			mouse |= BROWSER_MOUSE_HOLDING_1;
-		} else if (m.buttons & 2) {
-			mouse |= BROWSER_MOUSE_HOLDING_2;
-		}
-		browser_window_mouse_track(current->bw, mouse, x, y);
-	}
-*/	browser_window_mouse_track(current->bw, mouse, x, y);
+	x = m.xy.x - r.min.x + sx;
+	y = m.xy.y - r.min.y + sy;
+
 	if (m.buttons == 0) {
-		in_sel = 0;
 		if((m.msec - lastm.msec < 250) && lastm.buttons & 1) {
 			lastm = m;
 			browser_window_mouse_click(current->bw, BROWSER_MOUSE_CLICK_1, x, y);
 		}
 	} else if (m.buttons&1) {
 		lastm = m;
-		in_sel = 1;
 		browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
-	} else if(m.buttons & 4) {
+	} else if (m.buttons & 4) {
 		n = emenuhit(3, &m, &menu3);
 		if (n == 0) {
 			drawui_exit(0);
 		}
-	} else if(m.buttons&8) {
+	} else if (m.buttons&8) {
 		gui_window_scroll_y(current, x, y, -100);
-	} else if(m.buttons&16) {
+	} else if (m.buttons&16) {
 		gui_window_scroll_y(current, x, y, 100);
 	}
+	browser_window_mouse_track(current->bw, mouse, x, y);
 }
 
 void browser_keyboard_event(int k, void *data)
@@ -435,7 +420,8 @@ main(int argc, char *argv[])
 	};
 
 	if (stat("/mnt/web", &sb) != 0 || !S_ISDIR(sb.st_mode)) {
-		sysfatal("webfs not started");
+		fprintf(stderr, "webfs not started\n");
+		exit(1);
 	}
 
 	ret = netsurf_register(&plan9_table);

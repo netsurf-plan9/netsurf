@@ -10,8 +10,6 @@
 #include "plan9/utils.h"
 #include "plan9/drawui/window.h"
 
-static Rectangle plot_clipr, saved_clipr;
-
 /**
  * \brief Converts a netsurf colour type to a libdraw image
  *
@@ -27,7 +25,7 @@ static Image* getcolor(colour c)
 	g = (c & 0xff00) >> 8;
 	b = (c & 0xff0000) >> 16;
 	n = (r << 24) | (g << 16) | (b << 8) | 0xff; 
-	i = allocimage(display, Rect(0,0,1,1), screen->chan, 1, n);
+	i = allocimage(display, Rect(0,0,1,1), ABGR32, 1, n);
 	return i;
 }
 
@@ -70,18 +68,18 @@ Image* getimage(struct bitmap *b)
 nserror 
 plotter_clip(const struct redraw_context *ctx, const struct rect *clip)
 {
-	/* don't clip here we will do it later */
-	struct dwindow *w;
+	Image *b;
 	Rectangle r;
 
-	w = ctx->priv;
+	b = ctx->priv;
+	if (b == NULL) {
+		DBG("plotter_clip => B IS NULL !!!");
+		return NSERROR_INVALID;
+	}
 	r = Rect(clip->x0, clip->y0, clip->x1, clip->y1);
-	r = dwindow_rect_in_view_rect(w, r);
-	if (eqrect(screen->clipr, r))
-		return NSERROR_OK;
-//DBG("In plotter_clip (rect:[%d %d %d %d] - clipr:[%d %d %d %d])", r.min.x, r.min.y, r.max.x, r.max.y, screen->clipr.min.x, screen->clipr.min.y, screen->clipr.max.x, screen->clipr.max.y);
-	plot_clipr = r;
-	//replclipr(screen, 0, r);
+	if (clip->x0 == clip->x1 && clip->x0 == 0)
+		r = b->r;
+	replclipr(b, 0, r);
 	return NSERROR_OK;
 }
 
@@ -110,19 +108,19 @@ plotter_arc(const struct redraw_context *ctx,
 	int angle1,
 	int angle2)
 {
-	struct dwindow *w;
+	Image *b;
 	Image *c;
 	Point p;
 	int t;
 
-	w = ctx->priv;
+	b = ctx->priv;
 	c = getcolor(pstyle->stroke_colour);
 	t = plot_style_fixed_to_int(pstyle->stroke_width);
-	p = dwindow_point_in_view_rect(w, Pt(x, y));
+	p = Pt(x, y);
 	if(pstyle->fill_type != PLOT_OP_TYPE_NONE){
-		fillarc(screen, p, radius, radius, c, ZP, angle1, angle2);
+		fillarc(b, p, radius, radius, c, ZP, angle1, angle2);
 	} else {
-		arc(screen, p, radius, radius, t, c, ZP, angle1, angle2);
+		arc(b, p, radius, radius, t, c, ZP, angle1, angle2);
 	}
 	freeimage(c);
 	return NSERROR_OK;
@@ -147,19 +145,19 @@ plotter_disc(const struct redraw_context *ctx,
 		int y,
 		int radius)
 {
-	struct dwindow *w;
+	Image *b;
 	Image *c;
 	Point p;
 	int t;
 
-	w = ctx->priv;
+	b = ctx->priv;
 	c = getcolor(pstyle->stroke_colour);
 	t = plot_style_fixed_to_int(pstyle->stroke_width);
-	p = dwindow_point_in_view_rect(w, Pt(x, y));
+	p = Pt(x, y);
 	if(pstyle->fill_type != PLOT_OP_TYPE_NONE){
-		fillellipse(screen, p, radius, radius, c, ZP);
+		fillellipse(b, p, radius, radius, c, ZP);
 	} else {
-		ellipse(screen, p, radius, radius, t, c, ZP);
+		ellipse(b, p, radius, radius, t, c, ZP);
 	}
 	freeimage(c);
 	return NSERROR_OK;
@@ -182,17 +180,17 @@ plotter_line(const struct redraw_context *ctx,
 		const plot_style_t *pstyle,
 		const struct rect *l)
 {
-	struct dwindow *w;
+	Image *b;
 	Image *c;
 	int t;
 	Point p0, p1;
 
-	w = ctx->priv;
+	b = ctx->priv;
 	c = getcolor(pstyle->stroke_colour);
 	t = plot_style_fixed_to_int(pstyle->stroke_width);
-	p0 = dwindow_point_in_view_rect(w, Pt(l->x0, l->y0));
-	p1 = dwindow_point_in_view_rect(w, Pt(l->x1, l->y1));
-	line(screen, p0, p1, 0, 0, t, c, ZP);
+	p0 = Pt(l->x0, l->y0);
+	p1 = Pt(l->x1, l->y1);
+	line(b, p0, p1, 0, 0, t, c, ZP);
 	freeimage(c);
 	return NSERROR_OK;
 }
@@ -215,27 +213,22 @@ plotter_rectangle(const struct redraw_context *ctx,
 		const plot_style_t *pstyle,
 		const struct rect *rectangle)
 {
-	struct dwindow *w;
+	Image *b;
 	Rectangle r;
 	Image *c;
 
-	//saved_clipr = screen->clipr;
-	//replclipr(screen, 0, plot_clipr);
-	w = ctx->priv;
+	b = ctx->priv;
 	r = Rect(rectangle->x0, rectangle->y0, rectangle->x1, rectangle->y1);
-	r = dwindow_rect_in_view_rect(w, r);
 	if (pstyle->fill_type != PLOT_OP_TYPE_NONE) {
 		c = getcolor(pstyle->fill_colour);
-		draw(screen, r, c, nil, ZP);
+		draw(b, r, c, nil, ZP);
 		freeimage(c);
-//DBG("IN plotter rectangle (fill:%X rect:[%d %d %d %d])", pstyle->fill_colour, r.min.x, r.min.y, r.max.x, r.max.y);
 	}
 	if (pstyle->stroke_type != PLOT_OP_TYPE_NONE) {
 		c = getcolor(pstyle->stroke_colour);
-		border(screen, r, pstyle->stroke_width, c, ZP);
+		border(b, r, pstyle->stroke_width, c, ZP);
 		freeimage(c);
 	}
-	//replclipr(screen, 0, saved_clipr);
 	return NSERROR_OK;
 }
 
@@ -259,23 +252,23 @@ plotter_polygon(const struct redraw_context *ctx,
 		const int *p,
 		unsigned int n)
 {
-	struct dwindow *w;
+	Image *b;
 	Image *c;
 	Point *pts;
 	int np, i;
 
-	w = ctx->priv;
+	b = ctx->priv;
 	pts = calloc(n + 1, sizeof *p);
 	if (pts == NULL) {
 		return NSERROR_OK;
 	}
 	np = 1;
-	pts[0] = dwindow_point_in_view_rect(w, Pt(p[0], p[1]));
+	pts[0] = Pt(p[0], p[1]);
 	for(i = 1; i != n; i++) {
-		pts[np++] = dwindow_point_in_view_rect(w, Pt(p[i * 2], p[i * 2 + 1]));
+		pts[np++] = Pt(p[i * 2], p[i * 2 + 1]);
 	}
 	c = getcolor(pstyle->fill_colour);
-	fillpoly(screen, pts, np, 1, c, ZP);
+	fillpoly(b, pts, np, 1, c, ZP);
 	freeimage(c);
 	return NSERROR_OK;
 }
@@ -339,18 +332,17 @@ plotter_bitmap(const struct redraw_context *ctx,
 		colour bg,
 		bitmap_flags_t flags)
 {
-	struct dwindow *w;
+	Image *b;
 	Rectangle r;
 	Image *i, *m;
 
 	if (flags != 0)
 		return NSERROR_INVALID;
-	w = ctx->priv;
+	b = ctx->priv;
 	i = getimage(bitmap);
 	m = getcolor(bg);
 	r = Rect(x, y, x + width, y + height);
-	r = dwindow_rect_in_view_rect(w, r);
-	draw(screen, r, i, 0, ZP);
+	draw(b, r, i, 0, ZP);
 	freeimage(i);
 	freeimage(m);
 	return NSERROR_OK;
@@ -376,17 +368,16 @@ plotter_text(const struct redraw_context *ctx,
 		const char *text,
 		size_t length)
 {
-	struct dwindow *w;
+	Image *b;
 	Point p;
 	Image *c;
 	Font *f;
 
-	w = ctx->priv;
+	b = ctx->priv;
 	f = getfont(fstyle);
-	p = dwindow_point_in_view_rect(w, Pt(x, y));
-	p.y -= f->ascent;
+	p = Pt(x, y -f->ascent);
 	c = getcolor(fstyle->foreground);
-	stringn(screen, p, c, ZP, f, text, length);
+	stringn(b, p, c, ZP, f, text, length);
 	freeimage(c);
 	return NSERROR_OK;
 }

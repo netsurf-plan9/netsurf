@@ -24,7 +24,6 @@ void*
 bitmap_create(int width, int height, unsigned int state)
 {
 	struct bitmap *bitmap;
-	ulong chan;
 
 	bitmap = calloc(1, sizeof(struct bitmap));
 	if (bitmap == NULL) {
@@ -208,8 +207,8 @@ bitmap_modified(void *bitmap)
 nserror
 bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 {
-/* XXX: what is this used for ?
-
+/* XXX: what is this used for ? */
+	Image *i;
 	int w, h;
 	uint8_t *data;
 	size_t sz;
@@ -217,14 +216,17 @@ bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 		.interactive = false,
 		.background_images = true,
 		.plot = plan9_plotter_table,
-		.priv = current,
 	};
 
-	DBG("IN bitmap_render - bitmap=%p title=%s", bitmap, content_get_title(content));
 	w = content_get_width(content);
 	h = content_get_height(content);
-	//content_scaled_redraw(content, w, h, &ctx);
-*/
+	i = getimage(bitmap);
+	if (i == NULL) {
+		return NSERROR_INVALID;
+	}
+	ctx.priv = i;
+	content_scaled_redraw(content, w, h, &ctx);
+	unloadimage(i, Rect(0, 0, bitmap->width, bitmap->height), bitmap->data, BITMAP_BPP*bitmap->width*bitmap->height);
 	return NSERROR_OK;
 }
 

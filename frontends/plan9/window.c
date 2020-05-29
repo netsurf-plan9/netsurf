@@ -22,6 +22,8 @@
 #include "plan9/drawui/window.h"
 #include "plan9/drawui/data.h"
 
+void window_remove_caret(struct gui_window *g);
+
 /**
  * Create and open a gui window for a browsing context.
  *
@@ -87,16 +89,15 @@ nserror
 window_invalidate(struct gui_window *gw, const struct rect *rect)
 {
 	Rectangle clipr;
+	int sx;
 	int sy;
 
-	if (rect == NULL) {
-		clipr = dwindow_get_view_rect(gw->dw);
-	} else {
+	clipr = gw->b->r;
+	if (rect != NULL) {
+		sx = dwindow_get_scroll_x(gw->dw);
 		sy = dwindow_get_scroll_y(gw->dw);
-		clipr = Rect(rect->x0, rect->y0 - sy, rect->x1, rect->y1 - sy);
-		clipr = dwindow_rect_in_view_rect(gw->dw, clipr);
+		clipr = Rect(rect->x0 - sx, rect->y0 - sy, rect->x1 - sx, rect->y1 - sy);
 	}
-//DBG("window_invalidate (rect:[%d %d %d %d])", clipr.min.x, clipr.min.y, clipr.max.x, clipr.max.y);
 	gui_window_redraw(gw, clipr);
 	return NSERROR_OK;
 }
@@ -195,10 +196,7 @@ window_event(struct gui_window *gw, enum gui_window_event event)
 		break;
 
 	case GW_EVENT_REMOVE_CARET:
-		if (gw->caret_height != -1) {
-			gw->caret = ZP;
-			gw->caret_height = -1;
-		}
+		window_remove_caret(gw);
 		break;
 
 	case GW_EVENT_START_SELECTION:
@@ -358,25 +356,38 @@ window_set_pointer(struct gui_window *g, enum gui_pointer_shape shape)
 void
 window_place_caret(struct gui_window *g, int x, int y, int height, const struct rect *clip)
 {
+
 	Rectangle r;
-	Point p0, p1;
 	int sx, sy;
+
+	g->caret = Pt(x, y);
+	g->caret_height = height;
 
 	sx = dwindow_get_scroll_x(g->dw);
 	sy = dwindow_get_scroll_y(g->dw);
-	p0 = dwindow_point_in_view_rect(g->dw, Pt(x - sx, y - sy));
-	p1 = dwindow_point_in_view_rect(g->dw, Pt(x - sx, y - sy + height));
-	if (clip != NULL) {
-		r = Rect(clip->x0, clip->x1, clip->y0, clip->y1);
-	} else {
-		r = Rect(x - 1, y - 1, x + 1, y + height + 1);
-	}
-	r = rectaddpt(r, Pt(-sx, -sy));
-	r = dwindow_rect_in_view_rect(g->dw, r);
-	replclipr(screen, 0, screen->r);
-	line(screen, p0, p1, 1, 1, 0, display->black, ZP);
-	g->caret = addpt(p0, Pt(sx, sy));
-	g->caret_height = height;
+	r = Rect(x - sx, y - sy, x + 1 - sx, y + height + 1 - sy);	
+	gui_window_redraw(g, r);
+}
+
+void
+window_remove_caret(struct gui_window *g)
+{
+	Rectangle r;
+	int sx, sy;
+	int x, y, height;
+
+	if (g->caret_height == -1)
+		return;
+	x = g->caret.x;
+	y = g->caret.y;
+	height = g->caret_height;
+	g->caret = ZP;
+	g->caret_height = -1;
+
+	sx = dwindow_get_scroll_x(g->dw);
+	sy = dwindow_get_scroll_y(g->dw);
+	r = Rect(x - sx, y - sy, x + 1 - sx, y + height + 1 - sy);
+	gui_window_redraw(g, r);
 }
 
 /**
