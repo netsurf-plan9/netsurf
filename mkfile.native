@@ -130,6 +130,7 @@ OBJ=\
 	frontends/plan9/fetch.$O\
 	frontends/plan9/bitmap.$O\
 	frontends/plan9/layout.$O\
+	frontends/plan9/clipboard.$O\
 	frontends/plan9/utils.$O\
 	frontends/plan9/gui.$O\
 	frontends/plan9/drawui/data.$O\
@@ -420,7 +421,6 @@ CFLAGS=\
 	-DNETSURF_RESPATH="/sys/lib/netsurf" \
 	-DNETSURF_FONTPATH="/sys/lib/netsurf/fonts" \
 	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF \
-	-DNDEBUG \
 	-DNETSURF_CONTENT_FETCHERS_FETCH_CURL_H # prevent linking of curl (tmp)
 
 # To add later: -DWITH_CURL

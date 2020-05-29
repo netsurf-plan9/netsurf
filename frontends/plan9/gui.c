@@ -7,7 +7,6 @@
 #include <event.h>
 #include <keyboard.h>
 #include <cursor.h>
-//#include <plumb.h>
 #include "utils/filepath.h"
 #include "utils/log.h"
 #include "utils/messages.h"
@@ -32,6 +31,7 @@
 #include "plan9/utils.h"
 #include "plan9/window.h"
 #include "plan9/gui.h"
+#include "plan9/clipboard.h"
 #include "plan9/drawui/window.h"
 #include "plan9/drawui/data.h"
 
@@ -44,8 +44,38 @@ static void scrollbar_mouse_event(Mouse, void*);
 static void browser_mouse_event(Mouse, void*);
 static void browser_keyboard_event(int, void*);
 
+char *menu2str[] =
+{ 
+	"cut",
+	"paste",
+	"snarf",
+	0 
+};
+
+enum 
+{
+	Mcut,
+	Mpaste,
+	Msnarf,
+};
+Menu menu2 = { menu2str };
+
+
+char *menu3str[] =
+{
+	"exit",
+	0
+};
+
+enum
+{
+	Mexit,
+};
+
+Menu menu3 = { menu3str };
+
+
 char **respaths;
-static struct gui_window *window_list = NULL;
 static struct gui_window *current = NULL;
 
 static bool nslog_stream_configure(FILE *fptr)
@@ -258,8 +288,34 @@ static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 	}
 }
 
-char *menu3str[] = { "exit", 0 };
-Menu menu3 = { menu3str };
+static void menu2hit(struct gui_window *gw, Mouse *m)
+{
+	int n;
+
+	n = emenuhit(2, m, &menu2);
+	switch (n) {
+	case Mcut:
+		browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
+		break;
+	case Mpaste:
+		browser_window_key_press(gw->bw, NS_KEY_PASTE);
+		break;
+	case Msnarf:
+		browser_window_key_press(gw->bw, NS_KEY_COPY_SELECTION);
+		break;
+	}
+}
+
+static void menu3hit(struct gui_window *gw, Mouse *m)
+{
+	int n;
+
+	n = emenuhit(3, m, &menu3);
+	switch (n) {
+	case Mexit:
+		drawui_exit(0);
+	}
+}
 
 void browser_mouse_event(Mouse m, void *data)
 {
@@ -268,7 +324,7 @@ void browser_mouse_event(Mouse m, void *data)
 	struct gui_window *gw = data;
 	browser_mouse_state mouse = 0;;
 	Rectangle r;
-	int n, x, y, sx, sy;
+	int x, y, sx, sy;
 
 	r = dwindow_get_view_rect(current->dw);
 	sx = dwindow_get_scroll_x(current->dw);
@@ -297,11 +353,10 @@ void browser_mouse_event(Mouse m, void *data)
 		lastm = m;
 		in_sel = 1;
 		browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
+	} else if (m.buttons & 2) {
+		menu2hit(gw, &m);
 	} else if (m.buttons & 4) {
-		n = emenuhit(3, &m, &menu3);
-		if (n == 0) {
-			drawui_exit(0);
-		}
+		menu3hit(gw, &m);
 	} else if (m.buttons&8) {
 		gui_window_scroll_y(current, x, y, -100);
 	} else if (m.buttons&16) {
@@ -431,6 +486,7 @@ main(int argc, char *argv[])
 		.fetch = plan9_fetch_table,
 		.bitmap = plan9_bitmap_table,
 		.layout = plan9_layout_table,
+		.clipboard = plan9_clipboard_table,
 	};
 
 	if (stat("/mnt/web", &sb) != 0 || !S_ISDIR(sb.st_mode)) {
