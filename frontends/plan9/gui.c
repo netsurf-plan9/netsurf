@@ -264,6 +264,7 @@ Menu menu3 = { menu3str };
 void browser_mouse_event(Mouse m, void *data)
 {
 	static Mouse lastm;
+	static int in_sel = 0;
 	struct gui_window *gw = data;
 	browser_mouse_state mouse = 0;;
 	Rectangle r;
@@ -275,6 +276,18 @@ void browser_mouse_event(Mouse m, void *data)
 	x = m.xy.x - r.min.x + sx;
 	y = m.xy.y - r.min.y + sy;
 
+	if (m.buttons && in_sel && (abs(x - lastm.xy.x) > 5 || abs(y - lastm.xy.y) > 5)) {
+		if (m.buttons & 1) {
+			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_1, x, y);
+			mouse |= BROWSER_MOUSE_DRAG_ON | BROWSER_MOUSE_HOLDING_1;
+		} else if (m.buttons & 2) {
+			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_2, x, y);
+			mouse |= BROWSER_MOUSE_DRAG_ON | BROWSER_MOUSE_HOLDING_2;
+		}
+	} else {
+		in_sel = 0;
+	}
+
 	if (m.buttons == 0) {
 		if((m.msec - lastm.msec < 250) && lastm.buttons & 1) {
 			lastm = m;
@@ -282,6 +295,7 @@ void browser_mouse_event(Mouse m, void *data)
 		}
 	} else if (m.buttons&1) {
 		lastm = m;
+		in_sel = 1;
 		browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
 	} else if (m.buttons & 4) {
 		n = emenuhit(3, &m, &menu3);
