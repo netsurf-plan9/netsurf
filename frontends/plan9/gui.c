@@ -45,14 +45,14 @@ static void browser_mouse_event(Mouse, void*);
 static void browser_keyboard_event(int, void*);
 
 char *menu2str[] =
-{ 
+{
 	"cut",
 	"paste",
 	"snarf",
 	0 
 };
 
-enum 
+enum
 {
 	Mcut,
 	Mpaste,
@@ -365,10 +365,53 @@ void browser_mouse_event(Mouse m, void *data)
 	browser_window_mouse_track(current->bw, mouse, x, y);
 }
 
+int getnskey(int k)
+{
+	int n;
+
+	switch (k) {
+	case Kdel:
+	case Kbs:
+		n = NS_KEY_DELETE_LEFT;
+		break;
+	case Knack:
+		n = NS_KEY_DELETE_LINE_START;
+		break;
+	case Ksoh:
+	case Khome:
+		n = NS_KEY_LINE_START;
+		break;
+	case Kenq:
+	case Kend:
+		n = NS_KEY_LINE_END;
+		break;
+	case Kleft:
+		n = NS_KEY_LEFT;
+		break;
+	case Kright:
+		n = NS_KEY_RIGHT;
+		break;
+	case Kup:
+		n = NS_KEY_UP;
+		break;
+	case Kdown:
+		n = NS_KEY_DOWN;
+		break;
+	default:
+		n = k;
+		break;
+	}
+	return n;	
+}
+
 void browser_keyboard_event(int k, void *data)
 {
 	struct gui_window *gw = data;
 	Rectangle r;
+
+	if (browser_window_key_press(gw->bw, getnskey(k))) {
+		return;
+	}
 
 	r = dwindow_get_view_rect(gw->dw);
 	switch(k) {
@@ -389,9 +432,6 @@ void browser_keyboard_event(int k, void *data)
 		break;
 	case Khome:
 		gui_window_scroll_y(gw, 0, 0, -dwindow_get_scroll_y(gw->dw));
-		break;
-	default:
-		browser_window_key_press(gw->bw, k);
 		break;
 	}
 }
