@@ -222,7 +222,7 @@ struct gui_window* gui_window_create(struct browser_window *bw)
 	dwindow_set_browser_mouse_callback(gw->dw, browser_mouse_event, gw);
 	dwindow_set_browser_keyboard_callback(gw->dw, browser_keyboard_event, gw);
 	r = dwindow_get_view_rect(gw->dw);
-	gw->b = allocimage(display,  Rect(0, 0, Dx(r), Dy(r)), ABGR32, 0, DNofill);
+	gw->b = allocimage(display,  Rect(0, 0, Dx(r), Dy(r)), screen->chan, 0, DNofill);
 	gui_window_redraw(gw, gw->b->r);
 	return gw;
 }
@@ -274,7 +274,7 @@ void gui_window_resize(struct gui_window *gw)
 	r = dwindow_get_view_rect(gw->dw);
 	if (gw->b != NULL)
 		freeimage(gw->b);
-	gw->b = allocimage(display, Rect(0, 0, Dx(r), Dy(r)), ABGR32, 0, DNofill);
+	gw->b = allocimage(display, Rect(0, 0, Dx(r), Dy(r)), screen->chan, 0, DNofill);
 	browser_window_schedule_reformat(gw->bw);
 	gui_window_redraw(gw, gw->b->r);
 }
