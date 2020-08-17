@@ -48,6 +48,7 @@ static void browser_keyboard_event(int, void*);
 
 char *menu2str[] =
 {
+	"search",
 	"cut",
 	"paste",
 	"snarf",
@@ -56,6 +57,7 @@ char *menu2str[] =
 
 enum
 {
+	Msearch,
 	Mcut,
 	Mpaste,
 	Msnarf,
@@ -302,10 +304,17 @@ static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 
 static void menu2hit(struct gui_window *gw, Mouse *m)
 {
+	char buf[1024] = {0};
 	int n;
 
 	n = emenuhit(2, m, &menu2);
 	switch (n) {
+	case Msearch:
+		if(eenter("Search for", buf, sizeof buf, m) > 0) {
+			browser_window_search(gw->bw, gw, SEARCH_FLAG_SHOWALL, buf);
+		} else {
+			browser_window_search_clear(gw->bw);
+		}
 	case Mcut:
 		browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
 		break;
@@ -444,6 +453,9 @@ void browser_keyboard_event(int k, void *data)
 		break;
 	case Khome:
 		gui_window_scroll_y(gw, 0, 0, -dwindow_get_scroll_y(gw->dw));
+		break;
+	case Kesc:
+		browser_window_search_clear(gw->bw);
 		break;
 	}
 }
