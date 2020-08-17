@@ -2,11 +2,13 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <draw.h>
 #include <event.h>
 #include <keyboard.h>
 #include <cursor.h>
+#include <plumb.h>
 #include "utils/filepath.h"
 #include "utils/log.h"
 #include "utils/messages.h"
@@ -160,17 +162,27 @@ static nserror drawui_init(int argc, char *argv[])
 
 static void drawui_run(void)
 {
+	enum { Eplumb = 128 };
+	Plumbmsg *pm;
 	Event ev;
 	int e, timer;
 
 	timer = etimer(0, SCHEDULE_PERIOD);
 	eresized(0);
+	eplumb(Eplumb, "web");
 	for(;;){
 		e = event(&ev);
 		switch(e){
 		default:
 			if(e == timer)
 				schedule_run();
+			break;
+		case Eplumb:
+			pm = ev.v;
+			if (pm->ndata > 0) {
+				url_entry_activated(strdup(pm->data), current);
+			}
+			plumbfree(pm);
 			break;
 		case Ekeyboard:
 			dwindow_keyboard_event(current->dw, ev);
