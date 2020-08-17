@@ -380,6 +380,9 @@ static void dukky_html_element_class_from_tag_type(dom_html_element_type type,
 	case DOM_HTML_ELEMENT_TYPE_ISINDEX:
 		SET_HTML_CLASS(ISINDEX)
 		break;
+	case DOM_HTML_ELEMENT_TYPE_CANVAS:
+		SET_HTML_CLASS(CANVAS)
+		break;
 	case DOM_HTML_ELEMENT_TYPE__COUNT:
 		assert(type != DOM_HTML_ELEMENT_TYPE__COUNT);
 		/* fallthrough */
@@ -922,6 +925,11 @@ js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *name)
 	assert(thread);
 
 	if (txt == NULL || txtlen == 0) {
+		return false;
+	}
+
+	if (thread->pending_destroy) {
+		NSLOG(dukky, DEEPDEBUG, "Skipping exec call because thread is dead");
 		return false;
 	}
 

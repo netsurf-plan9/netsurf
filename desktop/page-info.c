@@ -27,6 +27,7 @@
 #include "css/utils.h"
 
 #include "utils/nsurl.h"
+#include "utils/nscolour.h"
 
 #include "netsurf/mouse.h"
 #include "netsurf/layout.h"
@@ -240,6 +241,7 @@ struct page_info {
 
 	struct browser_window *bw;
 	lwc_string *domain;
+	enum nsurl_scheme_type scheme;
 
 	browser_window_page_info_state state;
 	unsigned cookies;
@@ -256,58 +258,32 @@ struct page_info {
 /* Exported interface documented in desktop/page_info.h */
 nserror page_info_init(void)
 {
-	bool dark_on_light;
-	nserror err;
-	colour good;
-	colour bad;
-	colour bg;
-	colour fg;
+	pi__bg.fill_colour = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__hover.fill_colour = nscolours[NSCOLOUR_WIN_EVEN_BG_HOVER];
 
-	err = ns_system_colour_char("Window", &bg);
-	if (err != NSERROR_OK) {
-		return err;
-	}
+	pi__domain.background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__domain.foreground = nscolours[NSCOLOUR_WIN_EVEN_FG];
 
-	err = ns_system_colour_char("WindowText", &fg);
-	if (err != NSERROR_OK) {
-		return err;
-	}
+	pi__item.background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__item.foreground = nscolours[NSCOLOUR_WIN_EVEN_FG];
 
-	dark_on_light = colour_lightness(bg) > colour_lightness(fg);
+	pi__item_detail.background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__item_detail.foreground = nscolours[NSCOLOUR_WIN_EVEN_FG_FADED];
 
-	pi__bg.fill_colour = bg;
-	pi__hover.fill_colour = dark_on_light?
-			darken_colour(bg) :
-			lighten_colour(bg);
-
-	pi__domain.background = bg;
-	pi__domain.foreground = fg;
-
-	pi__item.background = bg;
-	pi__item.foreground = fg;
-
-	pi__item_detail.background = bg;
-	pi__item_detail.foreground = blend_colour(bg, fg);
-
-	good = colour_engorge_component(fg,
-			dark_on_light, PLOT_COLOUR_COMPONENT_GREEN);
-	bad = colour_engorge_component(fg,
-			dark_on_light, PLOT_COLOUR_COMPONENT_RED);
-
-	pi__heading[PAGE_STATE_UNKNOWN].background = bg;
-	pi__heading[PAGE_STATE_UNKNOWN].foreground = bad;
-	pi__heading[PAGE_STATE_INTERNAL].background = bg;
-	pi__heading[PAGE_STATE_INTERNAL].foreground = fg;
-	pi__heading[PAGE_STATE_LOCAL].background = bg;
-	pi__heading[PAGE_STATE_LOCAL].foreground = fg;
-	pi__heading[PAGE_STATE_INSECURE].background = bg;
-	pi__heading[PAGE_STATE_INSECURE].foreground = bad;
-	pi__heading[PAGE_STATE_SECURE_OVERRIDE].background = bg;
-	pi__heading[PAGE_STATE_SECURE_OVERRIDE].foreground = bad;
-	pi__heading[PAGE_STATE_SECURE_ISSUES].background = bg;
-	pi__heading[PAGE_STATE_SECURE_ISSUES].foreground = bad;
-	pi__heading[PAGE_STATE_SECURE].background = bg;
-	pi__heading[PAGE_STATE_SECURE].foreground = good;
+	pi__heading[PAGE_STATE_UNKNOWN].background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__heading[PAGE_STATE_UNKNOWN].foreground = nscolours[NSCOLOUR_WIN_EVEN_FG_BAD];
+	pi__heading[PAGE_STATE_INTERNAL].background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__heading[PAGE_STATE_INTERNAL].foreground = nscolours[NSCOLOUR_WIN_EVEN_FG];
+	pi__heading[PAGE_STATE_LOCAL].background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__heading[PAGE_STATE_LOCAL].foreground = nscolours[NSCOLOUR_WIN_EVEN_FG];
+	pi__heading[PAGE_STATE_INSECURE].background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__heading[PAGE_STATE_INSECURE].foreground = nscolours[NSCOLOUR_WIN_EVEN_FG_BAD];
+	pi__heading[PAGE_STATE_SECURE_OVERRIDE].background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__heading[PAGE_STATE_SECURE_OVERRIDE].foreground = nscolours[NSCOLOUR_WIN_EVEN_FG_BAD];
+	pi__heading[PAGE_STATE_SECURE_ISSUES].background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__heading[PAGE_STATE_SECURE_ISSUES].foreground = nscolours[NSCOLOUR_WIN_EVEN_FG_BAD];
+	pi__heading[PAGE_STATE_SECURE].background = nscolours[NSCOLOUR_WIN_EVEN_BG];
+	pi__heading[PAGE_STATE_SECURE].foreground = nscolours[NSCOLOUR_WIN_EVEN_FG_GOOD];
 
 	return NSERROR_OK;
 }
@@ -472,8 +448,39 @@ static nserror page_info__create_from_bw(
 	pi->state = browser_window_get_page_info_state(bw);
 	pi->cookies = browser_window_get_cookie_count(bw);
 	pi->domain = nsurl_get_component(url, NSURL_HOST);
+	pi->scheme = nsurl_get_scheme_type(url);
 
 	return page_info__set_text(pi);
+}
+
+/**
+ * Check whether an entry is relevant.
+ *
+ * \param[in] entry   The page info entry to consider.
+ * \param[in] scheme  URL scheme that the page info is for.
+ * \return true if the entry should be hidden, otherwise false.
+ */
+static inline bool page_info__hide_entry(
+		enum pi_entry entry,
+		enum nsurl_scheme_type scheme)
+{
+	switch (entry) {
+	case PI_ENTRY_CERT:
+		if (scheme != NSURL_SCHEME_HTTPS) {
+			return true;
+		}
+		break;
+	case PI_ENTRY_COOKIES:
+		if (scheme != NSURL_SCHEME_HTTP &&
+		    scheme != NSURL_SCHEME_HTTPS) {
+			return true;
+		}
+		break;
+	default:
+		break;
+	}
+
+	return false;
 }
 
 /**
@@ -491,6 +498,10 @@ static nserror page_info__layout(
 	cur_y += pi->window_padding;
 	for (unsigned i = 0; i < PI_ENTRY__COUNT; i++) {
 		struct page_info_entry *entry = pi->entries + i;
+
+		if (page_info__hide_entry(i, pi->scheme)) {
+			continue;
+		}
 
 		switch (entry->type) {
 		case PAGE_INFO_ENTRY_TYPE_TEXT:
@@ -560,13 +571,30 @@ nserror page_info_create(
 }
 
 /* Exported interface documented in desktop/page_info.h */
-void page_info_destroy(
-		struct page_info *pi)
+nserror page_info_destroy(struct page_info *pi)
 {
 	if (pi->domain != NULL) {
 		lwc_string_unref(pi->domain);
 	}
 	free(pi);
+	return NSERROR_OK;
+}
+
+/* Exported interface documented in desktop/page_info.h */
+nserror page_info_set(struct page_info *pgi, struct browser_window *bw)
+{
+	nserror res;
+
+	if (pgi->domain != NULL) {
+		lwc_string_unref(pgi->domain);
+	}
+
+	res = page_info__create_from_bw(pgi, bw);
+	if (res == NSERROR_OK) {
+		res = page_info__layout(pgi);
+	}
+
+	return res;
 }
 
 /**
@@ -607,7 +635,7 @@ nserror page_info_redraw(
 		.x1 = clip->x1 + x,
 		.y1 = clip->y1 + y,
 	};
-	int cur_y = 0;
+	int cur_y = y;
 	nserror err;
 
 	/* Start knockout rendering if it's available for this plotter. */
@@ -625,7 +653,11 @@ nserror page_info_redraw(
 	cur_y += pi->window_padding;
 	for (unsigned i = 0; i < PI_ENTRY__COUNT; i++) {
 		const struct page_info_entry *entry = pi->entries + i;
-		int cur_x = pi->window_padding;
+		int cur_x = x + pi->window_padding;
+
+		if (page_info__hide_entry(i, pi->scheme)) {
+			continue;
+		}
 
 		switch (entry->type) {
 		case PAGE_INFO_ENTRY_TYPE_TEXT:
@@ -689,12 +721,14 @@ cleanup:
  * \param[in] pi       The page info window handle.
  * \param[in] mouse    The current mouse state.
  * \param[in] clicked  The page info window entry to consider clicks on.
+ * \param[out] did_something Set to true if this click did something
  * \return NSERROR_OK on success, appropriate error code otherwise.
  */
 static nserror page_info__handle_item_click(
 		struct page_info *pi,
 		enum browser_mouse_state mouse,
-		enum pi_entry clicked)
+		enum pi_entry clicked,
+		bool *did_something)
 {
 	nserror err;
 
@@ -705,9 +739,11 @@ static nserror page_info__handle_item_click(
 	switch (clicked) {
 	case PI_ENTRY_CERT:
 		err = browser_window_show_certificates(pi->bw);
+		*did_something = true;
 		break;
 	case PI_ENTRY_COOKIES:
 		err = browser_window_show_cookies(pi->bw);
+		*did_something = true;
 		break;
 	default:
 		err = NSERROR_OK;
@@ -722,7 +758,8 @@ nserror page_info_mouse_action(
 		struct page_info *pi,
 		enum browser_mouse_state mouse,
 		int x,
-		int y)
+		int y,
+		bool *did_something)
 {
 	int cur_y = 0;
 	nserror err;
@@ -732,6 +769,10 @@ nserror page_info_mouse_action(
 		struct page_info_entry *entry = pi->entries + i;
 		bool hovering = false;
 		int height;
+
+		if (page_info__hide_entry(i, pi->scheme)) {
+			continue;
+		}
 
 		switch (entry->type) {
 		case PAGE_INFO_ENTRY_TYPE_TEXT:
@@ -747,7 +788,7 @@ nserror page_info_mouse_action(
 			if (y >= cur_y && y < cur_y + height) {
 				hovering = true;
 				err = page_info__handle_item_click(
-						pi, mouse, i);
+						pi, mouse, i, did_something);
 				if (err != NSERROR_OK) {
 					return err;
 				}

@@ -36,6 +36,7 @@
 #include "netsurf/bitmap.h"
 #include "content/llcache.h"
 #include "content/content_protected.h"
+#include "content/content_factory.h"
 #include "desktop/gui_internal.h"
 
 #include "image/image_cache.h"
@@ -224,6 +225,7 @@ static const content_handler webp_content_handler = {
 	.clone = webp_clone,
 	.get_internal = image_cache_get_internal,
 	.type = image_cache_content_type,
+	.is_opaque = image_cache_is_opaque,
 	.no_share = false,
 };
 

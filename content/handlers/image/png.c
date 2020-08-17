@@ -19,6 +19,7 @@
  */
 
 #include <stdbool.h>
+#include <string.h>
 #include <stdlib.h>
 #include <png.h>
 
@@ -29,6 +30,7 @@
 #include "netsurf/bitmap.h"
 #include "content/llcache.h"
 #include "content/content_protected.h"
+#include "content/content_factory.h"
 #include "desktop/gui_internal.h"
 
 #include "image/image_cache.h"
@@ -601,6 +603,7 @@ static const content_handler nspng_content_handler = {
 	.redraw = image_cache_redraw,
 	.get_internal = image_cache_get_internal,
 	.type = image_cache_content_type,
+	.is_opaque = image_cache_is_opaque,
 	.no_share = false,
 };
 

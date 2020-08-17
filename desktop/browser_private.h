@@ -288,6 +288,13 @@ nserror browser_window_initialise_common(enum browser_window_create_flags flags,
 
 
 /**
+ * Release all memory associated with a browser window.
+ *
+ * \param bw browser window
+ */
+nserror browser_window_destroy_internal(struct browser_window *bw);
+
+/**
  * Get the dimensions of the area a browser window occupies
  *
  * \param  bw      The browser window to get dimensions of
@@ -309,12 +316,12 @@ void browser_window_update_extent(struct browser_window *bw);
 
 
 /**
- * update an area of a browser window.
+ * Cause an area of a browser window to be marked invalid and hence redrawn.
  *
  * \param bw The browser window to update.
  * \param rect The area to redraw
  */
-void browser_window_update_box(struct browser_window *bw, struct rect *rect);
+nserror browser_window_invalidate_rect(struct browser_window *bw, struct rect *rect);
 
 
 /**

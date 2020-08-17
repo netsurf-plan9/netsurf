@@ -21,6 +21,7 @@
  * Box tree treeview box replacement (implementation).
  */
 
+#include <string.h>
 #include <dom/dom.h>
 
 #include "utils/config.h"
@@ -29,10 +30,11 @@
 #include "netsurf/keypress.h"
 #include "netsurf/misc.h"
 #include "desktop/textarea.h"
-#include "desktop/gui_internal.h"
 
-#include "html/html_internal.h"
+#include "html/private.h"
+#include "html/interaction.h"
 #include "html/box.h"
+#include "html/box_inspect.h"
 #include "html/box_textarea.h"
 #include "html/font.h"
 #include "html/form_internal.h"

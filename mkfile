@@ -24,6 +24,7 @@ OBJ=\
 	utils/libdom.$O\
 	utils/log.$O\
 	utils/messages.$O\
+	utils/nscolour.$O\
 	utils/nsoption.$O\
 	utils/nsurl/nsurl.$O\
 	utils/nsurl/parse.$O\
@@ -37,13 +38,14 @@ OBJ=\
 	utils/utils.$O\
 	content/content.$O\
 	content/content_factory.$O\
-	content/dirlist.$O\
 	content/fetch.$O\
 	content/fetchers/about.$O\
 #	content/fetchers/curl.$O\
 	content/fetchers/data.$O\
 	content/fetchers/file.$O\
 	content/fetchers/resource.$O\
+	content/fetchers/file/dirlist.$O\
+	content/fetchers/file/file.$O\
 	content/fs_backing_store.$O\
 	content/handlers/css/css.$O\
 	content/handlers/css/dump.$O\
@@ -51,25 +53,28 @@ OBJ=\
 	content/handlers/css/internal.$O\
 	content/handlers/css/select.$O\
 	content/handlers/css/utils.$O\
-	content/handlers/html/box.$O\
 	content/handlers/html/box_construct.$O\
+	content/handlers/html/box_inspect.$O\
+	content/handlers/html/box_manipulate.$O\
 	content/handlers/html/box_normalise.$O\
+	content/handlers/html/box_special.$O\
 	content/handlers/html/box_textarea.$O\
+	content/handlers/html/css.$O\
+	content/handlers/html/css_fetcher.$O\
+	content/handlers/html/dom_event.$O\
 	content/handlers/html/font.$O\
 	content/handlers/html/form.$O\
+	content/handlers/html/forms.$O\
 	content/handlers/html/html.$O\
-	content/handlers/html/html_css.$O\
-	content/handlers/html/html_css_fetcher.$O\
-	content/handlers/html/html_forms.$O\
-	content/handlers/html/html_object.$O\
-	content/handlers/html/html_redraw.$O\
-	content/handlers/html/html_redraw_border.$O\
-	content/handlers/html/html_script.$O\
 	content/handlers/html/imagemap.$O\
 	content/handlers/html/interaction.$O\
 	content/handlers/html/layout.$O\
-	content/handlers/html/search.$O\
+	content/handlers/html/object.$O\
+	content/handlers/html/redraw.$O\
+	content/handlers/html/redraw_border.$O\
+	content/handlers/html/script.$O\
 	content/handlers/html/table.$O\
+	content/handlers/html/textselection.$O\
 	content/handlers/image/bmp.$O\
 	content/handlers/image/gif.$O\
 	content/handlers/image/ico.$O\
@@ -90,6 +95,7 @@ OBJ=\
 	content/hlcache.$O\
 	content/llcache.$O\
 	content/mimesniff.$O\
+	content/textsearch.$O\
 	content/no_backing_store.$O\
 	content/urldb.$O\
 	content/webfs.$O\

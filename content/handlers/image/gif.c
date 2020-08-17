@@ -43,7 +43,9 @@
 #include "netsurf/bitmap.h"
 #include "netsurf/content.h"
 #include "content/llcache.h"
+#include "content/content.h"
 #include "content/content_protected.h"
+#include "content/content_factory.h"
 #include "desktop/gui_internal.h"
 
 #include "image/image.h"
@@ -414,6 +416,19 @@ static content_type nsgif_content_type(void)
 	return CONTENT_IMAGE;
 }
 
+static bool nsgif_content_is_opaque(struct content *c)
+{
+	nsgif_content *gif = (nsgif_content *) c;
+
+	if (gif->current_frame != gif->gif->decoded_frame) {
+		if (nsgif_get_frame(gif) != GIF_OK) {
+			return false;
+		}
+	}
+
+	return guit->bitmap->get_opaque(gif->gif->frame_image);
+}
+
 static const content_handler nsgif_content_handler = {
 	.create = nsgif_create,
 	.data_complete = nsgif_convert,
@@ -424,6 +439,7 @@ static const content_handler nsgif_content_handler = {
 	.remove_user = nsgif_remove_user,
 	.get_internal = nsgif_get_internal,
 	.type = nsgif_content_type,
+	.is_opaque = nsgif_content_is_opaque,
 	.no_share = false,
 };
 

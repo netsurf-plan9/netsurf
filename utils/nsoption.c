@@ -383,17 +383,20 @@ nsoption_output_value_html(struct nsoption_s *option,
 		break;
 
 	case OPTION_COLOUR:
-		rgbcolour = (((0x000000FF & option->value.c) << 16) |
-			     ((0x0000FF00 & option->value.c) << 0) |
-			     ((0x00FF0000 & option->value.c) >> 16));
+		rgbcolour = colour_rb_swap(option->value.c);
 		slen = snprintf(string + pos,
 				size - pos,
+				"<span style=\"font-family:Monospace;\">"
+					"#%06X"
+				"</span> "
 				"<span style=\"background-color: #%06x; "
-				"color: #%06x; "
-				"font-family:Monospace; \">#%06X</span>",
+					"border: 1px solid #%06x; "
+					"display: inline-block; "
+					"width: 1em; height: 1em;\">"
+				"</span>",
 				rgbcolour,
-				colour_to_bw_furthest(rgbcolour),
-				rgbcolour);
+				rgbcolour,
+				colour_to_bw_furthest(rgbcolour));
 		break;
 
 	case OPTION_STRING:
@@ -537,6 +540,89 @@ nsoption_free(struct nsoption_s *opts)
 }
 
 
+/**
+ * extract key/value from a line of input
+ *
+ * \retun NSERROR_OK and key_out and value_out updated
+ *        NSERROR_NOT_FOUND if not a key/value input line
+ *        NSERROR_INVALID if the line is and invalid format (missing colon)
+ */
+static nserror
+get_key_value(char *line, int linelen, char **key_out, char **value_out)
+{
+	char *key;
+	char *value;
+
+	/* skip leading whitespace for start of key */
+	for (key = line; *key != 0; key++) {
+		if ((*key != ' ') && (*key != '\t') && (*key != '\n')) {
+			break;
+		}
+	}
+
+	/* empty line or only whitespace */
+	if (*key == 0) {
+		return NSERROR_NOT_FOUND;
+	}
+
+	/* comment */
+	if (*key == '#') {
+		return NSERROR_NOT_FOUND;
+	}
+
+	/* get start of value */
+	for (value = key; *value != 0; value++) {
+		if (*value == ':') {
+			*value = 0;
+			value++;
+			break;
+		}
+	}
+
+	/* missing colon separator */
+	if (*value == 0) {
+		return NSERROR_INVALID;
+	}
+
+	/* remove delimiter from value */
+	if (line[linelen - 1] == '\n') {
+		linelen--;
+		line[linelen] = 0;
+	}
+
+	*key_out = key;
+	*value_out = value;
+	return NSERROR_OK;
+}
+
+
+/**
+ * Process a line from a user option file
+ */
+static nserror optionline(struct nsoption_s *opts, char *line, int linelen)
+{
+	nserror res;
+	char *key;
+	char *value;
+	int idx;
+
+	res = get_key_value(line, linelen, &key, &value);
+	if (res != NSERROR_OK) {
+		/* skip line as no valid key value pair found */
+		return res;
+	}
+
+	for (idx = 0; opts[idx].key != NULL; idx++) {
+		if (strcasecmp(key, opts[idx].key) == 0) {
+			strtooption(value, &opts[idx]);
+			break;
+		}
+	}
+
+	return res;
+}
+
+
 /* exported interface documented in utils/nsoption.h */
 nserror
 nsoption_init(nsoption_set_default_t *set_defaults,
@@ -642,7 +728,9 @@ nsoption_read(const char *path, struct nsoption_s *opts)
 		opts = nsoptions;
 	}
 
-	/** @todo is this and API bug not being a parameter */
+	/**
+	 * @todo is this an API bug not being a parameter
+	 */
 	defs = nsoptions_default;
 
 	if ((opts == NULL) || (defs == NULL)) {
@@ -655,34 +743,10 @@ nsoption_read(const char *path, struct nsoption_s *opts)
 		return NSERROR_NOT_FOUND;
 	}
 
-	NSLOG(netsurf, INFO, "Successfully opened '%s' for Options file",
-	      path);
+	NSLOG(netsurf, INFO, "Successfully opened '%s' for Options file", path);
 
 	while (fgets(s, NSOPTION_MAX_LINE_LEN, fp)) {
-		char *colon, *value;
-		unsigned int idx;
-
-		if ((s[0] == 0) || (s[0] == '#')) {
-			continue;
-		}
-
-		colon = strchr(s, ':');
-		if (colon == 0) {
-			continue;
-		}
-
-		s[strlen(s) - 1] = 0;  /* remove \n at end */
-		*colon = 0;  /* terminate key */
-		value = colon + 1;
-
-		for (idx = 0; opts[idx].key != NULL; idx++) {
-			if (strcasecmp(s, opts[idx].key) != 0) {
-				continue;
-			}
-
-			strtooption(value, &opts[idx]);
-			break;
-		}
+		optionline(opts, s, strlen(s));
 	}
 
 	fclose(fp);

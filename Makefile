@@ -138,7 +138,6 @@ MKDIR=mkdir
 TOUCH=touch
 STRIP?=strip
 INSTALL?=install
-SPLIT_MESSAGES=$(PERL) utils/split-messages.pl
 
 # build verbosity
 ifeq ($(V),1)
@@ -150,6 +149,9 @@ VQ=@
 
 # Override this only if the host compiler is called something different
 BUILD_CC := cc
+BUILD_CFLAGS = -g -W -Wall -Wundef -Wpointer-arith -Wcast-align \
+	-Wwrite-strings -Wmissing-declarations -Wuninitialized \
+	-Wno-unused-parameter
 
 ifeq ($(TARGET),riscos)
   ifeq ($(HOST),riscos)
@@ -600,6 +602,13 @@ CXXFLAGS += -DNETSURF_BUILTIN_LOG_FILTER=\"$(NETSURF_BUILTIN_LOG_FILTER)\"
 CFLAGS += -DNETSURF_BUILTIN_VERBOSE_FILTER=\"$(NETSURF_BUILTIN_VERBOSE_FILTER)\"
 CXXFLAGS += -DNETSURF_BUILTIN_VERBOSE_FILTER=\"$(NETSURF_BUILTIN_VERBOSE_FILTER)\"
 
+# Determine if the C compiler supports statement expressions
+# This is needed to permit certain optimisations in our library headers
+ifneq ($(shell $(CC) -dM -E - < /dev/null | grep __GNUC__),)
+CFLAGS += -DSTMTEXPR=1
+CXXFLAGS += -DSTMTEXPR=1
+endif
+
 # ----------------------------------------------------------------------------
 # General make rules
 # ----------------------------------------------------------------------------
@@ -627,6 +636,12 @@ POSTEXES :=
 # ----------------------------------------------------------------------------
 
 include frontends/Makefile
+
+# ----------------------------------------------------------------------------
+# Build tools setup
+# ----------------------------------------------------------------------------
+
+include tools/Makefile
 
 # ----------------------------------------------------------------------------
 # General source file setup
@@ -666,11 +681,11 @@ S_COMMON := \
 # 1 = Language
 define split_messages
 
-$$(MESSAGES_TARGET)/$(1)/Messages: resources/FatMessages
+$$(MESSAGES_TARGET)/$(1)/Messages: resources/FatMessages $$(TOOLROOT)/split-messages
 	$$(VQ)echo "MSGSPLIT: Language: $(1) Filter: $$(MESSAGES_FILTER)"
 	$$(Q)$$(MKDIR) -p $$(MESSAGES_TARGET)/$(1)
 	$$(Q)$$(RM) $$@
-	$$(Q)$$(SPLIT_MESSAGES) -l $(1) -p $$(MESSAGES_FILTER) -f messages -o $$@ -z $$<
+	$$(Q)$$(TOOLROOT)/split-messages -l $(1) -p $$(MESSAGES_FILTER) -f messages -o $$@ -z $$<
 
 CLEAN_MESSAGES += $$(MESSAGES_TARGET)/$(1)/Messages
 MESSAGES += $$(MESSAGES_TARGET)/$(1)/Messages
@@ -734,10 +749,6 @@ clean-target:
 	$(Q)$(RM) $(EXETARGET)
 CLEANS += clean-target
 
-clean-testament:
-	$(VQ)echo "   CLEAN: testament.h"
-	$(Q)$(RM) $(OBJROOT)/testament.h
-CLEANS += clean-testament
 
 clean-builddir:
 	$(VQ)echo "   CLEAN: $(OBJROOT)"
@@ -745,10 +756,7 @@ clean-builddir:
 CLEANS += clean-builddir
 
 
-.PHONY: all-program testament
-
-testament $(OBJROOT)/testament.h:
-	$(Q)$(PERL) utils/git-testament.pl $(CURDIR) $(OBJROOT)/testament.h
+.PHONY: all-program
 
 all-program: $(EXETARGET) $(POSTEXES)
 

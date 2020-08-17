@@ -24,14 +24,12 @@
  * The content functions manipulate struct contents, which correspond to URLs.
  */
 
-#ifndef _NETSURF_CONTENT_CONTENT_H_
-#define _NETSURF_CONTENT_CONTENT_H_
+#ifndef NETSURF_CONTENT_CONTENT_H_
+#define NETSURF_CONTENT_CONTENT_H_
 
 #include <libwapcaplet/libwapcaplet.h>
 
-#include "utils/errors.h"
-#include "content/content_factory.h"
-#include "desktop/search.h" /* search flags enum */
+#include "netsurf/content_type.h"
 #include "netsurf/mouse.h" /* mouse state enums */
 #include "netsurf/console.h" /* console state and flags enums */
 
@@ -43,47 +41,7 @@ struct hlcache_handle;
 struct object_params;
 struct rect;
 struct redraw_context;
-struct llcache_query_msg;
 struct cert_chain;
-
-/** Status of a content */
-typedef enum {
-	CONTENT_STATUS_LOADING,	/**< Content is being fetched or
-				  converted and is not safe to display. */
-	CONTENT_STATUS_READY,	/**< Some parts of content still being
-				  loaded, but can be displayed. */
-	CONTENT_STATUS_DONE,	/**< All finished. */
-	CONTENT_STATUS_ERROR	/**< Error occurred, content will be
-				  destroyed imminently. */
-} content_status;
-
-/** Used in callbacks to indicate what has occurred. */
-typedef enum {
-	CONTENT_MSG_LOG,       /**< Content wishes to log something */
-	CONTENT_MSG_SSL_CERTS, /**< Content is from SSL and this is its chain */
-	CONTENT_MSG_LOADING,   /**< fetching or converting */
-	CONTENT_MSG_READY,     /**< may be displayed */
-	CONTENT_MSG_DONE,      /**< finished */
-	CONTENT_MSG_ERROR,     /**< error occurred */
-	CONTENT_MSG_REDIRECT,  /**< fetch url redirect occured */
-	CONTENT_MSG_STATUS,    /**< new status string */
-	CONTENT_MSG_REFORMAT,  /**< content_reformat done */
-	CONTENT_MSG_REDRAW,    /**< needs redraw (eg. new animation frame) */
-	CONTENT_MSG_REFRESH,   /**< wants refresh */
-	CONTENT_MSG_DOWNLOAD,  /**< download, not for display */
-	CONTENT_MSG_LINK,      /**< RFC5988 link */
-	CONTENT_MSG_GETTHREAD, /**< Javascript thread */
-	CONTENT_MSG_GETDIMS,   /**< Get viewport dimensions. */
-	CONTENT_MSG_SCROLL,    /**< Request to scroll content */
-	CONTENT_MSG_DRAGSAVE,  /**< Allow drag saving of content */
-	CONTENT_MSG_SAVELINK,  /**< Allow URL to be saved */
-	CONTENT_MSG_POINTER,   /**< Wants a specific mouse pointer set */
-	CONTENT_MSG_SELECTION, /**< A selection made or cleared */
-	CONTENT_MSG_CARET,     /**< Caret movement / hiding */
-	CONTENT_MSG_DRAG,      /**< A drag started or ended */
-	CONTENT_MSG_SELECTMENU,/**< Create a select menu */
-	CONTENT_MSG_GADGETCLICK/**< A gadget has been clicked on (mainly for file) */
-} content_msg;
 
 
 /** RFC5988 metadata link */
@@ -283,82 +241,152 @@ union content_msg_data {
 	struct {
 		struct form_control *gadget;
 	} gadget_click;
+
+	/**
+	 * CONTENT_MSG_TEXTSEARCH - Free text search action
+	 */
+	struct {
+		/**
+		 * The type of text search operation
+		 */
+		enum {
+		      /**
+		       * Free text search find operation has started or finished
+		       */
+		      CONTENT_TEXTSEARCH_FIND,
+		      /**
+		       * Free text search match state has changed
+		       */
+		      CONTENT_TEXTSEARCH_MATCH,
+		      /**
+		       * Free text search back available state changed
+		       */
+		      CONTENT_TEXTSEARCH_BACK,
+		      /**
+		       * Free text search forward available state changed
+		       */
+		      CONTENT_TEXTSEARCH_FORWARD,
+		      /**
+		       * add a search query string to the recent searches
+		       */
+		      CONTENT_TEXTSEARCH_RECENT
+		} type;
+		/**
+		 * context passed to browser_window_search()
+		 */
+		void *ctx;
+		/**
+		 * state for operation
+		 */
+		bool state;
+		/**
+		 * search string
+		 */
+		const char *string;
+	} textsearch;
+
 };
 
 
-/* The following are for hlcache */
-void content_destroy(struct content *c);
-
-
-bool content_add_user(
-		struct content *h,
-		void (*callback)(
-				struct content *c,
-				content_msg msg,
-				const union content_msg_data *data,
-				void *pw),
-		void *pw);
-
-
-void content_remove_user(
-		struct content *c,
-		void (*callback)(
-				struct content *c,
-				content_msg msg,
-				const union content_msg_data *data,
-				void *pw),
-		void *pw);
-
-
-uint32_t content_count_users(struct content *c);
-
-
-bool content_matches_quirks(struct content *c, bool quirks);
-
-
-bool content_is_shareable(struct content *c);
-
-/* only used by cocoa apple image handling and for getting nsurl of content */
-const struct llcache_handle *content_get_llcache_handle(struct content *c);
-
-
 /**
- * Retrieve URL associated with content
+ * Get whether a content can reformat
  *
- * \param c  Content to retrieve URL from
- * \return Pointer to URL, or NULL if not found.
+ * \param h  content to check
+ * \return whether the content can reformat
  */
-struct nsurl *content_get_url(struct content *c);
-
-struct content *content_clone(struct content *c);
-
-nserror content_abort(struct content *c);
-
-/* Client functions */
 bool content_can_reformat(struct hlcache_handle *h);
 
+/**
+ * Reformat to new size.
+ *
+ * Calls the reformat function for the content.
+ */
 void content_reformat(struct hlcache_handle *h, bool background,
 		int width, int height);
 
+/**
+ * Request a redraw of an area of a content
+ *
+ * \param h	  high-level cache handle
+ * \param x	  x co-ord of left edge
+ * \param y	  y co-ord of top edge
+ * \param width	  Width of rectangle
+ * \param height  Height of rectangle
+ */
 void content_request_redraw(struct hlcache_handle *h,
 		int x, int y, int width, int height);
 
+/**
+ * Handle mouse movements in a content window.
+ *
+ * \param  h	  Content handle
+ * \param  bw	  browser window
+ * \param  mouse  state of mouse buttons and modifier keys
+ * \param  x	  coordinate of mouse
+ * \param  y	  coordinate of mouse
+ */
 void content_mouse_track(struct hlcache_handle *h, struct browser_window *bw,
 		browser_mouse_state mouse, int x, int y);
 
+/**
+ * Handle mouse clicks and movements in a content window.
+ *
+ * \param  h	  Content handle
+ * \param  bw	  browser window
+ * \param  mouse  state of mouse buttons and modifier keys
+ * \param  x	  coordinate of mouse
+ * \param  y	  coordinate of mouse
+ *
+ * This function handles both hovering and clicking. It is important that the
+ * code path is identical (except that hovering doesn't carry out the action),
+ * so that the status bar reflects exactly what will happen. Having separate
+ * code paths opens the possibility that an attacker will make the status bar
+ * show some harmless action where clicking will be harmful.
+ */
 void content_mouse_action(struct hlcache_handle *h, struct browser_window *bw,
 		browser_mouse_state mouse, int x, int y);
 
+/**
+ * Handle keypresses.
+ *
+ * \param  h	Content handle
+ * \param  key	The UCS4 character codepoint
+ * \return true if key handled, false otherwise
+ */
 bool content_keypress(struct hlcache_handle *h, uint32_t key);
 
 
+/**
+ * A window containing the content has been opened.
+ *
+ * \param h	 handle to content that has been opened
+ * \param bw	 browser window containing the content
+ * \param page   content of type CONTENT_HTML containing h, or NULL if not an
+ *		   object within a page
+ * \param params object parameters, or NULL if not an object
+ *
+ * Calls the open function for the content.
+ */
 nserror content_open(struct hlcache_handle *h, struct browser_window *bw,
 		struct content *page, struct object_params *params);
 
+/**
+ * The window containing the content has been closed.
+ *
+ * Calls the close function for the content.
+ */
 nserror content_close(struct hlcache_handle *h);
 
+/**
+ * Tell a content that any selection it has, or one of its objects
+ * has, must be cleared.
+ */
 void content_clear_selection(struct hlcache_handle *h);
 
+/**
+ * Get a text selection from a content.  Ownership is passed to the caller,
+ * who must free() it.
+ */
 char * content_get_selection(struct hlcache_handle *h);
 
 /**
@@ -372,16 +400,25 @@ char * content_get_selection(struct hlcache_handle *h);
 nserror content_get_contextual_content(struct hlcache_handle *h,
 		int x, int y, struct browser_window_features *data);
 
+/**
+ * scroll content at coordnate
+ *
+ * \param[in] h Handle to content to examine.
+ * \param[in] x The x coordinate to examine.
+ * \param[in] y The y coordinate to examine.
+ */
 bool content_scroll_at_point(struct hlcache_handle *h,
 		int x, int y, int scrx, int scry);
 
+/**
+ * Drag and drop a file at coordinate
+ *
+ * \param[in] h Handle to content to examine.
+ * \param[in] x The x coordinate to examine.
+ * \param[in] y The y coordinate to examine.
+ */
 bool content_drop_file_at_point(struct hlcache_handle *h,
 		int x, int y, char *file);
-
-void content_search(struct hlcache_handle *h, void *context,
-		search_flags_t flags, const char *string);
-
-void content_search_clear(struct hlcache_handle *h);
 
 
 /**

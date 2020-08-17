@@ -16,19 +16,22 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <string.h>
 #include <assert.h>
 #include <libwapcaplet/libwapcaplet.h>
 #include <dom/dom.h>
 
-#include "content/content_protected.h"
-#include "content/fetch.h"
-#include "content/hlcache.h"
-#include "desktop/system_colour.h"
+#include "utils/errors.h"
 #include "utils/corestrings.h"
 #include "utils/utils.h"
 #include "utils/http.h"
 #include "utils/log.h"
 #include "utils/messages.h"
+#include "content/content_protected.h"
+#include "content/content_factory.h"
+#include "content/fetch.h"
+#include "content/hlcache.h"
+#include "desktop/system_colour.h"
 
 #include "css/css.h"
 #include "css/hints.h"

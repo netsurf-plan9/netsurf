@@ -18,3 +18,5 @@ a 'double ceil(double)' in Plan 9 APE libraries. So I added a ceilf()
 function in my 'posix' directory, and included 'math9.h' in html_redraw.c.
 An alternative would be to supply APE with a ceilf() properly, or to
 define a macro.
+
+* changed strtof() to strtod() in box_special.c (maybe add to ape)

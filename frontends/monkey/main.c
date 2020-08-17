@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "utils/config.h"
 #include "utils/sys_time.h"
@@ -42,7 +43,6 @@
 #include "monkey/output.h"
 #include "monkey/dispatch.h"
 #include "monkey/browser.h"
-#include "monkey/cert.h"
 #include "monkey/401login.h"
 #include "monkey/filetype.h"
 #include "monkey/fetch.h"
@@ -206,6 +206,16 @@ static nserror gui_launch_url(struct nsurl *url)
 	return NSERROR_OK;
 }
 
+static nserror gui_present_cookies(const char *search_term)
+{
+	if (search_term != NULL) {
+		moutf(MOUT_GENERIC, "PRESENT_COOKIES %s", search_term);
+	} else {
+		moutf(MOUT_GENERIC, "PRESENT_COOKIES");
+	}
+	return NSERROR_OK;
+}
+
 static void quit_handler(int argc, char **argv)
 {
 	monkey_done = true;
@@ -249,8 +259,8 @@ static struct gui_misc_table monkey_misc_table = {
 
 	.quit = monkey_quit,
 	.launch_url = gui_launch_url,
-	.cert_verify = gui_cert_verify,
 	.login = gui_401login_open,
+	.present_cookies = gui_present_cookies,
 };
 
 static void monkey_run(void)
@@ -340,6 +350,28 @@ __assert_fail(const char *__assertion, const char *__file,
 
         abort();
 }
+
+static void
+signal_handler(int sig)
+{
+	int frames;
+	fprintf(stderr, "Caught signal %s (%d)\n",
+		((sig == SIGSEGV) ? "SIGSEGV" :
+		 ((sig == SIGILL) ? "SIGILL" :
+		  ((sig == SIGFPE) ? "SIGFPE" :
+		   ((sig == SIGBUS) ? "SIGBUS" :
+		    "unknown signal")))),
+		sig);
+	frames = backtrace(&backtrace_buffer[0], 4096);
+	if (frames > 0 && frames < 4096) {
+		fprintf(stderr, "Backtrace:\n");
+		fflush(stderr);
+		backtrace_symbols_fd(&backtrace_buffer[0], frames, 2);
+	}
+
+        abort();
+}
+
 #endif
 
 int
@@ -358,6 +390,15 @@ main(int argc, char **argv)
 		.layout = monkey_layout_table,
                 .llcache = filesystem_llcache_table,
 	};
+
+#if (!defined(NDEBUG) && defined(HAVE_EXECINFO))
+	/* Catch segfault, illegal instructions and fp exceptions */
+	signal(SIGSEGV, signal_handler);
+	signal(SIGILL, signal_handler);
+	signal(SIGFPE, signal_handler);
+	/* It's unlikely, but SIGBUS could happen on some platforms */
+	signal(SIGBUS, signal_handler);
+#endif
 
 	ret = netsurf_register(&monkey_table);
 	if (ret != NSERROR_OK) {
@@ -432,11 +473,6 @@ main(int argc, char **argv)
 		die("login handler failed to register");
 	}
 
-	ret = monkey_register_handler("SSLCERT", monkey_sslcert_handle_command);
-	if (ret != NSERROR_OK) {
-		die("sslcert handler failed to register");
-	}
-	
 
 	moutf(MOUT_GENERIC, "STARTED");
 	monkey_run();

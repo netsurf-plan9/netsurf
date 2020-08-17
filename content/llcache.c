@@ -3081,15 +3081,25 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 	case FETCH_CERTS:
 		/* Certificate information from the fetch */
 
+		if (object->chain != NULL) {
+			cert_chain_free(object->chain);
+			object->chain = NULL;
+		}
+
 		/* Persist the chain onto our object */
 		error = cert_chain_dup(msg->data.chain, &object->chain);
 		if (error != NSERROR_OK) {
-			/* Now pass on the event */
-			event.type = LLCACHE_EVENT_GOT_CERTS;
-			event.data.chain = msg->data.chain;
-
-			error = llcache_send_event_to_users(object, &event);
+			NSLOG(llcache, ERROR,
+			      "Unable to duplicate cert chain into cache: %s",
+			      messages_get_errorcode(error));
 		}
+
+		/* Now pass on the event */
+		event.type = LLCACHE_EVENT_GOT_CERTS;
+		event.data.chain = msg->data.chain;
+
+		error = llcache_send_event_to_users(object, &event);
+
 		break;
 
 	/* Events requiring action */

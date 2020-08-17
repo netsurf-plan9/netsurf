@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "utils/config.h"
 #include "utils/errors.h"
@@ -638,14 +639,6 @@ static nserror gui_default_launch_url(struct nsurl *url)
 }
 
 
-static nserror gui_default_cert_verify(nsurl *url,
-				    const struct cert_chain *chain,
-				    nserror (*cb)(bool proceed, void *pw),
-				    void *cbpw)
-{
-	return NSERROR_NOT_IMPLEMENTED;
-}
-
 static nserror gui_default_401login_open(
 	nsurl *url, const char *realm,
 	const char *username, const char *password,
@@ -663,6 +656,12 @@ gui_default_pdf_password(char **owner_pass, char **user_pass, char *path)
 {
 	*owner_pass = NULL;
 	save_pdf(path);
+}
+
+static nserror
+gui_default_present_cookies(const char *search_term)
+{
+	return NSERROR_NOT_IMPLEMENTED;
 }
 
 /** verify misc table is valid */
@@ -685,14 +684,14 @@ static nserror verify_misc_register(struct gui_misc_table *gmt)
 	if (gmt->launch_url == NULL) {
 		gmt->launch_url = gui_default_launch_url;
 	}
-	if (gmt->cert_verify == NULL) {
-		gmt->cert_verify = gui_default_cert_verify;
-	}
 	if (gmt->login == NULL) {
 		gmt->login = gui_default_401login_open;
 	}
 	if (gmt->pdf_password == NULL) {
 		gmt->pdf_password = gui_default_pdf_password;
+	}
+	if (gmt->present_cookies == NULL) {
+		gmt->present_cookies = gui_default_present_cookies;
 	}
 	return NSERROR_OK;
 }

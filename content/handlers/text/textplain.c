@@ -23,36 +23,30 @@
  * plain text content handling implementation.
  */
 
-#include <assert.h>
-#include <errno.h>
-#include <stddef.h>
 #include <string.h>
-#include <strings.h>
-#include <math.h>
-
 #include <parserutils/input/inputstream.h>
-#include <parserutils/charset/utf8.h>
 
+#include "utils/errors.h"
 #include "utils/corestrings.h"
 #include "utils/http.h"
 #include "utils/log.h"
 #include "utils/messages.h"
 #include "utils/utils.h"
 #include "utils/utf8.h"
+#include "utils/nsoption.h"
 #include "netsurf/content.h"
 #include "netsurf/keypress.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/plotters.h"
 #include "netsurf/layout.h"
 #include "content/content_protected.h"
+#include "content/content_factory.h"
 #include "content/hlcache.h"
-#include "css/utils.h"
-#include "utils/nsoption.h"
-#include "desktop/search.h"
+#include "content/textsearch.h"
+#include "content/handlers/css/utils.h"
 #include "desktop/selection.h"
 #include "desktop/gui_internal.h"
 
-#include "html/search.h"
 #include "text/textplain.h"
 
 struct textplain_line {
@@ -60,6 +54,9 @@ struct textplain_line {
 	size_t	length;
 };
 
+/**
+ * plain text content
+ */
 typedef struct textplain_content {
 	struct content base;
 
@@ -73,12 +70,8 @@ typedef struct textplain_content {
 	int formatted_width;
 	struct browser_window *bw;
 
-	struct selection sel;	/** Selection state */
+	struct selection *sel; /** Selection state */
 
-	/** Context for free text search, or NULL if none */
-	struct search_context *search;
-	/** Current search string, or NULL if none */
-	char *search_string;
 } textplain_content;
 
 
@@ -176,8 +169,7 @@ textplain_create_internal(textplain_content *c, lwc_string *encoding)
 	c->physical_line_count = 0;
 	c->formatted_width = 0;
 	c->bw = NULL;
-
-	selection_prepare(&c->sel, (struct content *)c, false);
+	c->sel = selection_create((struct content *)c);
 
 	return NSERROR_OK;
 
@@ -194,7 +186,7 @@ no_memory:
 static nserror
 textplain_create(const content_handler *handler,
 		 lwc_string *imime_type,
-		 const http_parameter *params,
+		 const struct http_parameter *params,
 		 llcache_handle *llcache,
 		 const char *fallback_charset,
 		 bool quirks,
@@ -546,6 +538,10 @@ static void textplain_destroy(struct content *c)
 	if (text->utf8_data != NULL) {
 		free(text->utf8_data);
 	}
+
+	if (text->sel != NULL) {
+		selection_destroy(text->sel);
+	}
 }
 
 
@@ -603,6 +599,94 @@ static content_type textplain_content_type(void)
 
 
 /**
+ * Return byte offset within UTF8 textplain content.
+ *
+ * given the co-ordinates of a point within a textplain content. 'dir'
+ * specifies the direction in which to search (-1 = above-left, +1 =
+ * below-right) if the co-ordinates are not contained within a line.
+ *
+ * \param[in] c   content of type CONTENT_TEXTPLAIN
+ * \param[in] x   x ordinate of point
+ * \param[in] y   y ordinate of point
+ * \param[in] dir direction of search if not within line
+ * \return byte offset of character containing (or nearest to) point
+ */
+static size_t
+textplain_offset_from_coords(struct content *c, int x, int y, int dir)
+{
+	textplain_content *textc = (textplain_content *) c;
+	float line_height = textplain_line_height();
+	struct textplain_line *line;
+	const char *text;
+	unsigned nlines;
+	size_t length;
+	int idx;
+
+	assert(c != NULL);
+
+	y = (int)((float)(y - MARGIN) / line_height);
+	x -= MARGIN;
+
+	nlines = textc->physical_line_count;
+	if (!nlines)
+		return 0;
+
+	if (y <= 0) y = 0;
+	else if ((unsigned)y >= nlines)
+		y = nlines - 1;
+
+	line = &textc->physical_line[y];
+	text = textc->utf8_data + line->start;
+	length = line->length;
+	idx = 0;
+
+	while (x > 0) {
+		size_t next_offset = 0;
+		int width = INT_MAX;
+
+		while (next_offset < length && text[next_offset] != '\t') {
+			next_offset = utf8_next(text, length, next_offset);
+		}
+
+		if (next_offset < length) {
+			guit->layout->width(&textplain_style,
+					    text,
+					    next_offset,
+					    &width);
+		}
+
+		if (x <= width) {
+			int pixel_offset;
+			size_t char_offset;
+
+			guit->layout->position(&textplain_style,
+					       text, next_offset, x,
+					       &char_offset, &pixel_offset);
+
+			idx += char_offset;
+			break;
+		}
+
+		x -= width;
+		length -= next_offset;
+		text += next_offset;
+		idx += next_offset;
+
+		/* check if it's within the tab */
+		width = textplain_tab_width - (width % textplain_tab_width);
+		if (x <= width) break;
+
+		x -= width;
+		length--;
+		text++;
+		idx++;
+	}
+
+	return line->start + idx;
+}
+
+
+/**
  * Handle mouse clicks and movements in a TEXTPLAIN content window.
  *
  * \param c	  content of type textplain
@@ -627,9 +711,9 @@ textplain_mouse_action(struct content *c,
 	browser_window_set_drag_type(bw, DRAGGING_NONE, NULL);
 
 	idx = textplain_offset_from_coords(c, x, y, dir);
-	if (selection_click(&text->sel, mouse, idx)) {
+	if (selection_click(text->sel, text->bw, mouse, idx)) {
 
-		if (selection_dragging(&text->sel)) {
+		if (selection_dragging(text->sel)) {
 			browser_window_set_drag_type(bw,
 						     DRAGGING_SELECTION, NULL);
 			status = messages_get("Selecting");
@@ -673,11 +757,11 @@ textplain_mouse_track(struct content *c,
 		int dir = -1;
 		size_t idx;
 
-		if (selection_dragging_start(&text->sel))
+		if (selection_dragging_start(text->sel))
 			dir = 1;
 
 		idx = textplain_offset_from_coords(c, x, y, dir);
-		selection_track(&text->sel, mouse, idx);
+		selection_track(text->sel, mouse, idx);
 
 		browser_window_set_drag_type(bw, DRAGGING_NONE, NULL);
 	}
@@ -688,10 +772,10 @@ textplain_mouse_track(struct content *c,
 		int dir = -1;
 		size_t idx;
 
-		if (selection_dragging_start(&text->sel)) dir = 1;
+		if (selection_dragging_start(text->sel)) dir = 1;
 
 		idx = textplain_offset_from_coords(c, x, y, dir);
-		selection_track(&text->sel, mouse, idx);
+		selection_track(text->sel, mouse, idx);
 	}
 		break;
 
@@ -714,7 +798,7 @@ textplain_mouse_track(struct content *c,
 static bool textplain_keypress(struct content *c, uint32_t key)
 {
 	textplain_content *text = (textplain_content *) c;
-	struct selection *sel = &text->sel;
+	struct selection *sel = text->sel;
 
 	switch (key) {
 	case NS_KEY_COPY_SELECTION:
@@ -730,88 +814,11 @@ static bool textplain_keypress(struct content *c, uint32_t key)
 		return true;
 
 	case NS_KEY_ESCAPE:
-		if (selection_defined(sel)) {
-			selection_clear(sel, true);
-			return true;
-		}
-
 		/* if there's no selection, leave Escape for the caller */
-		return false;
+		return selection_clear(sel, true);
 	}
 
 	return false;
-}
-
-
-/**
- * Terminate a search.
- *
- * \param c content of type text
- */
-static void textplain_search_clear(struct content *c)
-{
-	textplain_content *text = (textplain_content *) c;
-
-	assert(c != NULL);
-
-	free(text->search_string);
-	text->search_string = NULL;
-
-	if (text->search != NULL) {
-		search_destroy_context(text->search);
-	}
-	text->search = NULL;
-}
-
-
-/**
- * Handle search.
- *
- * \param c         content of type text
- * \param gui_data  front end private data
- * \param flags     search flags
- * \param string    search string
- */
-static void textplain_search(struct content *c, void *gui_data,
-			     search_flags_t flags, const char *string)
-{
-	textplain_content *text = (textplain_content *) c;
-
-	assert(c != NULL);
-
-	if (string != NULL && text->search_string != NULL &&
-	    strcmp(string, text->search_string) == 0 &&
-	    text->search != NULL) {
-		/* Continue prev. search */
-		search_step(text->search, flags, string);
-
-	} else if (string != NULL) {
-		/* New search */
-		free(text->search_string);
-		text->search_string = strdup(string);
-		if (text->search_string == NULL)
-			return;
-
-		if (text->search != NULL) {
-			search_destroy_context(text->search);
-			text->search = NULL;
-		}
-
-		text->search = search_create_context(c, CONTENT_TEXTPLAIN,
-						     gui_data);
-
-		if (text->search == NULL)
-			return;
-
-		search_step(text->search, flags, string);
-
-	} else {
-		/* Clear search */
-		textplain_search_clear(c);
-
-		free(text->search_string);
-		text->search_string = NULL;
-	}
 }
 
 
@@ -844,7 +851,6 @@ text_draw(const char *utf8_text,
 	    float scale,
 	    textplain_content *text,
 	    const struct selection *sel,
-	    struct search_context *search,
 	    const struct redraw_context *ctx)
 {
 	bool highlighted = false;
@@ -862,8 +868,7 @@ text_draw(const char *utf8_text,
 		unsigned end_idx;
 
 		/* first try the browser window's current selection */
-		if (selection_defined(sel) &&
-		    selection_highlighted(sel,
+		if (selection_highlighted(sel,
 					  offset,
 					  offset + len,
 					  &start_idx,
@@ -873,13 +878,12 @@ text_draw(const char *utf8_text,
 
 		/* what about the current search operation, if any? */
 		if (!highlighted &&
-		    (search != NULL) &&
-		    search_term_highlighted((struct content *)text,
-					    offset,
-					    offset + len,
-					    &start_idx,
-					    &end_idx,
-					    search)) {
+		    (text->base.textsearch.context != NULL) &&
+		    content_textsearch_ishighlighted(text->base.textsearch.context,
+						     offset,
+						     offset + len,
+						     &start_idx,
+						     &end_idx)) {
 			highlighted = true;
 		}
 
@@ -1129,8 +1133,7 @@ textplain_redraw(struct content *c,
 				       line_height,
 				       data->scale,
 				       text,
-				       &text->sel,
-				       text->search,
+				       text->sel,
 				       ctx)) {
 				return false;
 			}
@@ -1157,28 +1160,30 @@ textplain_redraw(struct content *c,
 
 			if (bw) {
 				unsigned tab_ofst = line[lineno].start + next_offset;
-				struct selection *sel = &text->sel;
+				struct selection *sel = text->sel;
 				bool highlighted = false;
 
-				if (selection_defined(sel)) {
-					unsigned start_idx, end_idx;
-					if (selection_highlighted(sel,
-								  tab_ofst,
-								  tab_ofst + 1,
-								  &start_idx,
-								  &end_idx))
-						highlighted = true;
+				unsigned start_idx, end_idx;
+				if (selection_highlighted(sel,
+							  tab_ofst,
+							  tab_ofst + 1,
+							  &start_idx,
+							  &end_idx)) {
+					highlighted = true;
 				}
 
-				if (!highlighted && (text->search != NULL)) {
+
+				if (!highlighted &&
+				    (c->textsearch.context != NULL)) {
 					unsigned start_idx, end_idx;
-					if (search_term_highlighted(c,
-								    tab_ofst,
-								    tab_ofst + 1,
-								    &start_idx,
-								    &end_idx,
-								    text->search))
+					if (content_textsearch_ishighlighted(
+						    c->textsearch.context,
+						    tab_ofst,
+						    tab_ofst + 1,
+						    &start_idx,
+						    &end_idx)) {
 						highlighted = true;
+					}
 				}
 
 				if (highlighted) {
@@ -1219,7 +1224,7 @@ textplain_open(struct content *c,
 	text->bw = bw;
 
 	/* text selection */
-	selection_init(&text->sel, NULL, NULL);
+	selection_init(text->sel);
 
 	return NSERROR_OK;
 }
@@ -1231,10 +1236,6 @@ textplain_open(struct content *c,
 static nserror textplain_close(struct content *c)
 {
 	textplain_content *text = (textplain_content *) c;
-
-	if (text->search != NULL) {
-		search_destroy_context(text->search);
-	}
 
 	text->bw = NULL;
 
@@ -1249,7 +1250,7 @@ static char *textplain_get_selection(struct content *c)
 {
 	textplain_content *text = (textplain_content *) c;
 
-	return selection_get_copy(&text->sel);
+	return selection_get_copy(text->sel);
 }
 
 
@@ -1298,61 +1299,12 @@ textplain_coord_from_offset(const char *text, size_t offset, size_t length)
 
 
 /**
- * plain text content handler table
+ * Retrieve number of lines in content
+ *
+ * \param[in] c Content to retrieve line count from
+ * \return Number of lines
  */
-static const content_handler textplain_content_handler = {
-	.fini = textplain_fini,
-	.create = textplain_create,
-	.process_data = textplain_process_data,
-	.data_complete = textplain_convert,
-	.reformat = textplain_reformat,
-	.destroy = textplain_destroy,
-	.mouse_track = textplain_mouse_track,
-	.mouse_action = textplain_mouse_action,
-	.keypress = textplain_keypress,
-	.search = textplain_search,
-	.search_clear = textplain_search_clear,
-	.redraw = textplain_redraw,
-	.open = textplain_open,
-	.close = textplain_close,
-	.get_selection = textplain_get_selection,
-	.clone = textplain_clone,
-	.type = textplain_content_type,
-	.no_share = true,
-};
-
-
-/* exported interface documented in html/textplain.h */
-nserror textplain_init(void)
-{
-	lwc_error lerror;
-	nserror error;
-
-	lerror = lwc_intern_string("Windows-1252",
-				   SLEN("Windows-1252"),
-				   &textplain_default_charset);
-	if (lerror != lwc_error_ok) {
-		return NSERROR_NOMEM;
-	}
-
-	error = content_factory_register_handler("text/plain",
-						 &textplain_content_handler);
-	if (error != NSERROR_OK) {
-		lwc_string_unref(textplain_default_charset);
-	}
-
-	error = content_factory_register_handler("application/json",
-						 &textplain_content_handler);
-	if (error != NSERROR_OK) {
-		lwc_string_unref(textplain_default_charset);
-	}
-
-	return error;
-}
-
-
-/* exported interface documented in html/textplain.h */
-unsigned long textplain_line_count(struct content *c)
+static unsigned long textplain_line_count(struct content *c)
 {
 	textplain_content *text = (textplain_content *) c;
 
@@ -1362,94 +1314,150 @@ unsigned long textplain_line_count(struct content *c)
 }
 
 
-/* exported interface documented in html/textplain.h */
-size_t textplain_size(struct content *c)
+/**
+ * Return a pointer to the requested line of text.
+ *
+ * \param[in] c        content of type CONTENT_TEXTPLAIN
+ * \param[in] lineno   line number
+ * \param[out] poffset receives byte offset of line start within text
+ * \param[out] plen    receives length of returned line
+ * \return pointer to text, or NULL if invalid line number
+ */
+static char *
+textplain_get_line(struct content *c,
+		   unsigned lineno,
+		   size_t *poffset,
+		   size_t *plen)
 {
 	textplain_content *text = (textplain_content *) c;
+	struct textplain_line *line;
 
 	assert(c != NULL);
 
-	return text->utf8_data_size;
+	if (lineno >= text->physical_line_count)
+		return NULL;
+	line = &text->physical_line[lineno];
+
+	*poffset = line->start;
+	*plen = line->length;
+	return text->utf8_data + line->start;
 }
 
 
-/* exported interface documented in html/textplain.h */
-size_t textplain_offset_from_coords(struct content *c, int x, int y, int dir)
+/**
+ * Find line number of byte in text
+ *
+ * Given a byte offset within the text, return the line number
+ * of the line containing that offset.
+ *
+ * \param[in] c       content of type CONTENT_TEXTPLAIN
+ * \param[in] offset  byte offset within textual representation
+ * \return line number, or -1 if offset invalid (larger than size)
+ */
+static int textplain_find_line(struct content *c, unsigned offset)
 {
-	textplain_content *textc = (textplain_content *) c;
-	float line_height = textplain_line_height();
+	textplain_content *text = (textplain_content *) c;
 	struct textplain_line *line;
-	const char *text;
-	unsigned nlines;
-	size_t length;
-	int idx;
+	int nlines;
+	int lineno = 0;
 
 	assert(c != NULL);
 
-	y = (int)((float)(y - MARGIN) / line_height);
-	x -= MARGIN;
+	line = text->physical_line;
+	nlines = text->physical_line_count;
 
-	nlines = textc->physical_line_count;
-	if (!nlines)
-		return 0;
-
-	if (y <= 0) y = 0;
-	else if ((unsigned)y >= nlines)
-		y = nlines - 1;
-
-	line = &textc->physical_line[y];
-	text = textc->utf8_data + line->start;
-	length = line->length;
-	idx = 0;
-
-	while (x > 0) {
-		size_t next_offset = 0;
-		int width = INT_MAX;
-
-		while (next_offset < length && text[next_offset] != '\t') {
-			next_offset = utf8_next(text, length, next_offset);
-		}
-
-		if (next_offset < length) {
-			guit->layout->width(&textplain_style,
-					    text,
-					    next_offset,
-					    &width);
-		}
-
-		if (x <= width) {
-			int pixel_offset;
-			size_t char_offset;
-
-			guit->layout->position(&textplain_style,
-					       text, next_offset, x,
-					       &char_offset, &pixel_offset);
-
-			idx += char_offset;
-			break;
-		}
-
-		x -= width;
-		length -= next_offset;
-		text += next_offset;
-		idx += next_offset;
-
-		/* check if it's within the tab */
-		width = textplain_tab_width - (width % textplain_tab_width);
-		if (x <= width) break;
-
-		x -= width;
-		length--;
-		text++;
-		idx++;
+	if (offset > text->utf8_data_size) {
+		return -1;
 	}
 
-	return line->start + idx;
+/* \todo - implement binary search here */
+	while (lineno < nlines && line[lineno].start < offset) {
+		lineno++;
+	}
+	if (line[lineno].start > offset) {
+		lineno--;
+	}
+
+	return lineno;
 }
 
 
-/* exported interface documented in html/textplain.h */
-void
+/**
+ * Finds all occurrences of a given string in a textplain content
+ *
+ * \param c the content to be searched
+ * \param context The search context to add the entry to.
+ * \param pattern the string pattern to search for
+ * \param p_len pattern length
+ * \param case_sens whether to perform a case sensitive search
+ * \return NSERROR_OK on success else error code on faliure
+ */
+static nserror
+textplain_textsearch_find(struct content *c,
+			  struct textsearch_context *context,
+			  const char *pattern,
+			  int p_len,
+			  bool case_sens)
+{
+	int nlines = textplain_line_count(c);
+	int line;
+	nserror res = NSERROR_OK;
+
+	for(line = 0; line < nlines; line++) {
+		size_t offset, length;
+		const char *text;
+
+		text = textplain_get_line(c, line, &offset, &length);
+		if (text) {
+			while (length > 0) {
+				unsigned match_length;
+				size_t start_idx;
+				const char *new_text;
+				const char *pos;
+
+				pos = content_textsearch_find_pattern(
+						text,
+						length,
+						pattern,
+						p_len,
+						case_sens,
+						&match_length);
+				if (!pos)
+					break;
+
+				/* found string in line => add to list */
+				start_idx = offset + (pos - text);
+				res = content_textsearch_add_match(context,
+						start_idx,
+						start_idx + match_length,
+						NULL,
+						NULL);
+				if (res != NSERROR_OK) {
+					return res;
+				}
+
+				new_text = pos + match_length;
+				offset += (new_text - text);
+				length -= (new_text - text);
+				text = new_text;
+			}
+		}
+	}
+
+	return res;
+}
+
+
+/**
+ * Given a range of byte offsets within a UTF8 textplain content,
+ * return a box that fully encloses the text
+ *
+ * \param[in] c     content of type CONTENT_TEXTPLAIN
+ * \param[in] start byte offset of start of text range
+ * \param[in] end   byte offset of end
+ * \param[out] r    rectangle to be completed
+ */
+static void
 textplain_coords_from_range(struct content *c,
 			    unsigned start,
 			    unsigned end,
@@ -1502,59 +1510,18 @@ textplain_coords_from_range(struct content *c,
 }
 
 
-/* exported interface documented in html/textplain.h */
-char *
-textplain_get_line(struct content *c,
-		   unsigned lineno,
-		   size_t *poffset,
-		   size_t *plen)
-{
-	textplain_content *text = (textplain_content *) c;
-	struct textplain_line *line;
-
-	assert(c != NULL);
-
-	if (lineno >= text->physical_line_count)
-		return NULL;
-	line = &text->physical_line[lineno];
-
-	*poffset = line->start;
-	*plen = line->length;
-	return text->utf8_data + line->start;
-}
-
-
-/* exported interface documented in html/textplain.h */
-int textplain_find_line(struct content *c, unsigned offset)
-{
-	textplain_content *text = (textplain_content *) c;
-	struct textplain_line *line;
-	int nlines;
-	int lineno = 0;
-
-	assert(c != NULL);
-
-	line = text->physical_line;
-	nlines = text->physical_line_count;
-
-	if (offset > text->utf8_data_size) {
-		return -1;
-	}
-
-/* \todo - implement binary search here */
-	while (lineno < nlines && line[lineno].start < offset) {
-		lineno++;
-	}
-	if (line[lineno].start > offset) {
-		lineno--;
-	}
-
-	return lineno;
-}
-
-
-/* exported interface documented in html/textplain.h */
-char *
+/**
+ * Return a pointer to the raw UTF-8 data, as opposed to the reformatted
+ * text to fit the window width. Thus only hard newlines are preserved
+ * in the saved/copied text of a selection.
+ *
+ * \param[in] c     content of type CONTENT_TEXTPLAIN
+ * \param[in] start starting byte offset within UTF-8 text
+ * \param[in] end   ending byte offset
+ * \param[out] plen receives validated length
+ * \return pointer to text, or NULL if no text
+ */
+static char *
 textplain_get_raw_data(struct content *c,
 		       unsigned start,
 		       unsigned end,
@@ -1580,13 +1547,137 @@ textplain_get_raw_data(struct content *c,
 }
 
 
-/* exported interface documented in html/textplain.h */
-struct browser_window *textplain_get_browser_window(struct content *c)
+/**
+ * get bounds of a free text search match
+ */
+static nserror
+textplain_textsearch_bounds(struct content *c,
+			    unsigned start_idx,
+			    unsigned end_idx,
+			    struct box *start_box,
+			    struct box *end_box,
+			    struct rect *bounds)
 {
-	textplain_content *text = (textplain_content *) c;
+	textplain_coords_from_range(c, start_idx, end_idx, bounds);
 
-	assert(c != NULL);
-	assert(c->handler == &textplain_content_handler);
-
-	return text->bw;
+	return NSERROR_OK;
 }
+
+
+/**
+ * invalidate a region based on offsets into the text cauing a redraw
+ */
+static nserror
+textplain_textselection_redraw(struct content *c,
+			       unsigned start_idx,
+			       unsigned end_idx)
+{
+	struct rect r;
+
+	if (end_idx <= start_idx) {
+		return NSERROR_BAD_PARAMETER;
+	}
+
+	textplain_coords_from_range(c, start_idx, end_idx, &r);
+
+	content__request_redraw(c, r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+
+	return NSERROR_OK;
+}
+
+static nserror
+textplain_textselection_copy(struct content *c,
+			     unsigned start_idx,
+			     unsigned end_idx,
+			     struct selection_string *selstr)
+{
+	const char *text;
+	size_t length;
+	bool res = false;
+
+	text = textplain_get_raw_data(c, start_idx, end_idx, &length);
+	if (text != NULL) {
+		res = selection_string_append(text, length, false, NULL, selstr);
+	}
+	if (res == false) {
+		return NSERROR_NOMEM;
+	}
+	return NSERROR_OK;
+}
+
+
+/**
+ * Retrieve the index of the end of the text
+ *
+ * \param[in] c Content to retrieve size of
+ * \return Size, in bytes, of data
+ */
+static nserror
+textplain_textselection_get_end(struct content *c, unsigned *end_idx)
+{
+	textplain_content *text = (textplain_content *)c;
+
+	*end_idx = text->utf8_data_size;
+	return NSERROR_OK;
+}
+
+
+/**
+ * plain text content handler table
+ */
+static const content_handler textplain_content_handler = {
+	.fini = textplain_fini,
+	.create = textplain_create,
+	.process_data = textplain_process_data,
+	.data_complete = textplain_convert,
+	.reformat = textplain_reformat,
+	.destroy = textplain_destroy,
+	.mouse_track = textplain_mouse_track,
+	.mouse_action = textplain_mouse_action,
+	.keypress = textplain_keypress,
+	.redraw = textplain_redraw,
+	.open = textplain_open,
+	.close = textplain_close,
+	.get_selection = textplain_get_selection,
+	.clone = textplain_clone,
+	.type = textplain_content_type,
+	.textsearch_find = textplain_textsearch_find,
+	.textsearch_bounds = textplain_textsearch_bounds,
+	.textselection_redraw = textplain_textselection_redraw,
+	.textselection_copy = textplain_textselection_copy,
+	.textselection_get_end = textplain_textselection_get_end,
+	.no_share = true,
+};
+
+
+/* exported interface documented in html/textplain.h */
+nserror textplain_init(void)
+{
+	lwc_error lerror;
+	nserror error;
+
+	lerror = lwc_intern_string("Windows-1252",
+				   SLEN("Windows-1252"),
+				   &textplain_default_charset);
+	if (lerror != lwc_error_ok) {
+		return NSERROR_NOMEM;
+	}
+
+	error = content_factory_register_handler("text/plain",
+						 &textplain_content_handler);
+	if (error != NSERROR_OK) {
+		lwc_string_unref(textplain_default_charset);
+	}
+
+	error = content_factory_register_handler("application/json",
+						 &textplain_content_handler);
+	if (error != NSERROR_OK) {
+		lwc_string_unref(textplain_default_charset);
+	}
+
+	return error;
+}
+
+
+
+
