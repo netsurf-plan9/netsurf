@@ -42,7 +42,6 @@ OBJ=\
 	content/fetchers/about.$O\
 #	content/fetchers/curl.$O\
 	content/fetchers/data.$O\
-	content/fetchers/file.$O\
 	content/fetchers/resource.$O\
 	content/fetchers/file/dirlist.$O\
 	content/fetchers/file/file.$O\
