@@ -73,10 +73,10 @@
 #include "riscos/query.h"
 #include "riscos/window.h"
 #include "riscos/iconbar.h"
-#include "riscos/sslcert.h"
 #include "riscos/local_history.h"
 #include "riscos/global_history.h"
 #include "riscos/cookies.h"
+#include "riscos/pageinfo.h"
 #include "riscos/wimp_event.h"
 #include "riscos/uri.h"
 #include "riscos/url_protocol.h"
@@ -1593,6 +1593,7 @@ static void gui_quit(void)
 	ro_gui_window_quit();
 	ro_gui_local_history_finalise();
 	ro_gui_global_history_finalise();
+	ro_gui_pageinfo_finalise();
 	ro_gui_hotlist_finalise();
 	ro_gui_cookies_finalise();
 	ro_gui_saveas_quit();
@@ -2430,6 +2431,7 @@ static struct gui_misc_table riscos_misc_table = {
 
 	.quit = gui_quit,
 	.launch_url = gui_launch_url,
+	.present_cookies = ro_gui_cookies_present,
 };
 
 

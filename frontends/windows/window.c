@@ -1154,7 +1154,7 @@ nsws_window_command(HWND hwnd,
 		break;
 
 	case IDM_TOOLS_COOKIES:
-		nsw32_cookies_present(hinst);
+		nsw32_cookies_present(NULL);
 		break;
 
 	case IDM_NAV_BOOKMARKS:
@@ -1363,8 +1363,6 @@ nsws_window_resize(struct gui_window *gw,
 			   true);
 	}
 	nsws_window_update_forward_back(gw);
-
-	browser_window_update(gw->bw, false);
 
 	if (gw->toolbar != NULL) {
 		SendMessage(gw->toolbar, TB_SETSTATE,

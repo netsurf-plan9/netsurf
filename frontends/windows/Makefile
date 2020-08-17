@@ -55,7 +55,7 @@ S_RESOURCES := windows_resource.o
 S_FRONTEND := main.c window.c gui.c clipboard.c drawable.c plot.c findfile.c \
 	  font.c bitmap.c about.c prefs.c download.c fetch.c file.c	\
 	  local_history.c schedule.c windbg.c pointers.c \
-	  corewindow.c hotlist.c cookies.c global_history.c ssl_cert.c
+	  corewindow.c hotlist.c cookies.c global_history.c
 
 # This is the final source build list
 # Note this is deliberately *not* expanded here as common and image
@@ -86,10 +86,9 @@ NSIS_VERBOSE := 0
 endif
 
 # installer messages generation
-$(OBJROOT)/messages-en: resources/FatMessages
-	$(VQ)echo "MSGSPLIT: Language: en Filter: win"
-	$(Q)$(RM) $@
-	$(Q)$(SPLIT_MESSAGES) -l en -p win -f messages -o $@ $<
+$(OBJROOT)/messages-en: $(MESSAGES_TARGET)/en/Messages
+	$(VQ)echo "   MSGCP: $< $@"
+	$(Q)$(INSTALL) -m 644 -T $< $@
 
 netsurf-installer.exe: $(EXETARGET) $(WIN_RES_INS_OBJ)
 	$(VQ)echo "MAKENSIS: $@"

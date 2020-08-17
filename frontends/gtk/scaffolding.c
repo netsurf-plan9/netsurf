@@ -1285,8 +1285,9 @@ nserror nsgtk_scaffolding_destroy_all(void)
 
 	/* iterate all scaffolding windows and destroy them */
 	while (gs != NULL) {
+		struct nsgtk_scaffolding *next = gs->next;
 		gtk_widget_destroy(GTK_WIDGET(gs->window));
-		gs = gs->next;
+		gs = next;
 	}
 	return NSERROR_OK;
 }
@@ -1573,4 +1574,17 @@ struct nsgtk_scaffolding *nsgtk_new_scaffolding(struct gui_window *toplevel)
 	NSLOG(netsurf, INFO, "creation complete");
 
 	return gs;
+}
+
+/* exported interface documented in gtk/scaffolding.h */
+nserror nsgtk_scaffolding_position_page_info(struct nsgtk_scaffolding *gs,
+					     struct nsgtk_pi_window *win)
+{
+	return nsgtk_window_position_page_info(gs->top_level, win);
+}
+
+/* exported interface documented in gtk/scaffolding.h */
+nserror nsgtk_scaffolding_position_local_history(struct nsgtk_scaffolding *gs)
+{
+	return nsgtk_window_position_local_history(gs->top_level);
 }

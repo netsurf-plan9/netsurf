@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2019 Chris Young <chris@unsatisfactorysoftware.co.uk>
+ * Copyright 2008-2020 Chris Young <chris@unsatisfactorysoftware.co.uk>
  *
  * This file is part of NetSurf, http://www.netsurf-browser.org/
  *
@@ -152,6 +152,7 @@
 #include "amiga/menu.h"
 #include "amiga/misc.h"
 #include "amiga/nsoption.h"
+#include "amiga/pageinfo.h"
 #include "amiga/plotters.h"
 #include "amiga/plugin_hack.h"
 #include "amiga/print.h"
@@ -160,7 +161,6 @@
 #include "amiga/selectmenu.h"
 #include "amiga/theme.h"
 #include "amiga/utf8.h"
-#include "amiga/sslcert.h"
 
 #define AMINS_SCROLLERPEN NUMDRIPENS
 #define NSA_KBD_SCROLL_PX 10
@@ -1095,6 +1095,7 @@ static nserror ami_set_options(struct nsoption_s *defaults)
 	const char *encname = (const char *)ObtainCharsetInfo(DFCS_NUMBER, codeset,
 							DFCS_MIMENAME);
 	nsoption_set_charp(local_charset, strdup(encname));
+	nsoption_set_int(local_codeset, codeset);
 #else
 	nsoption_set_bool(download_notify, false);
 	nsoption_set_bool(font_antialiasing, false);
@@ -2999,6 +3000,25 @@ static BOOL ami_gui_event(void *w)
 						ami_gui_history(gwin, false);
 					break;
 
+					case GID_PAGEINFO:
+						{
+							ULONG w_top, w_left;
+							ULONG g_top, g_left, g_height;
+
+							GetAttr(WA_Top, gwin->objects[OID_MAIN], &w_top);
+							GetAttr(WA_Left, gwin->objects[OID_MAIN], &w_left);
+							GetAttr(GA_Top, gwin->objects[GID_PAGEINFO], &g_top);
+							GetAttr(GA_Left, gwin->objects[GID_PAGEINFO], &g_left);
+							GetAttr(GA_Height, gwin->objects[GID_PAGEINFO], &g_height);
+														
+							if(ami_pageinfo_open(gwin->gw->bw,
+											w_left + g_left,
+											w_top + g_top + g_height) != NSERROR_OK) {
+								NSLOG(netsurf, INFO, "Unable to open page info window");
+							}
+						}
+					break;
+
 					case GID_FAVE:
 						GetAttr(STRINGA_TextVal,
 							(Object *)gwin->objects[GID_URL],
@@ -3232,6 +3252,56 @@ static void ami_gui_appicon_remove(struct gui_window_2 *gwin)
 		amiga_icon_free(gwin->dobj);
 		gwin->appicon = NULL;
 	}
+}
+
+static nserror gui_page_info_change(struct gui_window *gw)
+{
+	int bm_idx;
+	browser_window_page_info_state pistate;
+	struct gui_window_2 *gwin = ami_gui_get_gui_window_2(gw);
+	struct browser_window *bw = ami_gui_get_browser_window(gw);
+
+	/* if this isn't the visible tab, don't do anything */
+	if((gwin == NULL) || (gwin->gw != gw)) return NSERROR_OK;
+
+	pistate = browser_window_get_page_info_state(bw);
+
+	switch(pistate) {
+		case PAGE_STATE_INTERNAL:
+			bm_idx = GID_PAGEINFO_INTERNAL_BM;
+		break;
+
+		case PAGE_STATE_LOCAL:
+			bm_idx = GID_PAGEINFO_LOCAL_BM;
+		break;
+
+		case PAGE_STATE_INSECURE:
+			bm_idx = GID_PAGEINFO_INSECURE_BM;
+		break;
+
+		case PAGE_STATE_SECURE_OVERRIDE:
+			bm_idx = GID_PAGEINFO_WARNING_BM;
+		break;
+
+		case PAGE_STATE_SECURE_ISSUES:
+			bm_idx = GID_PAGEINFO_WARNING_BM;
+		break;
+
+		case PAGE_STATE_SECURE:
+			bm_idx = GID_PAGEINFO_SECURE_BM;
+		break;
+
+		default:
+			bm_idx = GID_PAGEINFO_INTERNAL_BM;
+		break;
+	}
+
+	RefreshSetGadgetAttrs((struct Gadget *)gwin->objects[GID_PAGEINFO], gwin->win, NULL,
+				BUTTON_RenderImage, gwin->objects[bm_idx],
+				GA_HintInfo, gwin->helphints[bm_idx],
+				TAG_DONE);
+
+	return NSERROR_OK;
 }
 
 static void ami_handle_appmsg(void)
@@ -3527,6 +3597,135 @@ static void ami_change_tab(struct gui_window_2 *gwin, int direction)
 	ami_switch_tab(gwin, true);
 }
 
+
+static void gui_window_set_title(struct gui_window *g, const char *restrict title)
+{
+	struct Node *node;
+	char *restrict utf8title;
+
+	if(!g) return;
+	if(!title) return;
+
+	utf8title = ami_utf8_easy((char *)title);
+
+	if(g->tab_node) {
+		node = g->tab_node;
+
+		if((g->tabtitle == NULL) || (strcmp(utf8title, g->tabtitle)))
+		{
+			SetGadgetAttrs((struct Gadget *)g->shared->objects[GID_TABS],
+							g->shared->win, NULL,
+							CLICKTAB_Labels, ~0,
+							TAG_DONE);
+
+			if(g->tabtitle) free(g->tabtitle);
+			g->tabtitle = strdup(utf8title);
+
+			SetClickTabNodeAttrs(node, TNA_Text, g->tabtitle,
+							TNA_HintInfo, g->tabtitle,
+							TAG_DONE);
+
+			RefreshSetGadgetAttrs((struct Gadget *)g->shared->objects[GID_TABS],
+								g->shared->win, NULL,
+								CLICKTAB_Labels, &g->shared->tab_list,
+								TAG_DONE);
+
+			if(ClickTabBase->lib_Version < 53)
+				RethinkLayout((struct Gadget *)g->shared->objects[GID_TABLAYOUT],
+					g->shared->win, NULL, TRUE);
+		}
+	}
+
+	if(g == g->shared->gw) {
+		if((g->shared->wintitle == NULL) || (strcmp(utf8title, g->shared->wintitle)))
+		{
+			if(g->shared->wintitle) free(g->shared->wintitle);
+			g->shared->wintitle = strdup(utf8title);
+			SetWindowTitles(g->shared->win, g->shared->wintitle, ami_gui_get_screen_title());
+		}
+	}
+
+	ami_utf8_free(utf8title);
+}
+
+static void gui_window_update_extent(struct gui_window *g)
+{
+	struct IBox *bbox;
+
+	if(!g || !g->bw) return;
+	if(browser_window_has_content(g->bw) == false) return;
+
+	if(g == g->shared->gw) {
+		int width, height;
+		if(ami_gui_get_space_box((Object *)g->shared->objects[GID_BROWSER], &bbox) != NSERROR_OK) {
+			amiga_warn_user("NoMemory", "");
+			return;
+		}
+
+		if(g->shared->objects[GID_VSCROLL]) {
+			browser_window_get_extents(g->bw, true, &width, &height);
+			RefreshSetGadgetAttrs((struct Gadget *)(APTR)g->shared->objects[GID_VSCROLL],g->shared->win,NULL,
+				SCROLLER_Total, (ULONG)(height),
+				SCROLLER_Visible, bbox->Height,
+			TAG_DONE);
+		}
+
+		if(g->shared->objects[GID_HSCROLL])
+		{
+			browser_window_get_extents(g->bw, true, &width, &height);
+			RefreshSetGadgetAttrs((struct Gadget *)(APTR)g->shared->objects[GID_HSCROLL],
+				g->shared->win, NULL,
+				SCROLLER_Total, (ULONG)(width),
+				SCROLLER_Visible, bbox->Width,
+				TAG_DONE);
+		}
+
+		ami_gui_free_space_box(bbox);
+	}
+
+	ami_gui_scroller_update(g->shared);
+	g->shared->new_content = true;
+}
+
+
+/**
+ * Invalidates an area of an amiga browser window
+ *
+ * \param g gui_window
+ * \param rect area to redraw or NULL for the entire window area
+ * \return NSERROR_OK on success or appropriate error code
+ */
+static nserror amiga_window_invalidate_area(struct gui_window *g,
+					    const struct rect *restrict rect)
+{
+	struct nsObject *nsobj;
+	struct rect *restrict deferred_rect;
+
+	if(!g) return NSERROR_BAD_PARAMETER;
+
+	if (rect == NULL) {
+		if (g != g->shared->gw) {
+			return NSERROR_OK;
+		}
+	} else {
+		if (ami_gui_window_update_box_deferred_check(g->deferred_rects, rect,
+							    g->deferred_rects_pool)) {
+			deferred_rect = ami_memory_itempool_alloc(g->deferred_rects_pool,
+								  sizeof(struct rect));
+			CopyMem(rect, deferred_rect, sizeof(struct rect));
+			nsobj = AddObject(g->deferred_rects, AMINS_RECT);
+			nsobj->objstruct = deferred_rect;
+		} else {
+			NSLOG(netsurf, INFO,
+			      "Ignoring duplicate or subset of queued box redraw");
+		}
+	}
+	ami_schedule_redraw(g->shared, false);
+
+	return NSERROR_OK;
+}
+
+
 static void ami_switch_tab(struct gui_window_2 *gwin, bool redraw)
 {
 	struct Node *tabnode;
@@ -3572,7 +3771,10 @@ static void ami_switch_tab(struct gui_window_2 *gwin, bool redraw)
 		struct rect rect;
 
 		ami_plot_clear_bbox(gwin->win->RPort, bbox);
-		browser_window_update(gwin->gw->bw, false);
+		gui_window_set_title(gwin->gw,
+				     browser_window_get_title(gwin->gw->bw));
+		gui_window_update_extent(gwin->gw);
+		amiga_window_invalidate_area(gwin->gw, NULL);
 
 		rect.x0 = rect.x1 = gwin->gw->scrollx;
 		rect.y0 = rect.y1 = gwin->gw->scrolly;
@@ -3586,6 +3788,7 @@ static void ami_switch_tab(struct gui_window_2 *gwin, bool redraw)
 		ami_throbber_redraw_schedule(0, gwin->gw);
 
 		gui_window_set_icon(gwin->gw, gwin->gw->favicon);
+		gui_page_info_change(gwin->gw);
 	}
 
 	ami_gui_free_space_box(bbox);
@@ -4078,7 +4281,12 @@ static void ami_toggletabbar(struct gui_window_2 *gwin, bool show)
 	RethinkLayout((struct Gadget *)gwin->objects[GID_MAIN],
 			gwin->win, NULL, TRUE);
 
-	if(gwin->gw && gwin->gw->bw) browser_window_update(gwin->gw->bw, false);
+	if (gwin->gw && gwin->gw->bw) {
+		gui_window_set_title(gwin->gw,
+				     browser_window_get_title(gwin->gw->bw));
+		gui_window_update_extent(gwin->gw);
+		amiga_window_invalidate_area(gwin->gw, NULL);
+	}
 }
 
 void ami_gui_tabs_toggle_all(void)
@@ -4333,44 +4541,6 @@ static void ami_do_redraw_limits(struct gui_window *g, struct browser_window *bw
 	ami_gui_free_space_box(bbox);
 
 	return;
-}
-
-
-/**
- * Invalidates an area of an amiga browser window
- *
- * \param g gui_window
- * \param rect area to redraw or NULL for the entire window area
- * \return NSERROR_OK on success or appropriate error code
- */
-static nserror amiga_window_invalidate_area(struct gui_window *g,
-					    const struct rect *restrict rect)
-{
-	struct nsObject *nsobj;
-	struct rect *restrict deferred_rect;
-
-	if(!g) return NSERROR_BAD_PARAMETER;
-
-	if (rect == NULL) {
-		if (g != g->shared->gw) {
-			return NSERROR_OK;
-		}
-	} else {
-		if (ami_gui_window_update_box_deferred_check(g->deferred_rects, rect,
-							    g->deferred_rects_pool)) {
-			deferred_rect = ami_memory_itempool_alloc(g->deferred_rects_pool,
-								  sizeof(struct rect));
-			CopyMem(rect, deferred_rect, sizeof(struct rect));
-			nsobj = AddObject(g->deferred_rects, AMINS_RECT);
-			nsobj->objstruct = deferred_rect;
-		} else {
-			NSLOG(netsurf, INFO,
-			      "Ignoring duplicate or subset of queued box redraw");
-		}
-	}
-	ami_schedule_redraw(g->shared, false);
-
-	return NSERROR_OK;
 }
 
 
@@ -5020,7 +5190,7 @@ gui_window_create(struct browser_window *bw,
 						LAYOUT_AddChild, g->shared->objects[GID_PAGEINFO] = ButtonObj,
 							GA_ID, GID_PAGEINFO,
 							GA_RelVerify, TRUE,
-							GA_ReadOnly, TRUE,
+							GA_ReadOnly, FALSE,
 							BUTTON_RenderImage, g->shared->objects[GID_PAGEINFO_INTERNAL_BM],
 						ButtonEnd,
 						CHILD_WeightedWidth, 0,
@@ -5439,55 +5609,6 @@ static void gui_window_destroy(struct gui_window *g)
 	win_destroyed = true;
 }
 
-static void gui_window_set_title(struct gui_window *g, const char *restrict title)
-{
-	struct Node *node;
-	char *restrict utf8title;
-
-	if(!g) return;
-	if(!title) return;
-
-	utf8title = ami_utf8_easy((char *)title);
-
-	if(g->tab_node) {
-		node = g->tab_node;
-
-		if((g->tabtitle == NULL) || (strcmp(utf8title, g->tabtitle)))
-		{
-			SetGadgetAttrs((struct Gadget *)g->shared->objects[GID_TABS],
-							g->shared->win, NULL,
-							CLICKTAB_Labels, ~0,
-							TAG_DONE);
-
-			if(g->tabtitle) free(g->tabtitle);
-			g->tabtitle = strdup(utf8title);
-
-			SetClickTabNodeAttrs(node, TNA_Text, g->tabtitle,
-							TNA_HintInfo, g->tabtitle,
-							TAG_DONE);
-
-			RefreshSetGadgetAttrs((struct Gadget *)g->shared->objects[GID_TABS],
-								g->shared->win, NULL,
-								CLICKTAB_Labels, &g->shared->tab_list,
-								TAG_DONE);
-
-			if(ClickTabBase->lib_Version < 53)
-				RethinkLayout((struct Gadget *)g->shared->objects[GID_TABLAYOUT],
-					g->shared->win, NULL, TRUE);
-		}
-	}
-
-	if(g == g->shared->gw) {
-		if((g->shared->wintitle == NULL) || (strcmp(utf8title, g->shared->wintitle)))
-		{
-			if(g->shared->wintitle) free(g->shared->wintitle);
-			g->shared->wintitle = strdup(utf8title);
-			SetWindowTitles(g->shared->win, g->shared->wintitle, ami_gui_get_screen_title());
-		}
-	}
-
-	ami_utf8_free(utf8title);
-}
 
 static void ami_redraw_callback(void *p)
 {
@@ -5798,45 +5919,6 @@ gui_window_set_scroll(struct gui_window *g, const struct rect *rect)
 	return NSERROR_OK;
 }
 
-static void gui_window_update_extent(struct gui_window *g)
-{
-	struct IBox *bbox;
-
-	if(!g || !g->bw) return;
-	if(browser_window_has_content(g->bw) == false) return;
-
-	if(g == g->shared->gw) {
-		int width, height;
-		if(ami_gui_get_space_box((Object *)g->shared->objects[GID_BROWSER], &bbox) != NSERROR_OK) {
-			amiga_warn_user("NoMemory", "");
-			return;
-		}
-
-		if(g->shared->objects[GID_VSCROLL]) {
-			browser_window_get_extents(g->bw, true, &width, &height);
-			RefreshSetGadgetAttrs((struct Gadget *)(APTR)g->shared->objects[GID_VSCROLL],g->shared->win,NULL,
-				SCROLLER_Total, (ULONG)(height),
-				SCROLLER_Visible, bbox->Height,
-			TAG_DONE);
-		}
-
-		if(g->shared->objects[GID_HSCROLL])
-		{
-			browser_window_get_extents(g->bw, true, &width, &height);
-			RefreshSetGadgetAttrs((struct Gadget *)(APTR)g->shared->objects[GID_HSCROLL],
-				g->shared->win, NULL,
-				SCROLLER_Total, (ULONG)(width),
-				SCROLLER_Visible, bbox->Width,
-				TAG_DONE);
-		}
-
-		ami_gui_free_space_box(bbox);
-	}
-
-	ami_gui_scroller_update(g->shared);
-	g->shared->new_content = true;
-}
-
 static void gui_window_set_status(struct gui_window *g, const char *text)
 {
 	char *utf8text;
@@ -6067,53 +6149,6 @@ static void gui_window_new_content(struct gui_window *g)
 	ami_gui_menu_update_disabled(g, c);
 	ami_gui_update_hotlist_button(g->shared);
 	ami_gui_scroller_update(g->shared);
-}
-
-static nserror gui_page_info_change(struct gui_window *gw)
-{
-	int bm_idx;
-	browser_window_page_info_state pistate;
-	struct gui_window_2 *gwin = ami_gui_get_gui_window_2(gw);
-	struct browser_window *bw = ami_gui_get_browser_window(gw);
-
-	pistate = browser_window_get_page_info_state(bw);
-
-	switch(pistate) {
-		case PAGE_STATE_INTERNAL:
-			bm_idx = GID_PAGEINFO_INTERNAL_BM;
-		break;
-
-		case PAGE_STATE_LOCAL:
-			bm_idx = GID_PAGEINFO_LOCAL_BM;
-		break;
-
-		case PAGE_STATE_INSECURE:
-			bm_idx = GID_PAGEINFO_INSECURE_BM;
-		break;
-
-		case PAGE_STATE_SECURE_OVERRIDE:
-			bm_idx = GID_PAGEINFO_WARNING_BM;
-		break;
-
-		case PAGE_STATE_SECURE_ISSUES:
-			bm_idx = GID_PAGEINFO_WARNING_BM;
-		break;
-
-		case PAGE_STATE_SECURE:
-			bm_idx = GID_PAGEINFO_SECURE_BM;
-		break;
-
-		default:
-			bm_idx = GID_PAGEINFO_INTERNAL_BM;
-		break;
-	}
-
-	RefreshSetGadgetAttrs((struct Gadget *)gwin->objects[GID_PAGEINFO], gwin->win, NULL,
-				BUTTON_RenderImage, gwin->objects[bm_idx],
-				GA_HintInfo, gwin->helphints[bm_idx],
-				TAG_DONE);
-
-	return NSERROR_OK;
 }
 
 static bool gui_window_drag_start(struct gui_window *g, gui_drag_type type,
@@ -6486,6 +6521,7 @@ static struct gui_misc_table amiga_misc_table = {
 
 	.quit = gui_quit,
 	.launch_url = gui_launch_url,
+	.present_cookies = ami_cookies_present,
 };
 
 /** Normal entry point from OS */

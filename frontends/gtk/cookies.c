@@ -98,6 +98,8 @@ MENUHANDLER(delete_selected)
 
 MENUHANDLER(delete_all)
 {
+	cookie_manager_keypress(NS_KEY_ESCAPE);
+	cookie_manager_keypress(NS_KEY_ESCAPE);
 	cookie_manager_keypress(NS_KEY_SELECT_ALL);
 	cookie_manager_keypress(NS_KEY_DELETE_LEFT);
 	return TRUE;
@@ -105,6 +107,8 @@ MENUHANDLER(delete_all)
 
 MENUHANDLER(select_all)
 {
+	cookie_manager_keypress(NS_KEY_ESCAPE);
+	cookie_manager_keypress(NS_KEY_ESCAPE);
 	cookie_manager_keypress(NS_KEY_SELECT_ALL);
 	return TRUE;
 }
@@ -305,13 +309,14 @@ static nserror nsgtk_cookies_init(void)
 
 
 /* exported function documented gtk/cookies.h */
-nserror nsgtk_cookies_present(void)
+nserror nsgtk_cookies_present(const char *search_term)
 {
 	nserror res;
 
 	res = nsgtk_cookies_init();
 	if (res == NSERROR_OK) {
 		gtk_window_present(cookie_window->wnd);
+		res = cookie_manager_set_search_string(search_term);
 	}
 	return res;
 }

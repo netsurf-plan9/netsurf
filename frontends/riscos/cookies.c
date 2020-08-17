@@ -342,6 +342,7 @@ cookie_menu_select(wimp_w w,
  */
 static nserror ro_cookie_init(void)
 {
+	os_error *error;
 	struct ro_cookie_window *ncwin;
 	nserror res;
 	static const struct ns_menu cookie_menu_def = {
@@ -383,7 +384,14 @@ static nserror ro_cookie_init(void)
 	}
 
 	/* create window from template */
-	ncwin->core.wh = wimp_create_window(dialog_cookie_template);
+	error = xwimp_create_window(dialog_cookie_template, &ncwin->core.wh);
+	if (error) {
+		NSLOG(netsurf, INFO, "xwimp_create_window: 0x%x: %s",
+		      error->errnum, error->errmess);
+		ro_warn_user("WimpError", error->errmess);
+		free(ncwin);
+		return NSERROR_NOMEM;
+	}
 
 	ro_gui_set_window_title(ncwin->core.wh, messages_get("Cookies"));
 
@@ -439,7 +447,7 @@ static nserror ro_cookie_init(void)
 
 
 /* exported interface documented in riscos/cookies.h */
-nserror ro_gui_cookies_present(void)
+nserror ro_gui_cookies_present(const char *search_term)
 {
 	nserror res;
 
@@ -449,6 +457,9 @@ nserror ro_gui_cookies_present(void)
 		ro_gui_dialog_open_top(cookie_window->core.wh,
 				       cookie_window->core.toolbar,
 				       600, 800);
+		if (search_term != NULL) {
+			res = cookie_manager_set_search_string(search_term);
+		}
 	} else {
 		NSLOG(netsurf, INFO, "Failed presenting code %d", res);
 	}
