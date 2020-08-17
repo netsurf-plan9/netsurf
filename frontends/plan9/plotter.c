@@ -393,7 +393,7 @@ static struct plotter_table plotter_table =
 	.path = plotter_path,
 	.bitmap = plotter_bitmap,
 	.text = plotter_text,
-	.option_knockout = true
+	.option_knockout = false
 };
 
 struct plotter_table *plan9_plotter_table = &plotter_table;
