@@ -345,20 +345,22 @@ void browser_mouse_event(Mouse m, void *data)
 	struct gui_window *gw = data;
 	browser_mouse_state mouse = 0;;
 	Rectangle r;
-	int x, y, sx, sy;
+	int x, y, sx, sy, lx, ly;
 
 	r = dwindow_get_view_rect(current->dw);
 	sx = dwindow_get_scroll_x(current->dw);
 	sy = dwindow_get_scroll_y(current->dw);
 	x = m.xy.x - r.min.x + sx;
 	y = m.xy.y - r.min.y + sy;
+	lx = lastm.xy.x - r.min.x + sx;
+	ly = lastm.xy.y - r.min.y + sy;
 
 	if (m.buttons && in_sel && (abs(x - lastm.xy.x) > 5 || abs(y - lastm.xy.y) > 5)) {
 		if (m.buttons & 1) {
-			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_1, x, y);
+			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_1, lx, ly);
 			mouse |= BROWSER_MOUSE_DRAG_ON | BROWSER_MOUSE_HOLDING_1;
 		} else if (m.buttons & 2) {
-			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_2, x, y);
+			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_2, lx, ly);
 			mouse |= BROWSER_MOUSE_DRAG_ON | BROWSER_MOUSE_HOLDING_2;
 		}
 	} else {
@@ -369,11 +371,15 @@ void browser_mouse_event(Mouse m, void *data)
 		if((m.msec - lastm.msec < 250) && lastm.buttons & 1) {
 			lastm = m;
 			browser_window_mouse_click(current->bw, BROWSER_MOUSE_CLICK_1, x, y);
+		} else {
+			browser_window_mouse_track(current->bw, mouse, x, y);
 		}
 	} else if (m.buttons&1) {
 		lastm = m;
-		in_sel = 1;
-		browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
+		if (!in_sel) {
+			in_sel = 1;
+			browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
+		}
 	} else if (m.buttons & 2) {
 		menu2hit(gw, &m);
 	} else if (m.buttons & 4) {
