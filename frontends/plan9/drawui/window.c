@@ -291,3 +291,8 @@ void dwindow_set_browser_keyboard_callback(struct dwindow *window, keyboard_call
 	window->view_keyboard_cb = cb;
 	window->view_keyboard_cb_data = data;
 }
+
+void dwindow_focus_url_bar(struct dwindow *window)
+{
+	dentry_set_focused(window->toolbar->url_entry);
+}

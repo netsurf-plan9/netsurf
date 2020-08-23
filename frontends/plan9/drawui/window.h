@@ -36,5 +36,6 @@ void      dwindow_set_browser_keyboard_callback(struct dwindow *window, keyboard
 void      dwindow_draw(struct dwindow *window);
 void      dwindow_mouse_event(struct dwindow *window, Event e);
 void      dwindow_keyboard_event(struct dwindow *window, Event e);
+void	  dwindow_focus_url_bar(struct dwindow *dwindow);
 
 #endif

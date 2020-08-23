@@ -16,6 +16,7 @@ struct dentry
 };
 
 dentry *dentry_create(void);
+void dentry_set_focused(dentry *entry);
 void dentry_set_text(dentry *entry, const char *text);
 void dentry_set_activated_callback(dentry *entry, void(*cb)(char*, void*), void*);
 
@@ -23,4 +24,5 @@ void dentry_set_rect(dentry *entry, Rectangle r);
 void dentry_draw(dentry *entry);
 void dentry_mouse_event(dentry *entry, Event e);
 void dentry_keyboard_event(dentry *entry, Event e);
+
 #endif

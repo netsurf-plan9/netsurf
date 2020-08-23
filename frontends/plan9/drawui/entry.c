@@ -30,6 +30,15 @@ dentry *dentry_create(void)
 	return e;
 }
 
+void dentry_set_focused(dentry *entry)
+{
+	if (entry->state & STATE_FOCUSED) {
+		return;
+	}
+	entry->state |= STATE_FOCUSED;
+	dentry_draw(entry);
+}
+
 void dentry_set_text(dentry *entry, const char *text)
 {
 	int l;

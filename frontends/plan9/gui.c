@@ -463,6 +463,9 @@ void browser_keyboard_event(int k, void *data)
 	case Kesc:
 		browser_window_search_clear(gw->bw);
 		break;
+	case Kstx:
+		dwindow_focus_url_bar(gw->dw);
+		break;
 	}
 }
 
