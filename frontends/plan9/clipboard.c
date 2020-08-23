@@ -34,7 +34,6 @@ static void gui_get_clipboard(char **buffer, size_t *length)
 		*buffer = NULL;
 		*length = 0;
 	} else {
-		buf[n - 1] = '\0';
 		*length = n;
 		*buffer = calloc(n + 1, sizeof(char));
 		memcpy(*buffer, buf, n);
