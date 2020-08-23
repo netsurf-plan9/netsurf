@@ -461,6 +461,7 @@ void browser_keyboard_event(int k, void *data)
 		gui_window_scroll_y(gw, 0, 0, -dwindow_get_scroll_y(gw->dw));
 		break;
 	case Kesc:
+	case Knack:
 		browser_window_search_clear(gw->bw);
 		break;
 	case Kstx:

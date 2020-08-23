@@ -122,6 +122,7 @@ void dentry_keyboard_event(dentry *entry, Event e)
 		}
 		break;
 	case Kesc:
+	case Knack:	/* ^U: delete line */
 		entry->len = 0;
 		entry->pos = 0;
 		entry->text[entry->len] = 0;
@@ -138,12 +139,14 @@ void dentry_keyboard_event(dentry *entry, Event e)
 		}
 		entry->pos++;
 		break;
+	case Ksoh:	/* ^A: start of line */
 	case Khome:
 		if (entry->pos == 0) {
 			return;
 		}
 		entry->pos = 0;
 		break;
+	case Kenq:	/* ^E: end of line */
 	case Kend:
 		if (entry->pos == entry->len) {
 			return;
