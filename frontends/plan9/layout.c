@@ -1,4 +1,5 @@
 #include <draw.h>
+#include <ctype.h>
 #include "utils/nsoption.h"
 #include "netsurf/inttypes.h"
 #include "netsurf/layout.h"
@@ -193,7 +194,7 @@ layout_split(const struct plot_font_style *fstyle, const char *s, size_t length,
 	while (nxtchr < length) {
 		ucs4 = utf8_to_ucs4(s + nxtchr, length - nxtchr);
 		
-		if (ucs4 == 0x20) {
+		if (ucs4 == ' ' || ucs4 == '\t') {
 			last_space_x = *actual_x;
 			last_space_idx = nxtchr;
 		}
@@ -207,6 +208,7 @@ layout_split(const struct plot_font_style *fstyle, const char *s, size_t length,
 		
 		nxtchr = utf8_next(s, length, nxtchr);
 	}
+	*char_offset = length;
 	return NSERROR_OK;
 }
 
