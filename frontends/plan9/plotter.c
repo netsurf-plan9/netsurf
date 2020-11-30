@@ -336,13 +336,13 @@ plotter_bitmap(const struct redraw_context *ctx,
 	Rectangle r;
 	Image *i, *m;
 
-	if (flags != 0)
-		return NSERROR_INVALID;
 	b = ctx->priv;
 	i = getimage(bitmap);
 	m = getcolor(bg);
-	r = Rect(x, y, x + width, y + height);
-	draw(b, r, i, 0, ZP);
+	if(flags == BITMAPF_NONE) {
+		r = rectaddpt(i->r, Pt(x, y));
+		draw(b, r, i, 0, ZP);
+	}
 	freeimage(i);
 	freeimage(m);
 	return NSERROR_OK;
