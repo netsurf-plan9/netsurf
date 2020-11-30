@@ -261,11 +261,13 @@ window_set_icon(struct gui_window *gw, struct hlcache_handle *icon)
 	struct bitmap *b;
 
 	i = NULL;
-	if (content_get_type(icon) == CONTENT_IMAGE) {
-		b = content_get_bitmap(icon);
-		i = getimage(b);
-	}
-	dwindow_set_icon(gw->dw, i);
+	if (content_get_type(icon) != CONTENT_IMAGE)
+		return;
+
+	b = content_get_bitmap(icon);
+	i = getimage(b);
+	if(i != NULL)
+		dwindow_set_icon(gw->dw, i);
 }
 
 /**

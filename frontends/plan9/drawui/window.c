@@ -138,6 +138,7 @@ static void draw_status(dwindow *window)
 void dwindow_draw(struct dwindow *window)
 {
 	draw_title(window);
+	draw_icon(window);
 	dtoolbar_draw(window->toolbar);
 	dscrollbar_draw(window->scrollbar);
 	draw_status(window);
