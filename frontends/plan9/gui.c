@@ -1,4 +1,5 @@
 #include <u.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -458,7 +459,10 @@ void browser_keyboard_event(int k, void *data)
 		gui_window_scroll_y(gw, 0, 0, 100);
 		break;
 	case Khome:
-		gui_window_scroll_y(gw, 0, 0, -dwindow_get_scroll_y(gw->dw));
+		gui_window_scroll_y(gw, 0, 0, INT_MIN);
+		break;
+	case Kend:
+		gui_window_scroll_y(gw, 0, 0, INT_MAX);
 		break;
 	case Kesc:
 	case Knack:
