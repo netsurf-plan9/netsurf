@@ -459,10 +459,10 @@ void browser_keyboard_event(int k, void *data)
 		gui_window_scroll_y(gw, 0, 0, 100);
 		break;
 	case Khome:
-		gui_window_scroll_y(gw, 0, 0, INT_MIN);
+		gui_window_scroll_y(gw, 0, 0, INT_MIN/2);
 		break;
 	case Kend:
-		gui_window_scroll_y(gw, 0, 0, INT_MAX);
+		gui_window_scroll_y(gw, 0, 0, INT_MAX/2);
 		break;
 	case Kesc:
 	case Knack:
