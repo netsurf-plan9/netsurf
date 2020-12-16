@@ -305,16 +305,21 @@ static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 
 static void menu2hit(struct gui_window *gw, Mouse *m)
 {
+	static char lastbuf[1024] = {0};
 	char buf[1024] = {0};
-	int n;
+	int n, flags;
 
 	n = emenuhit(2, m, &menu2);
 	switch (n) {
 	case Msearch:
+		strcpy(buf, lastbuf);
 		if(eenter("Search for", buf, sizeof buf, m) > 0) {
-			browser_window_search(gw->bw, gw, SEARCH_FLAG_SHOWALL, buf);
+			flags = strcmp(lastbuf, buf) == 0 ? SEARCH_FLAG_FORWARDS : SEARCH_FLAG_SHOWALL;
+			browser_window_search(gw->bw, gw, flags, buf);
+			strcpy(lastbuf, buf);
 		} else {
 			browser_window_search_clear(gw->bw);
+			lastbuf[0] = 0;
 		}
 	case Mcut:
 		browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
