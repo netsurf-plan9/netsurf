@@ -92,6 +92,8 @@ window_invalidate(struct gui_window *gw, const struct rect *rect)
 	int sx;
 	int sy;
 
+	if(gw->bw == NULL)
+		return NSERROR_OK;
 	clipr = gw->b->r;
 	if (rect != NULL) {
 		sx = dwindow_get_scroll_x(gw->dw);

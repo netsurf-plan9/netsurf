@@ -199,7 +199,9 @@ static void drawui_run(void)
 
 static void drawui_exit(int status)
 {
-	browser_window_destroy(current->bw);
+	struct browser_window *bw = current->bw;
+	current->bw = NULL;
+	browser_window_destroy(bw);
 	netsurf_exit();
 	nsoption_finalise(nsoptions, nsoptions_default);
 	nslog_finalise();
