@@ -109,6 +109,7 @@ static void draw_icon(dwindow *window)
 		i = window->icon;
 	}
 	replclipr(screen, 0, window->iconr);
+	draw(screen, window->iconr, bg_color, nil, ZP);
 	draw(screen, window->iconr, i, nil, ZP);
 }
 
