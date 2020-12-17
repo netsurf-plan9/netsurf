@@ -406,6 +406,8 @@ int getnskey(int k)
 
 	switch (k) {
 	case Kdel:
+		n = NS_KEY_DELETE_RIGHT;
+		break;
 	case Kbs:
 		n = NS_KEY_DELETE_LEFT;
 		break;
@@ -450,9 +452,6 @@ void browser_keyboard_event(int k, void *data)
 
 	r = dwindow_get_view_rect(gw->dw);
 	switch(k) {
-	case Kdel:
-		drawui_exit(0);
-		break;
 	case Kpgup:
 		gui_window_scroll_y(gw, 0, 0, -Dy(r));
 		break;
