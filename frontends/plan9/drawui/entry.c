@@ -248,7 +248,7 @@ static void text_insert(dentry *entry, char *s)
 	sels = min(entry->pos, entry->pos2);
 	sele = max(entry->pos, entry->pos2);
 	if (sels != sele) {
-		memmove(entry->text + sels, entry->text + sele, entry->len - sele);
+		memmove(entry->text + sels + n, entry->text + sele, entry->len - sele);
 		entry->len -= sele - sels;
 		entry->pos = sels;
 	} else if (entry->pos != entry->len) {
@@ -256,9 +256,9 @@ static void text_insert(dentry *entry, char *s)
 	}
 
 	memmove(entry->text + sels, s, n);
-	entry->pos = sels + n;
 	entry->len += n;
-	entry->pos2 = entry->pos;
+	entry->pos2 = sels;
+	entry->pos = sels + n;
 	entry->text[entry->len] = 0;		
 }
 
