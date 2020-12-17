@@ -68,12 +68,18 @@ Menu menu2 = { menu2str };
 
 char *menu3str[] =
 {
+	"back",
+	"forward",
+	"reload",
 	"exit",
 	0
 };
 
 enum
 {
+	Mback,
+	Mforward,
+	Mreload,
 	Mexit,
 };
 
@@ -341,6 +347,19 @@ static void menu3hit(struct gui_window *gw, Mouse *m)
 
 	n = emenuhit(3, m, &menu3);
 	switch (n) {
+	case Mback:
+		if (browser_window_back_available(current->bw)) {
+			browser_window_history_back(current->bw);
+		}
+		break;
+	case Mforward:
+		if (browser_window_forward_available(current->bw)) {
+			browser_window_history_forward(current->bw);
+		}
+		break;
+	case Mreload:
+		browser_window_reload(current->bw, true);
+		break;
 	case Mexit:
 		drawui_exit(0);
 	}
