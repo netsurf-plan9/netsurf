@@ -147,11 +147,12 @@ void dwindow_draw(struct dwindow *window)
 
 void dwindow_mouse_event(struct dwindow *window, Event e)
 {
-	if(dscrollbar_mouse_event(window->scrollbar, e) != 0) {
-		dtoolbar_mouse_event(window->toolbar, e);
-		if(ptinrect(e.mouse.xy, window->viewr) && window->view_mouse_cb != NULL) {
-			window->view_mouse_cb(e.mouse, window->view_mouse_cb_data);
-		}
+	if(dscrollbar_mouse_event(window->scrollbar, e) == 0 ||
+	   dtoolbar_mouse_event(window->toolbar, e) == 0) {
+		return;
+	}
+	if(ptinrect(e.mouse.xy, window->viewr) && window->view_mouse_cb != NULL) {
+		window->view_mouse_cb(e.mouse, window->view_mouse_cb_data);
 	}
 }
 

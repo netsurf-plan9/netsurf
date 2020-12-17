@@ -7,9 +7,10 @@ struct dentry
 {
 	dwidget;
 	int tick_x;
-	int pos;
+	int pos, pos2;
 	int len;
 	int size;
+	int buttons;
 	char* text;
 	void(*activated_cb)(char*, void*);
 	void *activated_cb_data;
@@ -22,7 +23,7 @@ void dentry_set_activated_callback(dentry *entry, void(*cb)(char*, void*), void*
 
 void dentry_set_rect(dentry *entry, Rectangle r);
 void dentry_draw(dentry *entry);
-void dentry_mouse_event(dentry *entry, Event e);
+int dentry_mouse_event(dentry *entry, Event e);
 void dentry_keyboard_event(dentry *entry, Event e);
 
 #endif

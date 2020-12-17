@@ -69,13 +69,17 @@ void dtoolbar_draw(dtoolbar *toolbar)
 	line(screen, p0, p1, 0, 0, 0, display->black, ZP);
 }
 
-void dtoolbar_mouse_event(dtoolbar *toolbar, Event e)
+int dtoolbar_mouse_event(dtoolbar *toolbar, Event e)
 {
+	if(dentry_mouse_event(toolbar->url_entry, e) == 0)
+		return 0;
+
 	dbutton_mouse_event(toolbar->back_button, e);
 	dbutton_mouse_event(toolbar->fwd_button, e);
 	dbutton_mouse_event(toolbar->stop_button, e);
 	dbutton_mouse_event(toolbar->reload_button, e);
-	dentry_mouse_event(toolbar->url_entry, e);
+
+	return -1;
 }
 
 void dtoolbar_keyboard_event(dtoolbar *toolbar, Event e)

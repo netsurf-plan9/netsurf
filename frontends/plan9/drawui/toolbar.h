@@ -16,7 +16,7 @@ struct dtoolbar
 dtoolbar *dtoolbar_create(void);
 void dtoolbar_set_rect(dtoolbar *toolbar, Rectangle r);
 void dtoolbar_draw(dtoolbar *toolbar);
-void dtoolbar_mouse_event(dtoolbar *toolbar, Event e);
+int dtoolbar_mouse_event(dtoolbar *toolbar, Event e);
 void dtoolbar_keyboard_event(dtoolbar *toolbar, Event e);
 
 #endif
