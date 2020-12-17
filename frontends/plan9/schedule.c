@@ -15,29 +15,25 @@ struct Slist
 	void *p;
 	int t;
 	Slist *next;
+	Slist *prev;
 };
 
-static Slist* schedlist = NULL;
+static Slist *schedlist;
 
 static nserror schedule_remove(void (*cb)(void*), void *p)
 {
-	Slist *cur, *prev, *tmp;
+	Slist *s, *next;
 
-	prev = NULL;
-	cur = schedlist;
-	while(cur != NULL){
-		if(cur->cb==cb && cur->p==p){
-//			DBG("schedlist: removing scheduled callback %p (p=%p)", cb, p);
-			tmp = cur;
-			cur = cur->next;
-			if(prev == NULL)
-				schedlist = cur;
+	for(s = schedlist; s != NULL; s = next){
+		next = s->next;
+		if(s->cb==cb && s->p==p){
+			if(next != NULL)
+				next->prev = s->prev;
+			if(s->prev != NULL)
+				s->prev->next = next;
 			else
-				prev->next = cur;
-			free(tmp);
-		}else{
-			prev = cur;
-			cur = cur->next;
+				schedlist = next;
+			free(s);
 		}
 	}
 	return NSERROR_OK;
@@ -45,30 +41,35 @@ static nserror schedule_remove(void (*cb)(void*), void *p)
 
 void schedule_run(void)
 {
-	static int nrun = 0;
-	Slist *cur, *prev, *tmp;
+	Slist *s, *next, *old;
 
-	prev = NULL;
-	cur = schedlist;
-	while(cur != NULL){
-//DBG("schedrun: callback %p (p=%p) planned in %d", cur->cb, cur->p, cur->t);
-		cur->t -= SCHEDULE_PERIOD;
-		if(cur->t <= 0){
-			tmp = cur;
-			if(prev == NULL)
-				schedlist = cur->next;
+	old = schedlist;
+	schedlist = NULL;
+
+	for(s = old; s != NULL; s = next){
+		next = s->next;
+		if(s->t <= SCHEDULE_PERIOD){
+			if(next != NULL)
+				next->prev = s->prev;
+			if(s->prev != NULL)
+				s->prev->next = next;
 			else
-				prev->next = cur->next;
-//DBG("schedrun: running callback %p (p=%p)", tmp->cb, tmp->p);
-			tmp->cb(tmp->p);
-			free(tmp);
-			if(schedlist == NULL)
-				return;
-			cur = schedlist;
-			prev = NULL;
+				old = next;
+			s->cb(s->p);
+			free(s);
 		}else{
-			prev = cur;
-			cur = cur->next;
+			s->t -= SCHEDULE_PERIOD;
+		}
+	}
+
+	/* newly added tasks: put them into scheduler again */
+	if (old != NULL) {
+		for (s = schedlist; s != NULL && s->next != NULL; s = s->next);
+		if (s != NULL) {
+			s->next = old;
+			old->prev = s;
+		} else {
+			schedlist = old;
 		}
 	}
 }
@@ -93,18 +94,18 @@ nserror misc_schedule(int t, void cb(void *p), void *p)
 {
 	Slist *s;
 	nserror err;
-//	DBG("IN misc_schedule - t=%d cb=%p p=%p", t, cb, p);
 
 	err = schedule_remove(cb, p);
-	if(t<0)
+	if(t < 0)
 		return err;
 	s = calloc(1, sizeof(Slist));
 	s->cb = cb;
 	s->p  = p;
 	s->t  = t;
 	s->next = schedlist;
+	if(schedlist != NULL)
+		schedlist->prev = s;
 	schedlist = s;
-//	DBG("OUT misc_schedule");
 	return NSERROR_OK;
 }
 
