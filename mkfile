@@ -39,12 +39,25 @@ OBJ=\
 	content/content.$O\
 	content/content_factory.$O\
 	content/fetch.$O\
-	content/fetchers/about.$O\
 #	content/fetchers/curl.$O\
 	content/fetchers/data.$O\
 	content/fetchers/resource.$O\
 	content/fetchers/file/dirlist.$O\
 	content/fetchers/file/file.$O\
+	content/fetchers/about/about.$O\
+	content/fetchers/about/blank.$O\
+	content/fetchers/about/certificate.$O\
+	content/fetchers/about/chart.$O\
+	content/fetchers/about/choices.$O\
+	content/fetchers/about/config.$O\
+	content/fetchers/about/imagecache.$O\
+	content/fetchers/about/nscolours.$O\
+	content/fetchers/about/query.$O\
+	content/fetchers/about/query_auth.$O\
+	content/fetchers/about/query_fetcherror.$O\
+	content/fetchers/about/query_privacy.$O\
+	content/fetchers/about/query_timeout.$O\
+	content/fetchers/about/testament.$O\
 	content/fs_backing_store.$O\
 	content/handlers/css/css.$O\
 	content/handlers/css/dump.$O\
@@ -123,7 +136,6 @@ OBJ=\
 	desktop/search.$O\
 	desktop/searchweb.$O\
 	desktop/selection.$O\
-	desktop/sslcert_viewer.$O\
 	desktop/system_colour.$O\
 	desktop/textarea.$O\
 	desktop/textinput.$O\

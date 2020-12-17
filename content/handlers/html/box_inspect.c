@@ -764,14 +764,10 @@ void box_dump(FILE *stream, struct box *box, unsigned int depth, bool style)
 		fprintf(stream, " (columns");
 		for (i = 0; i != box->columns; i++) {
 			fprintf(stream, " (%s %s %i %i %i)",
-				/*((const char *[]) {"UNKNOWN", "FIXED",
-					"AUTO", "PERCENT", "RELATIVE"})*/
-					boxvector1[box->col[i].type],
-					/*((const char *[]) {"normal",
-					"positioned"})*/
-					boxvector2[box->col[i].positioned],
-					box->col[i].width,
-					box->col[i].min, box->col[i].max);
+				boxvector1[box->col[i].type],
+				boxvector2[box->col[i].positioned],
+				box->col[i].width,
+				box->col[i].min, box->col[i].max);
 		}
 		fprintf(stream, ")");
 	}
