@@ -268,6 +268,8 @@ static void text_delete(dentry *entry, int bs)
 
 	sels = min(entry->pos, entry->pos2);
 	sele = max(entry->pos, entry->pos2);
+	if(sels == sele && sels == 0)
+		return;
 	memmove(entry->text + sels - bs, entry->text + sele, entry->len - sele);
 	entry->pos = sels - bs;
 	entry->len -= sele - sels + bs;
