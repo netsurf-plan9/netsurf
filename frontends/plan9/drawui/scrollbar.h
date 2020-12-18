@@ -12,6 +12,7 @@ struct dscrollbar
 	int viewy;
 	int extentx;
 	int extenty;
+	int buttons;
 	void(*mouse_cb)(Mouse, void*);
 	void *mouse_cb_data;
 };
@@ -23,7 +24,7 @@ void dscrollbar_set_scroll(dscrollbar *sb, int x, int y);
 int  dscrollbar_try_scroll(dscrollbar *sb, int sx, int sy);
 void dscrollbar_set_rect(dscrollbar *sb, Rectangle r);
 void dscrollbar_draw(dscrollbar *sb);
-void dscrollbar_mouse_event(dscrollbar *sb, Event e);
+int dscrollbar_mouse_event(dscrollbar *sb, Event e);
 void dscrollbar_keyboard_event(dscrollbar *sb, Event e);
 
 #endif

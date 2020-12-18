@@ -7,9 +7,10 @@
 #include "plan9/drawui/widget.h"
 #include "plan9/drawui/entry.h"
 #include "plan9/drawui/data.h"
+#include "utils/utils.h"
 
-static void text_insert(dentry *entry, int c);
-static void text_delete(dentry *entry);
+static void text_insert(dentry *entry, char *s);
+static void text_delete(dentry *entry, int bs);
 
 static void roundedborder(Image *dst, Rectangle r, int thick, Image *src, Point sp);
 
@@ -52,6 +53,7 @@ void dentry_set_text(dentry *entry, const char *text)
 	entry->text[l] = 0;
 	entry->len = l;
 	entry->pos = entry->len;
+	entry->pos2 = entry->pos;
 	entry->tick_x = stringnwidth(font, entry->text, entry->len);
 	dentry_draw(entry);
 }
@@ -71,7 +73,7 @@ void dentry_draw(dentry *entry)
 {
 	Rectangle r;
 	Point p;
-	int y;
+	int y, sels, sele;
 
 	replclipr(screen, 0, entry->r);
 	draw(screen, entry->r, bg_color, nil, ZP);
@@ -83,7 +85,12 @@ void dentry_draw(dentry *entry)
 	y = (Dy(entry->r) - font->height) / 2;
 	p = Pt(entry->r.min.x + PADDING, entry->r.min.y + y);
 	stringn(screen, p, fg_color, ZP, font, entry->text, entry->len);
-	if (entry->state & STATE_FOCUSED) {
+	if (entry->pos != entry->pos2) {
+		sels = min(entry->pos, entry->pos2);
+		sele = max(entry->pos, entry->pos2);
+		p.x += stringnwidth(font, entry->text, sels);
+		stringnbg(screen, p, bg_color, ZP, font, entry->text+sels, sele-sels, fg_color, ZP);
+	} else if (entry->state & STATE_FOCUSED) {
 		entry->tick_x = stringnwidth(font, entry->text, entry->pos);
 		p.x += entry->tick_x;
 		r = Rect(p.x, p.y, p.x + Dx(tick->r), p.y + Dy(tick->r));
@@ -91,103 +98,182 @@ void dentry_draw(dentry *entry)
 	}	
 }
 
-void dentry_mouse_event(dentry *entry, Event e)
+static int dentry_mouse_to_position(dentry *entry, Mouse m)
 {
-	int in;
+	int i, x, prev, cur;
+
+	x = m.xy.x - entry->r.min.x - PADDING;
+	prev = 0;
+	for (i = 0; i < entry->len; i++) {
+		cur = stringnwidth(font, entry->text, i);
+		if ((prev+cur)/2 >= x) {
+			i--;
+			break;
+		} else if (prev <= x && cur >= x) {
+			break;
+		}
+		prev = cur;
+	}
+
+	return i;
+}
+
+int dentry_mouse_event(dentry *entry, Event e)
+{
+	int in, n, sels, sele;
+	char *s;
+	size_t len;
 
 	in = ptinrect(e.mouse.xy, entry->r);
-	if(in && e.mouse.buttons&1 && !(entry->state & STATE_FOCUSED)) {
+
+	if (in && !entry->buttons && e.mouse.buttons) {
 		entry->state |= STATE_FOCUSED;
-		dentry_draw(entry);
-	} else if(!in && e.mouse.buttons && (entry->state & STATE_FOCUSED)) {
-		entry->state -= STATE_FOCUSED;
-		dentry_draw(entry);
 	}
+
+	if (entry->state & STATE_FOCUSED) {
+		n = dentry_mouse_to_position(entry, e.mouse);
+		if (!in && !entry->buttons && e.mouse.buttons) {
+			entry->state ^= STATE_FOCUSED; /* remove focus */
+			entry->buttons = 0;
+			dentry_draw(entry);
+			return -1;
+		}
+		if (e.mouse.buttons & 1) { /* holding left button */
+			sels = min(entry->pos, entry->pos2);
+			sele = max(entry->pos, entry->pos2);
+			if (e.mouse.buttons == (1|2) && entry->buttons == 1) {
+				if (sels != sele) {
+					plan9_snarf(entry->text+sels, sele-sels);
+					text_delete(entry, 0);
+				}
+			} else if (e.mouse.buttons == (1|4) && entry->buttons == 1) {
+				plan9_paste(&s, &len);
+				if (len >= 0 && s != NULL)
+					text_insert(entry, s);
+				free(s);
+			} else if (e.mouse.buttons == 1 && entry->buttons <= 1) {
+				entry->pos = n;
+				if (entry->buttons == 0)
+					entry->pos2 = n;
+			}
+			dentry_draw(entry);
+		}
+		entry->buttons = e.mouse.buttons;
+		return 0;
+	}
+
+	return -1;
 }
 
 void dentry_keyboard_event(dentry *entry, Event e)
 {
-	int k;
+	int sels, sele, n;
+	char s[UTFmax+1];
+	Rune k;
 
 	if (!(entry->state & STATE_FOCUSED))
 		return;
 
+	sels = min(entry->pos, entry->pos2);
+	sele = max(entry->pos, entry->pos2);
 	k = e.kbdc;
 	switch (k) {
 	case Keof:
 	case '\n':
+		entry->pos = entry->pos2 = entry->len;
 		if (entry->activated_cb != NULL) {
 			entry->activated_cb(strdup(entry->text), entry->activated_cb_data);
 			return;
 		}
 		break;
-	case Kesc:
-	case Knack:	/* ^U: delete line */
-		entry->len = 0;
+	case Knack:	/* ^U: delete selection, if any, and everything before that */
+		memmove(entry->text, entry->text + sele, entry->len - sele);
+		entry->len = entry->len - sele;
 		entry->pos = 0;
 		entry->text[entry->len] = 0;
 		break;
 	case Kleft:
-		if (entry->pos == 0) {
-			return;
-		}
-		entry->pos--;
+		entry->pos = max(0, sels-1);
 		break;
 	case Kright:
-		if (entry->pos == entry->len) {
-			return;
-		}
-		entry->pos++;
+		entry->pos = min(entry->len, sele+1);
 		break;
 	case Ksoh:	/* ^A: start of line */
 	case Khome:
-		if (entry->pos == 0) {
-			return;
-		}
 		entry->pos = 0;
 		break;
 	case Kenq:	/* ^E: end of line */
 	case Kend:
-		if (entry->pos == entry->len) {
-			return;
-		}
 		entry->pos = entry->len;
 		break;
+	case Kdel:
+		text_delete(entry, 0);
+		break;
 	case Kbs:
-		if (entry->pos == 0) {
-			return;
+		text_delete(entry, 1);
+		break;
+	case Kesc:
+		if (sels == sele) {
+			sels = entry->pos = 0;
+			sele = entry->pos2 = entry->len;
 		}
-		text_delete(entry);
+		plan9_snarf(entry->text+sels, sele-sels);
+		text_delete(entry, 0);
 		break;
 	default:
-		if (k < 0x20 || k == Kdel || (k & 0xFF00) == KF || (k & 0xFF00) == Spec) {
+		if (k < 0x20 || (k & 0xFF00) == KF || (k & 0xFF00) == Spec || (n = runetochar(s, &k)) < 1) {
 			return;
 		}
-		text_insert(entry, k);
+		s[n] = 0;
+		text_insert(entry, s);
 	}
+	entry->pos2 = entry->pos;
 	dentry_draw(entry);
 }
 
-static void text_insert(dentry *entry, int c)
+static void text_insert(dentry *entry, char *s)
 {
-	if (entry->len + 1 >= entry->size) {
-		entry->size *= 1.5;
-		entry->text = realloc(entry->text, entry->size * sizeof(char));
+	int sels, sele, n;
+	char *p;
+
+	n = strlen(s);
+	if (entry->size <= entry->len + n) {
+		entry->size = (entry->len + n)*2 + 1;
+		if ((p = realloc(entry->text, entry->size)) == NULL) {
+			return;
+		}
+		entry->text = p;
 	}
-	if (entry->pos != entry->len) {
-		memmove(entry->text + entry->pos + 1, entry->text + entry->pos, entry->len - entry->pos);
+
+	sels = min(entry->pos, entry->pos2);
+	sele = max(entry->pos, entry->pos2);
+	if (sels != sele) {
+		memmove(entry->text + sels + n, entry->text + sele, entry->len - sele);
+		entry->len -= sele - sels;
+		entry->pos = sels;
+	} else if (entry->pos != entry->len) {
+		memmove(entry->text + entry->pos + n, entry->text + entry->pos, entry->len - entry->pos);
 	}
-	entry->text[entry->pos] = c;
-	entry->pos++;
-	entry->len++;
+
+	memmove(entry->text + sels, s, n);
+	entry->len += n;
+	entry->pos2 = sels;
+	entry->pos = sels + n;
 	entry->text[entry->len] = 0;		
 }
 
-static void text_delete(dentry *entry)
+static void text_delete(dentry *entry, int bs)
 {
-	memmove(entry->text + entry->pos - 1, entry->text + entry->pos, entry->len - entry->pos);
-	entry->pos--;
-	entry->len--;
+	int sels, sele;
+
+	sels = min(entry->pos, entry->pos2);
+	sele = max(entry->pos, entry->pos2);
+	if(sels == sele && sels == 0)
+		return;
+	memmove(entry->text + sels - bs, entry->text + sele, entry->len - sele);
+	entry->pos = sels - bs;
+	entry->len -= sele - sels + bs;
+	entry->pos2 = entry->pos;
 	entry->text[entry->len] = 0;
 }
 

@@ -10,33 +10,53 @@
 #include "plan9/utils.h"
 #include "plan9/clipboard.h"
 
+enum
+{
+	Block = 8192,
+};
+
 /**
  * Core asks front end for clipboard contents.
  *
  * \param  buffer  UTF-8 text, allocated by front end, ownership yeilded to core
  * \param  length  Byte length of UTF-8 text in buffer
  */
-static void gui_get_clipboard(char **buffer, size_t *length)
+void plan9_paste(char **buffer, size_t *length)
+{
+	char *buf, *p;
+	int fd, n, size, len;
+
+	*buffer = NULL;
+	*length = 0;
+	if ((fd = open("/dev/snarf", O_RDONLY)) < 0)
+		return;
+
+	buf = NULL;
+	size = 0;
+	for (len = 0;; len += n) {
+		if (size - len < Block) {
+			size += Block;
+			if ((p = realloc(buf, size+1)) == NULL)
+				break;
+			buf = p;
+		}
+		if ((n = read(fd, buf+len, Block)) <= 0)
+			break;
+	}
+	close(fd);
+
+	buf[len] = 0;
+	*buffer = buf;
+	*length = len;
+}
+
+void plan9_snarf(const char *buffer, size_t length)
 {
 	int fd;
-	char *buf;
-	int n, size, len;
 
-	fd = open("/dev/snarf", O_RDONLY);
-	if (fd < 0)
-		return;
-	size = 4096; /* XXX do this properly */
-	buf = calloc(size, sizeof(char));
-	if (buf == NULL)
-		return;
-	n = read(fd, buf, size);
-	if (n < 0) {
-		*buffer = NULL;
-		*length = 0;
-	} else {
-		*length = n;
-		*buffer = calloc(n + 1, sizeof(char));
-		memcpy(*buffer, buf, n);
+	if ((fd = open("/dev/snarf", O_WRONLY)) >= 0) {
+		write(fd, buffer, length);
+		close(fd);
 	}
 }
 
@@ -51,17 +71,11 @@ static void gui_get_clipboard(char **buffer, size_t *length)
 static void gui_set_clipboard(const char *buffer, size_t length,
 		nsclipboard_styles styles[], int n_styles)
 {
-	int fd;
-
-	fd = open("/dev/snarf", O_WRONLY);
-	if (fd < 0)
-		return;
-	write(fd, buffer, length);
-	close(fd);
+	plan9_snarf(buffer, length);
 }
 
 static struct gui_clipboard_table clipboard_table = {
-	.get = gui_get_clipboard,
+	.get = plan9_paste,
 	.set = gui_set_clipboard,
 };
 

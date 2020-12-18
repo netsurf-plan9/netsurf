@@ -69,6 +69,7 @@ struct webfs_handle {
 struct webfs_handle *handle_head;
 bool scheduled;
 void update_webfs(void *ignored);
+static char rbuf[16*1024];
 
 void add_node(struct webfs_handle *n) {
 	n->prev = NULL;
@@ -112,7 +113,7 @@ void webfs_data_release(struct webfs_data *d) {
 
 void try_release_node(webfs_handle *wh) {
 	if(wh->released && wh->removed) {
-		wh->data->handle_refcount-=1;
+		wh->data->handle_refcount--;
 		if(wh->data->handle_refcount <= 0) {
 			webfs_data_release(wh->data);
 			wh->data = NULL;
@@ -138,16 +139,13 @@ void remove_node(struct webfs_handle *n) {
 }
 
 void webfs_send_data(llcache_handle *handle, webfs_handle *wh) {
-	int tosend = 1024;
-	if(wh->data->datalen - wh->sendindex < tosend) {
-		tosend = wh->data->datalen - wh->sendindex;
-		if(tosend == 0) return;
-	}
+	int tosend = wh->data->datalen - wh->sendindex;
+	if(tosend == 0) return;
 	llcache_event ev;
 	ev.type = LLCACHE_EVENT_HAD_DATA;
 	ev.data.data.buf = (const unsigned char *)wh->data->data + wh->sendindex;
 	ev.data.data.len = tosend;
-	
+
 	nserror err = wh->cb(handle, &ev, wh->pw);
 	if(err == NSERROR_NEED_DATA) {
 		return;		
@@ -374,8 +372,8 @@ void start_data(struct webfs_data *d) {
 	if(ctlfd < 0) {
 		char *e = strerror(errno);
 		fprintf(stderr, "[DBG]: Failed to clone webfs. Error: %s\n", e);
-		d->state = DATA_STATE_ERROR;
-		d->err = "Failed to clone webfs."; // TODO: report strerror?
+		//d->state = DATA_STATE_ERROR;
+		//d->err = "Failed to clone webfs."; // TODO: report strerror?
 		return;
 	}
 	char webd[10]; // 9 digits is plenty.
@@ -481,12 +479,11 @@ void start_body(struct webfs_data *d) {
 		d->err = "Failed to read parsed URL.";
 		return;
 	}
-	char urlbuf[1024];
-	int n = read(urlfd, urlbuf, 1023);
+	char urlbuf[4096];
+	int n = read(urlfd, urlbuf, sizeof(urlbuf)-1);
 	urlbuf[n] = 0;
 	if(strcmp(urlbuf, d->urls) != 0) {
-		char *newUrls = calloc(1, strlen(urlbuf) + 1);
-		strcpy(newUrls, urlbuf);
+		char *newUrls = strdup(urlbuf);
 		free(d->urls);
 		d->urls = newUrls;
 	}
@@ -495,10 +492,12 @@ void start_body(struct webfs_data *d) {
 
 void read_data(struct webfs_data *d) {
 	llcache_event ev;
-	char buf[4097];
-	buf[4096] = 0;
+	int r, n;
 
-	int n = read(d->bodyfd, buf, 4096);
+	for(n = 0; n < sizeof(rbuf); n += r){
+		if((r = read(d->bodyfd, rbuf+n, sizeof(rbuf)-n)) <= 0)
+			break;
+	}
 	if(n < 0) {
 		char *e = strerror(errno);
 		fprintf(stderr, "[DBG]: [%s] Failed TO READ FROM BODY. Error: %s\n", d->urls, e);
@@ -517,7 +516,7 @@ void read_data(struct webfs_data *d) {
 	} else {
 		d->data = realloc(d->data, d->datalen + n);
 	}
-	memcpy(d->data + d->datalen, buf, n);
+	memcpy(d->data + d->datalen, rbuf, n);
 	d->datalen+=n;
 }
 
@@ -547,7 +546,7 @@ bool llcache_progress(void *h) {
 
 	// This handle is done. Do nothing.
 	if(wh->state == HANDLE_STATE_DONE)
-		return true;
+		return false;
 	if(wh->aborted || wh->released) {
 		return false;
 	}
@@ -575,8 +574,7 @@ bool llcache_progress(void *h) {
 			wh->cb(handle, &ev, wh->pw);
 			wh->state = HANDLE_STATE_DATA;
 		}
-	}
-	else if(wh->state == HANDLE_STATE_DATA) {
+	} else if(wh->state == HANDLE_STATE_DATA) {
 		// We know data is ready.
 		if(wh->sendindex == wh->data->datalen) {
 			// We're at the end. Check if the data is still coming.
@@ -588,7 +586,6 @@ bool llcache_progress(void *h) {
 				return true;
 			}
 			// We have no data now, but more is coming.
-			return true;
 		}
 		else {
 			webfs_send_data(handle, wh);

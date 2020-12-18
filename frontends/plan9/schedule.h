@@ -3,7 +3,7 @@
 
 enum 
 { 
-	SCHEDULE_PERIOD = 50
+	SCHEDULE_PERIOD = 50,
 };
 
 void schedule_run(void);

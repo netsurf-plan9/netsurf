@@ -92,6 +92,8 @@ window_invalidate(struct gui_window *gw, const struct rect *rect)
 	int sx;
 	int sy;
 
+	if(gw->bw == NULL)
+		return NSERROR_OK;
 	clipr = gw->b->r;
 	if (rect != NULL) {
 		sx = dwindow_get_scroll_x(gw->dw);
@@ -139,8 +141,12 @@ window_get_scroll(struct gui_window *gw, int *sx, int *sy)
 nserror
 window_set_scroll(struct gui_window *gw, const struct rect *rect)
 {
-	if(rect != NULL && rect->x0 == rect->x1 && rect->y0 == rect->y1) {
-		dwindow_set_scroll(gw->dw, rect->x0, rect->y0);
+	if(rect != NULL) {
+		if(rect->x0 == rect->x1 && rect->y0 == rect->y1)
+			dwindow_set_scroll(gw->dw, rect->x0, rect->y0);
+		else
+			dwindow_set_scroll(gw->dw, 0, rect->y0);
+		gui_window_redraw(gw, gw->b->r);
 	}
 	return NSERROR_OK;
 }

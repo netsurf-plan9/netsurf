@@ -1,4 +1,5 @@
 #include <u.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -67,12 +68,18 @@ Menu menu2 = { menu2str };
 
 char *menu3str[] =
 {
+	"back",
+	"forward",
+	"reload",
 	"exit",
 	0
 };
 
 enum
 {
+	Mback,
+	Mforward,
+	Mreload,
 	Mexit,
 };
 
@@ -198,7 +205,9 @@ static void drawui_run(void)
 
 static void drawui_exit(int status)
 {
-	browser_window_destroy(current->bw);
+	struct browser_window *bw = current->bw;
+	current->bw = NULL;
+	browser_window_destroy(bw);
 	netsurf_exit();
 	nsoption_finalise(nsoptions, nsoptions_default);
 	nslog_finalise();
@@ -304,16 +313,21 @@ static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 
 static void menu2hit(struct gui_window *gw, Mouse *m)
 {
+	static char lastbuf[1024] = {0};
 	char buf[1024] = {0};
-	int n;
+	int n, flags;
 
 	n = emenuhit(2, m, &menu2);
 	switch (n) {
 	case Msearch:
+		strcpy(buf, lastbuf);
 		if(eenter("Search for", buf, sizeof buf, m) > 0) {
-			browser_window_search(gw->bw, gw, SEARCH_FLAG_SHOWALL, buf);
+			flags = strcmp(lastbuf, buf) == 0 ? SEARCH_FLAG_FORWARDS : SEARCH_FLAG_SHOWALL;
+			browser_window_search(gw->bw, gw, flags, buf);
+			strcpy(lastbuf, buf);
 		} else {
 			browser_window_search_clear(gw->bw);
+			lastbuf[0] = 0;
 		}
 	case Mcut:
 		browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
@@ -333,6 +347,19 @@ static void menu3hit(struct gui_window *gw, Mouse *m)
 
 	n = emenuhit(3, m, &menu3);
 	switch (n) {
+	case Mback:
+		if (browser_window_back_available(current->bw)) {
+			browser_window_history_back(current->bw);
+		}
+		break;
+	case Mforward:
+		if (browser_window_forward_available(current->bw)) {
+			browser_window_history_forward(current->bw);
+		}
+		break;
+	case Mreload:
+		browser_window_reload(current->bw, true);
+		break;
 	case Mexit:
 		drawui_exit(0);
 	}
@@ -398,6 +425,8 @@ int getnskey(int k)
 
 	switch (k) {
 	case Kdel:
+		n = NS_KEY_DELETE_RIGHT;
+		break;
 	case Kbs:
 		n = NS_KEY_DELETE_LEFT;
 		break;
@@ -442,9 +471,6 @@ void browser_keyboard_event(int k, void *data)
 
 	r = dwindow_get_view_rect(gw->dw);
 	switch(k) {
-	case Kdel:
-		drawui_exit(0);
-		break;
 	case Kpgup:
 		gui_window_scroll_y(gw, 0, 0, -Dy(r));
 		break;
@@ -458,7 +484,10 @@ void browser_keyboard_event(int k, void *data)
 		gui_window_scroll_y(gw, 0, 0, 100);
 		break;
 	case Khome:
-		gui_window_scroll_y(gw, 0, 0, -dwindow_get_scroll_y(gw->dw));
+		gui_window_scroll_y(gw, 0, 0, INT_MIN/2);
+		break;
+	case Kend:
+		gui_window_scroll_y(gw, 0, 0, INT_MAX/2);
 		break;
 	case Kesc:
 	case Knack:

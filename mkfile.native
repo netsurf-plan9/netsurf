@@ -92,9 +92,9 @@ OBJ=\
 	content/handlers/image/ico.$O\
 	content/handlers/image/image.$O\
 	content/handlers/image/image_cache.$O\
-#	content/handlers/image/jpeg.$O\
+	content/handlers/image/jpeg.$O\
 #	content/handlers/image/nssprite.$O\
-#	content/handlers/image/png.$O\
+	content/handlers/image/png.$O\
 #	content/handlers/image/rsvg.$O\
 #	content/handlers/image/svg.$O\
 #	content/handlers/image/video.$O\
@@ -396,6 +396,9 @@ LIBS=\
 	../libnsbmp/src/libnsbmp.$O.a \
 	../libnsgif/src/libnsgif.$O.a \
 	../libutf8proc/src/libutf8proc.$O.a \
+#	../libsvgtiny/src/libsvgtiny.$O.a \
+#	../libdom/src/libdom.$O.a \
+#	/$objtype/lib/ape/libexpat.a \
 
 CC=pcc
 
@@ -420,6 +423,7 @@ CFLAGS=\
 	-I ../libnsutils/include \
 	-I ../libnsbmp/include \
 	-I ../libnsgif/include \
+#	-I ../libsvgtiny/include \
 	-I ../libcss/include \
 	-I libinclude \
 	-I content/handlers \
@@ -437,7 +441,7 @@ CFLAGS=\
 	-DNETSURF_BUILTIN_VERBOSE_FILTER="level:VERBOSE" \
 	-DNETSURF_RESPATH="/sys/lib/netsurf" \
 	-DNETSURF_FONTPATH="/sys/lib/netsurf/fonts" \
-	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF \
+	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF -DWITH_JPEG -DWITH_PNG \
 	-DNETSURF_CONTENT_FETCHERS_FETCH_CURL_H # prevent linking of curl (tmp)
 
 # To add later: -DWITH_CURL

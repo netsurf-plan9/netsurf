@@ -101,11 +101,16 @@ void dscrollbar_draw(dscrollbar *sb)
 	draw(screen, cr, bg_color, nil, ZP);		
 }
 
-void dscrollbar_mouse_event(dscrollbar *sb, Event e)
+int dscrollbar_mouse_event(dscrollbar *sb, Event e)
 {
-	if(ptinrect(e.mouse.xy, sb->r) && sb->mouse_cb != NULL) {
-		sb->mouse_cb(e.mouse, sb->mouse_cb_data);
+	if(ptinrect(e.mouse.xy, sb->r) || sb->buttons) {
+		if(sb->mouse_cb != NULL)
+			sb->mouse_cb(e.mouse, sb->mouse_cb_data);
+		sb->buttons = e.mouse.buttons;
+		return 0;
 	}
+	sb->buttons = 0;
+	return -1;
 }
 
 void dscrollbar_keyboard_event(dscrollbar *sb, Event e)
