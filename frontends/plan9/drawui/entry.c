@@ -14,6 +14,23 @@ static void text_delete(dentry *entry, int bs);
 
 static void roundedborder(Image *dst, Rectangle r, int thick, Image *src, Point sp);
 
+static char *menu2str[] =
+{
+	"cut",
+	"paste",
+	"snarf",
+	0 
+};
+
+enum
+{
+	Mcut,
+	Mpaste,
+	Msnarf,
+};
+static Menu menu2 = { menu2str };
+
+
 dentry *dentry_create(void)
 {
 	dentry *e;
@@ -155,6 +172,30 @@ int dentry_mouse_event(dentry *entry, Event e)
 				entry->pos = n;
 				if (entry->buttons == 0)
 					entry->pos2 = n;
+			}
+			dentry_draw(entry);
+		} else if (e.mouse.buttons & 2) {
+			sels = min(entry->pos, entry->pos2);
+			sele = max(entry->pos, entry->pos2);
+			n = emenuhit(2, &e.mouse, &menu2);
+			switch(n) {
+			case Mcut:
+				if (sels != sele) {
+					plan9_snarf(entry->text+sels, sele-sels);
+					text_delete(entry, 0);
+				}
+				break;
+			case Mpaste:
+				plan9_paste(&s, &len);
+				if (len >= 0 && s != NULL)
+					text_insert(entry, s);
+				free(s);
+				break;
+			case Msnarf:
+				if (sels != sele) {
+					plan9_snarf(entry->text+sels, sele-sels);
+				}
+				break;
 			}
 			dentry_draw(entry);
 		}
