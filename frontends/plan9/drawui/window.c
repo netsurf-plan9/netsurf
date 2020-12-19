@@ -229,6 +229,7 @@ void dwindow_set_icon(struct dwindow *window, Image *icon)
 
 void dwindow_set_title(struct dwindow *window, const char *text)
 {
+	FILE *fp;
 	char *buf;
 	int len;
 
@@ -238,6 +239,11 @@ void dwindow_set_title(struct dwindow *window, const char *text)
 	len = strlen("NetSurf - ") + strlen(text) + 1;
 	window->title = malloc(len * sizeof(char));
 	snprintf(window->title, len, "NetSurf - %s", text);
+	fp = fopen("/mnt/wsys/label", "w");
+	if (fp != NULL) {
+		fprintf(fp, window->title);
+		fclose(fp);
+	}
 	draw_title(window);
 }
 
