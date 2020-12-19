@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <draw.h>
 #include <event.h>
@@ -71,6 +72,8 @@ char *menu3str[] =
 	"back",
 	"forward",
 	"reload",
+	"add bookmark",
+	"bookmarks",
 	"exit",
 	0
 };
@@ -80,6 +83,8 @@ enum
 	Mback,
 	Mforward,
 	Mreload,
+	Maddbookmark,
+	Mbookmarks,
 	Mexit,
 };
 
@@ -341,8 +346,56 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 	}
 }
 
+static void add_bookmark(const char *title, struct browser_window *bw)
+{
+	char *home;
+	char path[255];
+	FILE *fp;
+	int n;
+
+	home = getenv("home");
+	if (home == NULL) {
+		home = "/tmp";
+	}
+	snprint(path, sizeof path, "%s/lib/netsurf/bookmarks.html", home);
+	netsurf_mkdir_all(path);
+	n = (access(path, F_OK) < 0);
+	fp = fopen(path, "a");
+	if (n) {
+		fprintf(fp, "<html><head>\n");
+		fprintf(fp, "<link rel=\"stylesheet\" title=\"Standard\" type=\"text/css\" href=\"resource:internal.css\">\n");
+		fprintf(fp, "<title>Bookmarks</title></head>\n");
+		fprintf(fp, "<body id=\"dirlist\" class=\"ns-even-bg ns-even-fg ns-border\">\n");
+		fprintf(fp, "<h1 class=\"ns-border\">Bookmarks</h1>\n<br/>");
+	}
+	fprintf(fp, "<p><a href='%s'>%s</a></p>\n", nsurl_access(browser_window_access_url(bw)), title);
+	fclose(fp);
+}
+
+static void show_bookmarks(struct browser_window *bw)
+{
+	nserror error;
+	nsurl *url;
+	char *home;
+	char path[255];
+
+	home = getenv("home");
+	if (home == NULL) {
+		home = "/tmp";
+	}
+	snprint(path, sizeof path, "file://%s/lib/netsurf/bookmarks.html", home);
+	error = nsurl_create(path, &url);
+	if (error == NSERROR_OK) {
+		browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_NONE,
+			NULL, NULL, NULL);
+		nsurl_unref(url);
+	}
+
+}
+
 static void menu3hit(struct gui_window *gw, Mouse *m)
 {
+	char buf[255] = {0};
 	int n;
 
 	n = emenuhit(3, m, &menu3);
@@ -359,6 +412,14 @@ static void menu3hit(struct gui_window *gw, Mouse *m)
 		break;
 	case Mreload:
 		browser_window_reload(current->bw, true);
+		break;
+	case Maddbookmark:
+		if (eenter("Add bookmark: ", buf, sizeof buf, m) > 0) {
+			add_bookmark(buf, current->bw);
+		}
+		break;
+	case Mbookmarks:
+		show_bookmarks(current->bw);
 		break;
 	case Mexit:
 		drawui_exit(0);
