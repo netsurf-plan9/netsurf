@@ -143,6 +143,39 @@ static nserror init_messages(void)
 	return ret;
 }
 
+static nserror init_history(void)
+{
+	nserror ret;
+	char path[255];
+	char *home;
+
+	home = getenv("home");
+	if (home == NULL) {
+		home = "/tmp";
+	}
+	snprint(path, sizeof path, "%s/lib/netsurf/history", home);
+	ret = urldb_load(path);
+	return ret;
+}
+
+static void save_history(void)
+{
+	nserror ret;
+	char path[255];
+	char *home;
+
+	home = getenv("home");
+	if (home == NULL) {
+		home = "/tmp";
+	}
+	snprint(path, sizeof path, "%s/lib/netsurf/history", home);
+	ret = urldb_save(path);
+	if (ret != NSERROR_OK) {
+		fprintf(stderr, "unable to save history (err:%d)\n", ret);
+	}
+}
+	
+
 static nserror drawui_init(int argc, char *argv[])
 {
 	struct browser_window *bw;
@@ -213,6 +246,7 @@ static void drawui_exit(int status)
 	struct browser_window *bw = current->bw;
 	current->bw = NULL;
 	browser_window_destroy(bw);
+	save_history();
 	netsurf_exit();
 	nsoption_finalise(nsoptions, nsoptions_default);
 	nslog_finalise();
@@ -678,6 +712,11 @@ main(int argc, char *argv[])
 	ret = init_messages();
 	if(ret != NSERROR_OK) {
 		fprintf(stderr, "unable to load messages translations\n");
+	}
+
+	ret = init_history();
+	if(ret != NSERROR_OK) {
+		fprintf(stderr, "unable to initialize history\n");
 	}
 
 	ret = netsurf_init(NULL);
