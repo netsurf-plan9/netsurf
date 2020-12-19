@@ -5,6 +5,7 @@ enum { BITMAP_BPP = 4 };
 
 struct bitmap
 {
+	Image *i;
 	unsigned char *data;
 	int width;
 	int height;

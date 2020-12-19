@@ -37,7 +37,6 @@ static Image* getcolor(colour c)
  */
 Image* getimage(struct bitmap *b)
 {
-	Image *i;
 	Rectangle r;
 	int w, h;
 	ulong chan;
@@ -45,16 +44,18 @@ Image* getimage(struct bitmap *b)
 	if (b == NULL) {
 		return NULL;
 	}
-	if (b->opaque)
-		chan = XBGR32;
-	else
-		chan = ABGR32;
-	w = b->width;
-	h = b->height;
-	r = Rect(0, 0, w, h);
-	i = allocimage(display, r, chan, 0, DBlack);
-	loadimage(i, r, b->data, BITMAP_BPP * w * h);
-	return i;
+	if (b->i == NULL) {
+		if (b->opaque)
+			chan = XBGR32;
+		else
+			chan = ABGR32;
+		w = b->width;
+		h = b->height;
+		r = Rect(0, 0, w, h);
+		b->i = allocimage(display, r, chan, 0, DBlack);
+		loadimage(b->i, r, b->data, BITMAP_BPP * w * h);
+	}
+	return b->i;
 }
 
 /**
@@ -343,7 +344,6 @@ plotter_bitmap(const struct redraw_context *ctx,
 		r = rectaddpt(i->r, Pt(x, y));
 		draw(b, r, i, 0, ZP);
 	}
-	freeimage(i);
 	freeimage(m);
 	return NSERROR_OK;
 }

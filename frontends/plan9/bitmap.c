@@ -33,6 +33,7 @@ bitmap_create(int width, int height, unsigned int state)
 	if (bitmap->data == NULL) {
 		return NULL;
 	}
+	bitmap->i = NULL;
 	bitmap->width = width;
 	bitmap->height = height;
 	bitmap->opaque = (state & BITMAP_OPAQUE) ? 1 : 0;
@@ -50,6 +51,9 @@ bitmap_destroy(void *bitmap)
 {
 	struct bitmap *b = bitmap;
 
+	if (b->i != NULL) {
+		freeimage(b->i);
+	}
 	free(b->data);
 	free(b);
 }
@@ -196,6 +200,10 @@ bitmap_modified(void *bitmap)
 	struct bitmap *bm = bitmap;
 
 	bm->modified = 1;
+	if (bm->i != NULL) {
+		freeimage(bm->i);
+		bm->i = NULL;
+	}
 }
 
 /**
@@ -217,7 +225,6 @@ bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 		.background_images = true,
 		.plot = plan9_plotter_table,
 	};
-
 	w = content_get_width(content);
 	h = content_get_height(content);
 	i = getimage(bitmap);
