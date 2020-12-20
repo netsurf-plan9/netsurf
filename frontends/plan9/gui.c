@@ -50,6 +50,10 @@ static void browser_keyboard_event(int, void*);
 
 char *menu2str[] =
 {
+	"orig size",
+	"zoom in",
+	"zoom out",
+	" ",
 	"search",
 	"cut",
 	"paste",
@@ -59,6 +63,10 @@ char *menu2str[] =
 
 enum
 {
+	Morigsize,
+	Mzoomin,
+	Mzoomout,
+	Msep,
 	Msearch,
 	Mcut,
 	Mpaste,
@@ -189,6 +197,7 @@ static nserror drawui_init(int argc, char *argv[])
 	}
 	einit(Emouse|Ekeyboard);
 	data_init();
+	browser_set_dpi(96);
 
 	addr = NULL;
 	if (argc > 1) {
@@ -358,6 +367,15 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 
 	n = emenuhit(2, m, &menu2);
 	switch (n) {
+	case Morigsize:
+		browser_window_set_scale(gw->bw, 1.0, true);
+		break;
+	case Mzoomin:
+		browser_window_set_scale(gw->bw, 0.1, false);
+		break;
+	case Mzoomout:
+		browser_window_set_scale(gw->bw, -0.1, false);
+		break;
 	case Msearch:
 		strcpy(buf, lastbuf);
 		if(eenter("Search for", buf, sizeof buf, m) > 0) {
