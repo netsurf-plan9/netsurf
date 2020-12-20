@@ -18,6 +18,7 @@ extern Image *back_button_icon;
 extern Image *forward_button_icon;
 extern Image *stop_button_icon;
 extern Image *reload_button_icon;
+extern Image *close_button_icon;
 extern Image *tick;
 
 /* cursors */

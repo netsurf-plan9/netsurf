@@ -27,6 +27,7 @@
 #include "content/fetch.h"
 #include "content/backing_store.h"
 #include "desktop/search.h"
+#include "plan9/history.h"
 #include "plan9/bitmap.h"
 #include "plan9/fetch.h"
 #include "plan9/layout.h"
@@ -80,6 +81,7 @@ char *menu3str[] =
 	"back",
 	"forward",
 	"reload",
+	"history",
 	"add bookmark",
 	"bookmarks",
 	"exit",
@@ -91,6 +93,7 @@ enum
 	Mback,
 	Mforward,
 	Mreload,
+	Mhistory,
 	Maddbookmark,
 	Mbookmarks,
 	Mexit,
@@ -197,7 +200,7 @@ static nserror drawui_init(int argc, char *argv[])
 	}
 	einit(Emouse|Ekeyboard);
 	data_init();
-	browser_set_dpi(96);
+//	browser_set_dpi(96);
 
 	addr = NULL;
 	if (argc > 1) {
@@ -449,6 +452,7 @@ static void menu3hit(struct gui_window *gw, Mouse *m)
 {
 	char buf[255] = {0};
 	int n;
+	struct nsurl *url;
 
 	n = emenuhit(3, m, &menu3);
 	switch (n) {
@@ -464,6 +468,13 @@ static void menu3hit(struct gui_window *gw, Mouse *m)
 		break;
 	case Mreload:
 		browser_window_reload(current->bw, true);
+		break;
+	case Mhistory:
+		url = ehistory(current->bw);
+		if (url != NULL) {
+			browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_HISTORY,
+				NULL, NULL, NULL);
+		}
 		break;
 	case Maddbookmark:
 		if (eenter("Add bookmark: ", buf, sizeof buf, m) > 0) {
