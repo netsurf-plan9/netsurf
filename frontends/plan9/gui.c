@@ -84,6 +84,7 @@ char *menu3str[] =
 	"history",
 	"add bookmark",
 	"bookmarks",
+	"enable javascript",
 	"exit",
 	0
 };
@@ -96,10 +97,13 @@ enum
 	Mhistory,
 	Maddbookmark,
 	Mbookmarks,
+	Mjavascript,
 	Mexit,
 };
 
-Menu menu3 = { menu3str };
+static char* menu3gen(int); 
+
+Menu menu3 = { 0, menu3gen };
 
 
 char **respaths;
@@ -458,6 +462,17 @@ static void show_bookmarks(struct browser_window *bw)
 
 }
 
+static char* menu3gen(int index)
+{
+	if (index == Mjavascript) {
+		if (nsoption_bool(enable_javascript) == true)
+			return "disable javascript";
+		else
+			return "enable javascript";
+	}
+	return menu3str[index];
+}
+
 static void menu3hit(struct gui_window *gw, Mouse *m)
 {
 	char buf[255] = {0};
@@ -493,6 +508,13 @@ static void menu3hit(struct gui_window *gw, Mouse *m)
 		break;
 	case Mbookmarks:
 		show_bookmarks(current->bw);
+		break;
+	case Mjavascript:
+		if (nsoption_bool(enable_javascript) == true) {
+			nsoption_set_bool(enable_javascript, false);
+		} else {
+			nsoption_set_bool(enable_javascript, true);
+		}
 		break;
 	case Mexit:
 		drawui_exit(0);
