@@ -27,6 +27,7 @@
 #include "content/fetch.h"
 #include "content/backing_store.h"
 #include "desktop/search.h"
+#include "plan9/download.h"
 #include "plan9/history.h"
 #include "plan9/bitmap.h"
 #include "plan9/fetch.h"
@@ -233,6 +234,28 @@ static nserror drawui_init(int argc, char *argv[])
 	return ret;
 }
 
+static bool plumbed_to_page(char *s)
+{
+	nsurl *url;
+	nserror error;
+	size_t l;
+
+	l = strlen(s);
+	if (strcmp(s + l - 3, "png") == 0
+	 || strcmp(s + l - 3, "jpg") == 0
+	 || strcmp(s + l - 4, "jpeg") == 0
+	 || strcmp(s + l - 3, "gif") == 0) {
+		error = nsurl_create(s, &url);
+		if (error == NSERROR_OK) {
+			browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_DOWNLOAD,
+				NULL, NULL, NULL);
+			nsurl_unref(url);
+		}
+		return true;
+	}
+	return false;
+}
+
 static void drawui_run(void)
 {
 	enum { Eplumb = 128 };
@@ -253,7 +276,9 @@ static void drawui_run(void)
 		case Eplumb:
 			pm = ev.v;
 			if (pm->ndata > 0) {
-				url_entry_activated(strdup(pm->data), current);
+				if(!plumbed_to_page(pm->data)) {
+					url_entry_activated(strdup(pm->data), current);
+				}
 			}
 			plumbfree(pm);
 			break;
@@ -746,6 +771,7 @@ main(int argc, char *argv[])
 		.bitmap = plan9_bitmap_table,
 		.layout = plan9_layout_table,
 		.clipboard = plan9_clipboard_table,
+		.download = plan9_download_table,
 	};
 
 	if (stat("/mnt/web", &sb) != 0 || !S_ISDIR(sb.st_mode)) {
