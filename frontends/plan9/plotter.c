@@ -77,6 +77,8 @@ Image* getimage(struct bitmap *b, int w, int h)
 
 	if (b == NULL)
 		return NULL;
+	iw = bitmap_get_width(b);
+	ih = bitmap_get_height(b);
 	if(w == 0)
 		w = iw;
 	if(h == 0)
@@ -86,8 +88,6 @@ Image* getimage(struct bitmap *b, int w, int h)
 			chan = XBGR32;
 		else
 			chan = ABGR32;
-		iw = bitmap_get_width(b);
-		ih = bitmap_get_height(b);
 		if (iw != w || ih != h) {
 			if((out = malloc(w*h*4)) == nil)
 				sysfatal("memory");
