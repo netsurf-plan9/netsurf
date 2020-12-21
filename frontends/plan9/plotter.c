@@ -77,8 +77,10 @@ Image* getimage(struct bitmap *b, int w, int h)
 
 	if (b == NULL)
 		return NULL;
-	w = max(1, w);
-	h = max(1, h);
+	if(w == 0)
+		w = iw;
+	if(h == 0)
+		h = ih;
 	if (b->i == NULL) {
 		if (b->opaque)
 			chan = XBGR32;
