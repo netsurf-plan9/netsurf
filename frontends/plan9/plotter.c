@@ -9,6 +9,7 @@
 #include "plan9/layout.h"
 #include "plan9/utils.h"
 #include "plan9/drawui/window.h"
+#include "utils/utils.h"
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #define STBIR_MALLOC(x,u) malloc(x)
 #define STBIR_FREE(x,u) free(x)
@@ -76,6 +77,8 @@ Image* getimage(struct bitmap *b, int w, int h)
 
 	if (b == NULL)
 		return NULL;
+	w = max(1, w);
+	h = max(1, h);
 	if (b->i == NULL) {
 		if (b->opaque)
 			chan = XBGR32;
