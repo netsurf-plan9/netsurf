@@ -23,6 +23,7 @@ struct hentry
 	struct url_data *data;
 };
 
+static Rectangle sr;
 static Rectangle wr;
 static Rectangle r;
 static Rectangle titler;
@@ -54,8 +55,9 @@ static void close_button_clicked(Mouse, void*)
 static void history_window_init(void)
 {
 	int x, y, w, h;
-	
-	wr = insetrect(screen->r, 20);
+
+	sr = screen->r;	
+	wr = insetrect(sr, 20);
 	r = insetrect(wr, 2);
 	x = r.min.x;
 	y = r.min.y;
@@ -87,7 +89,7 @@ static void history_window_init(void)
 
 static void history_window_destroy(void)
 {
-	replclipr(screen, 0, screen->r);
+	replclipr(screen, 0, sr);
 	if (b != NULL) {
 		draw(screen, b->r, b, nil, b->r.min);
 		freeimage(b);
@@ -224,6 +226,7 @@ struct nsurl* ehistory(const struct browser_window *bw)
 {
 	Event ev;
 	int e, n;
+	Rectangle r;
 
 	done = 0;
 	selurl = NULL;
@@ -231,6 +234,11 @@ struct nsurl* ehistory(const struct browser_window *bw)
 	history_window_init();
 	history_window_draw();
 	while (!done) {
+		if (!eqrect(sr, screen->r)) { /* resize occured */
+			history_window_destroy();
+			history_window_init();
+			history_window_draw();
+		}
 		e = eread(Ekeyboard|Emouse, &ev);
 		switch(e) {
 		default:
