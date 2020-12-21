@@ -165,6 +165,11 @@ static nserror init_history(void)
 		home = "/tmp";
 	}
 	snprint(path, sizeof path, "%s/lib/netsurf/history", home);
+	ret = netsurf_mkdir_all(path);
+	if (ret != NSERROR_OK) {
+		fprintf(stderr, "unable to create $home/lib/netsurf: %s\n", messages_get_errorcode(ret));
+		return;
+	}
 	ret = urldb_load(path);
 	return ret;
 }
@@ -180,9 +185,14 @@ static void save_history(void)
 		home = "/tmp";
 	}
 	snprint(path, sizeof path, "%s/lib/netsurf/history", home);
+	ret = netsurf_mkdir_all(path);
+	if (ret != NSERROR_OK) {
+		fprintf(stderr, "unable to create $home/lib/netsurf: %s\n", messages_get_errorcode(ret));
+		return;
+	}
 	ret = urldb_save(path);
 	if (ret != NSERROR_OK) {
-		fprintf(stderr, "unable to save history (err:%d)\n", ret);
+		fprintf(stderr, "unable to save history: %s\n", messages_get_errorcode(ret));
 	}
 }
 	
