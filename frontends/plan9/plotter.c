@@ -9,6 +9,20 @@
 #include "plan9/layout.h"
 #include "plan9/utils.h"
 #include "plan9/drawui/window.h"
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#define STBIR_MALLOC(x,u) malloc(x)
+#define STBIR_FREE(x,u) free(x)
+#define STBIR_ASSERT(x) assert(x)
+#include "stb_image_resize.h"
+
+typedef struct Color Color;
+
+struct Color {
+	Image *i;
+	uint32_t rgb;
+};
+
+static Color cache[64];
 
 /**
  * \brief Converts a netsurf colour type to a libdraw image
@@ -16,17 +30,35 @@
  * \param c The color to convert
  * \return Image on success else NULL 
  */
-static Image* getcolor(colour c)
+static Image *getcolor(colour c)
 {
-	Image *i;
-	int n, r, g, b;
-	
+	Image *m;
+	int i, f;
+	uint32_t n, r, g, b;
+
 	r = c & 0xff;
 	g = (c & 0xff00) >> 8;
 	b = (c & 0xff0000) >> 16;
 	n = (r << 24) | (g << 16) | (b << 8) | 0xff; 
-	i = allocimage(display, Rect(0,0,1,1), ABGR32, 1, n);
-	return i;
+	if (n == 0xffffffff)
+		return display->white;
+	if (n == 0x000000ff)
+		return display->black;
+	for(i = f = 0; i < sizeof(cache)/sizeof(cache[0]); i++){
+		if(cache[i].i != NULL){
+			if(cache[i].rgb == n)
+				return cache[i].i;
+		}else{
+			f = i;
+		}
+	}
+	if((m = allocimage(display, Rect(0,0,1,1), BGR24, 1, n)) == NULL)
+		return display->black;
+	freeimage(cache[f].i);
+	cache[f].i = m;
+	cache[f].rgb = n;
+
+	return m;
 }
 
 /**
@@ -35,25 +67,40 @@ static Image* getcolor(colour c)
  * \param b The bitmap
  * \return Image on success else NULL
  */
-Image* getimage(struct bitmap *b)
+Image* getimage(struct bitmap *b, int w, int h)
 {
 	Rectangle r;
-	int w, h;
 	ulong chan;
+	uint8_t *out;
+	int iw, ih;
 
-	if (b == NULL) {
+	if (b == NULL)
 		return NULL;
-	}
 	if (b->i == NULL) {
 		if (b->opaque)
 			chan = XBGR32;
 		else
 			chan = ABGR32;
-		w = b->width;
-		h = b->height;
+		iw = bitmap_get_width(b);
+		ih = bitmap_get_height(b);
+		if (iw != w || ih != h) {
+			if((out = malloc(w*h*4)) == nil)
+				sysfatal("memory");
+			stbir_resize_uint8_generic(
+				b->data, iw, ih, bitmap_get_rowstride(b),
+				out, w, h, w*BITMAP_BPP,
+				BITMAP_BPP, 3, 0,
+				STBIR_EDGE_CLAMP, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR,
+				NULL
+			);
+		} else {
+			out = b->data;
+		}
 		r = Rect(0, 0, w, h);
-		b->i = allocimage(display, r, chan, 0, DBlack);
-		loadimage(b->i, r, b->data, BITMAP_BPP * w * h);
+		if ((b->i = allocimage(display, r, chan, 0, DNofill)) != NULL)
+			loadimage(b->i, r, out, BITMAP_BPP * w * h);
+		if(out != b->data)
+			free(out);
 	}
 	return b->i;
 }
@@ -115,7 +162,8 @@ plotter_arc(const struct redraw_context *ctx,
 	int t;
 
 	b = ctx->priv;
-	c = getcolor(pstyle->stroke_colour);
+	if ((c = getcolor(pstyle->stroke_colour)) == NULL)
+		return NSERROR_NOMEM;
 	t = plot_style_fixed_to_int(pstyle->stroke_width);
 	p = Pt(x, y);
 	if(pstyle->fill_type != PLOT_OP_TYPE_NONE){
@@ -123,7 +171,6 @@ plotter_arc(const struct redraw_context *ctx,
 	} else {
 		arc(b, p, radius, radius, t, c, ZP, angle1, angle2);
 	}
-	freeimage(c);
 	return NSERROR_OK;
 }
 
@@ -152,7 +199,8 @@ plotter_disc(const struct redraw_context *ctx,
 	int t;
 
 	b = ctx->priv;
-	c = getcolor(pstyle->stroke_colour);
+	if ((c = getcolor(pstyle->stroke_colour)) == NULL)
+		return NSERROR_NOMEM;
 	t = plot_style_fixed_to_int(pstyle->stroke_width);
 	p = Pt(x, y);
 	if(pstyle->fill_type != PLOT_OP_TYPE_NONE){
@@ -160,7 +208,6 @@ plotter_disc(const struct redraw_context *ctx,
 	} else {
 		ellipse(b, p, radius, radius, t, c, ZP);
 	}
-	freeimage(c);
 	return NSERROR_OK;
 }
 
@@ -187,12 +234,12 @@ plotter_line(const struct redraw_context *ctx,
 	Point p0, p1;
 
 	b = ctx->priv;
-	c = getcolor(pstyle->stroke_colour);
+	if ((c = getcolor(pstyle->stroke_colour)) == NULL)
+		return NSERROR_NOMEM;
 	t = plot_style_fixed_to_int(pstyle->stroke_width);
 	p0 = Pt(l->x0, l->y0);
 	p1 = Pt(l->x1, l->y1);
 	line(b, p0, p1, 0, 0, t, c, ZP);
-	freeimage(c);
 	return NSERROR_OK;
 }
 
@@ -221,14 +268,14 @@ plotter_rectangle(const struct redraw_context *ctx,
 	b = ctx->priv;
 	r = Rect(rectangle->x0, rectangle->y0, rectangle->x1, rectangle->y1);
 	if (pstyle->fill_type != PLOT_OP_TYPE_NONE) {
-		c = getcolor(pstyle->fill_colour);
+		if ((c = getcolor(pstyle->fill_colour)) == NULL)
+			return NSERROR_NOMEM;
 		draw(b, r, c, nil, ZP);
-		freeimage(c);
 	}
 	if (pstyle->stroke_type != PLOT_OP_TYPE_NONE) {
-		c = getcolor(pstyle->stroke_colour);
+		if ((c = getcolor(pstyle->stroke_colour)) == NULL)
+			return NSERROR_NOMEM;
 		border(b, r, pstyle->stroke_width, c, ZP);
-		freeimage(c);
 	}
 	return NSERROR_OK;
 }
@@ -268,9 +315,9 @@ plotter_polygon(const struct redraw_context *ctx,
 	for(i = 1; i != n; i++) {
 		pts[np++] = Pt(p[i * 2], p[i * 2 + 1]);
 	}
-	c = getcolor(pstyle->fill_colour);
+	if ((c = getcolor(pstyle->fill_colour)) == NULL)
+		return NSERROR_NOMEM;
 	fillpoly(b, pts, np, 1, c, ZP);
-	freeimage(c);
 	return NSERROR_OK;
 }
 
@@ -338,13 +385,16 @@ plotter_bitmap(const struct redraw_context *ctx,
 	Image *i, *m;
 
 	b = ctx->priv;
-	i = getimage(bitmap);
-	m = getcolor(bg);
-	if(flags == BITMAPF_NONE) {
-		r = rectaddpt(i->r, Pt(x, y));
-		draw(b, r, i, 0, ZP);
+	if ((i = getimage(bitmap, width, height)) == NULL)
+		return NSERROR_NOMEM;
+	if ((m = getcolor(bg)) == NULL) {
+		bitmap_modified(bitmap);
+		return NSERROR_NOMEM;
 	}
-	freeimage(m);
+	r = rectaddpt(i->r, Pt(x, y));
+	draw(b, r, m, 0, ZP);
+	draw(b, r, i, 0, ZP);
+	bitmap->i = i;
 	return NSERROR_OK;
 }
 
@@ -376,9 +426,9 @@ plotter_text(const struct redraw_context *ctx,
 	b = ctx->priv;
 	f = getfont(fstyle);
 	p = Pt(x, y -f->ascent);
-	c = getcolor(fstyle->foreground);
+	if ((c = getcolor(fstyle->foreground)) == NULL)
+		return NSERROR_NOMEM;
 	stringn(b, p, c, ZP, f, text, length);
-	freeimage(c);
 	return NSERROR_OK;
 }
 

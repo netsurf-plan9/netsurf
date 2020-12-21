@@ -53,6 +53,7 @@ bitmap_destroy(void *bitmap)
 
 	if (b->i != NULL) {
 		freeimage(b->i);
+		b->i = NULL;
 	}
 	free(b->data);
 	free(b);
@@ -227,7 +228,7 @@ bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 	};
 	w = content_get_width(content);
 	h = content_get_height(content);
-	i = getimage(bitmap);
+	i = getimage(bitmap, w, h);
 	if (i == NULL) {
 		return NSERROR_INVALID;
 	}

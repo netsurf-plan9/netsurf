@@ -271,7 +271,7 @@ window_set_icon(struct gui_window *gw, struct hlcache_handle *icon)
 		return;
 
 	b = content_get_bitmap(icon);
-	i = getimage(b);
+	i = getimage(b, bitmap_get_width(b), bitmap_get_height(b));
 	if(i != NULL)
 		dwindow_set_icon(gw->dw, i);
 }
