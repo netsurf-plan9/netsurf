@@ -390,14 +390,10 @@ plotter_bitmap(const struct redraw_context *ctx,
 	Image *i, *m;
 
 	b = ctx->priv;
+	bitmap_alpha_blend(bitmap, bg);
 	if ((i = getimage(bitmap, width, height)) == NULL)
 		return NSERROR_NOMEM;
-	if ((m = getcolor(bg)) == NULL) {
-		bitmap_modified(bitmap);
-		return NSERROR_NOMEM;
-	}
 	r = rectaddpt(i->r, Pt(x, y));
-	draw(b, r, m, 0, ZP);
 	draw(b, r, i, 0, ZP);
 	bitmap->i = i;
 	return NSERROR_OK;

@@ -238,6 +238,23 @@ bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 	return NSERROR_OK;
 }
 
+void bitmap_alpha_blend(struct bitmap *bitmap, colour bg)
+{
+	int r, g, b, i, c;
+	double alpha;
+
+	r = c & 0xff;
+	g = (c & 0xff00) >> 8;
+	b = (c & 0xff0000) >> 16;
+	c = ((bitmap->width * 32 + 8 - 1) / 8) * bitmap->height;
+	for (i = 0; i < c; i += 4) {
+		alpha = (double)bitmap->data[i+3] / 255.0;
+		bitmap->data[i+0] = (1.0 - alpha) * b + alpha * bitmap->data[i+0];
+		bitmap->data[i+1] = (1.0 - alpha) * g + alpha * bitmap->data[i+1];
+		bitmap->data[i+2] = (1.0 - alpha) * r + alpha * bitmap->data[i+2];
+	}
+}
+
 static struct gui_bitmap_table bitmap_table = {
 	.create = bitmap_create,
 	.destroy = bitmap_destroy,

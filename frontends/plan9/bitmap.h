@@ -13,6 +13,8 @@ struct bitmap
 	int modified;
 };
 
+void bitmap_alpha_blend(struct bitmap *bitmap, colour bg);
+
 extern struct gui_bitmap_table *plan9_bitmap_table;
 
 #endif
