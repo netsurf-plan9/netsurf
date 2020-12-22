@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <draw.h>
 #include <event.h>
@@ -56,10 +57,13 @@ char *menu2str[] =
 	"zoom in",
 	"zoom out",
 	" ",
-	"search",
+	"export as image",
+	"export as text",
+	" ",
 	"cut",
 	"paste",
 	"snarf",
+	"search",
 	0 
 };
 
@@ -69,10 +73,13 @@ enum
 	Mzoomin,
 	Mzoomout,
 	Msep,
-	Msearch,
+	Mexportimage,
+	Mexporttext,
+	Msep2,
 	Mcut,
 	Mpaste,
 	Msnarf,
+	Msearch,
 };
 Menu menu2 = { menu2str };
 
@@ -405,7 +412,7 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 {
 	static char lastbuf[1024] = {0};
 	char buf[1024] = {0};
-	int n, flags;
+	int n, flags, fd;
 
 	n = emenuhit(2, m, &menu2);
 	switch (n) {
@@ -418,6 +425,20 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 	case Mzoomout:
 		browser_window_set_scale(gw->bw, -0.1, false);
 		break;
+	case Mexportimage:
+		if(eenter("Save as", buf, sizeof buf, m) > 0) {
+			fd = open(buf, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+			if (fd > 0) {
+				writeimage(fd, gw->b, 0);
+				close(fd);
+			}
+		}
+		break;
+	case Mexporttext:
+		if(eenter("Save as", buf, sizeof buf, m) > 0) {
+			save_as_text(browser_window_get_content(gw->bw), buf);
+		}
+		break;
 	case Msearch:
 		strcpy(buf, lastbuf);
 		if(eenter("Search for", buf, sizeof buf, m) > 0) {
@@ -428,6 +449,7 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 			browser_window_search_clear(gw->bw);
 			lastbuf[0] = 0;
 		}
+		break;
 	case Mcut:
 		browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
 		break;
