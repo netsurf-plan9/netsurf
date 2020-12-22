@@ -313,11 +313,11 @@ static void drawui_exit(int status)
 
 void eresized(int new)
 {
-	if (new && getwindow(display, Refnone) < 0) {
-		fprintf(stderr, "cannot reattach to window\n");
-		exit(1);
-	}
-	if (current != NULL) {
+	if (new) {
+		if (getwindow(display, Refnone) < 0) {
+			fprintf(stderr, "cannot reattach to window\n");
+			exit(1);
+		}
 		gui_window_resize(current);
 	}
 }
@@ -342,7 +342,7 @@ struct gui_window* gui_window_create(struct browser_window *bw)
 	dwindow_set_browser_mouse_callback(gw->dw, browser_mouse_event, gw);
 	dwindow_set_browser_keyboard_callback(gw->dw, browser_keyboard_event, gw);
 	r = dwindow_get_view_rect(gw->dw);
-	gw->b = allocimage(display,  Rect(0, 0, Dx(r), Dy(r)), screen->chan, 0, DNofill);
+	gw->b = allocimage(display, Rect(0, 0, Dx(r), Dy(r)), XBGR32, 0, DWhite);
 	gui_window_redraw(gw, gw->b->r);
 	return gw;
 }
@@ -384,6 +384,7 @@ void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 	}
 	replclipr(screen, 0, clipr);
 	draw(screen, r, gw->b, 0, ZP);
+	dwindow_draw(gw->dw);
 }
 
 void gui_window_resize(struct gui_window *gw)
@@ -392,11 +393,10 @@ void gui_window_resize(struct gui_window *gw)
 
 	dwindow_resize(gw->dw, screen->r);
 	r = dwindow_get_view_rect(gw->dw);
-	if (gw->b != NULL)
-		freeimage(gw->b);
-	gw->b = allocimage(display, Rect(0, 0, Dx(r), Dy(r)), screen->chan, 0, DNofill);
+	freeimage(gw->b);
+	gw->b = allocimage(display, Rect(0, 0, Dx(r), Dy(r)), XBGR32, 0, DWhite);
 	browser_window_schedule_reformat(gw->bw);
-	gui_window_redraw(gw, gw->b->r);
+	gui_window_redraw(gw, r);
 }
 
 static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)

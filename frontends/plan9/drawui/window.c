@@ -91,13 +91,12 @@ void dwindow_resize(struct dwindow *window, Rectangle newr)
 	r = Rect(x, window->r.max.y - h, x + w, window->r.max.y);
 	window->statusr = r;
 
-	r = Rect(x + SCROLL_WIDTH, window->toolbar->r.max.y + 1, x + w, window->statusr.min.y);
+	r = Rect(x + SCROLL_WIDTH, y + 1, x + w, window->statusr.min.y);
 	window->viewr = r;
 
-	r = Rect(x, window->toolbar->r.max.y + 1, x + SCROLL_WIDTH + 1, window->statusr.min.y);
+	r = Rect(x, y, x + SCROLL_WIDTH + 1, window->statusr.min.y);
 	dscrollbar_set_rect(window->scrollbar, r);
 	dscrollbar_set_view_size(window->scrollbar, Dx(window->viewr), Dy(window->viewr));
-	dwindow_draw(window);		
 }
 
 static void draw_icon(dwindow *window)
