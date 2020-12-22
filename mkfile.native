@@ -142,6 +142,7 @@ OBJ=\
 	desktop/treeview.$O\
 	desktop/version.$O\
 	frontends/plan9/download.$O\
+	frontends/plan9/searchweb.$O\
 	frontends/plan9/history.$O\
 	frontends/plan9/plotter.$O\
 	frontends/plan9/schedule.$O\

@@ -20,6 +20,8 @@ Image *forward_button_icon;
 Image *stop_button_icon;
 Image *reload_button_icon;
 Image *close_button_icon;
+Image *menu_button_icon;
+Image *search_icon;
 Image *tick;
 
 /* cursors */
@@ -255,5 +257,8 @@ void data_init(void)
 	stop_button_icon = load_icon(iconr, stop_button_data, sizeof stop_button_data);
 	reload_button_icon = load_icon(iconr, refresh_button_data, sizeof refresh_button_data);
 	close_button_icon = load_icon(iconr, close_button_data, sizeof close_button_data);
+	menu_button_icon = load_icon(iconr, menu_icon_data, sizeof menu_icon_data);
+	search_icon = load_icon(iconr, search_icon_data, sizeof search_icon_data);
 	tick = create_tick();
 }
+

@@ -23,11 +23,14 @@
 #include "netsurf/browser.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/misc.h"
+#include "netsurf/bitmap.h"
 #include "netsurf/plotters.h"
 #include "netsurf/netsurf.h"
 #include "content/fetch.h"
 #include "content/backing_store.h"
 #include "desktop/search.h"
+#include "desktop/searchweb.h"
+#include "plan9/searchweb.h"
 #include "plan9/download.h"
 #include "plan9/history.h"
 #include "plan9/bitmap.h"
@@ -89,6 +92,7 @@ char *menu3str[] =
 	"back",
 	"forward",
 	"reload",
+	"search web",
 	"history",
 	"add bookmark",
 	"bookmarks",
@@ -102,6 +106,7 @@ enum
 	Mback,
 	Mforward,
 	Mreload,
+	Msearchweb,
 	Mhistory,
 	Maddbookmark,
 	Mbookmarks,
@@ -305,6 +310,7 @@ static void drawui_exit(int status)
 	current->bw = NULL;
 	browser_window_destroy(bw);
 	save_history();
+	search_web_finalise();
 	netsurf_exit();
 	nsoption_finalise(nsoptions, nsoptions_default);
 	nslog_finalise();
@@ -541,6 +547,13 @@ static void menu3hit(struct gui_window *gw, Mouse *m)
 	case Mreload:
 		browser_window_reload(current->bw, true);
 		break;
+	case Msearchweb:
+		url = esearchweb(current->bw);
+		if (url != NULL) {
+			browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_HISTORY,
+				NULL, NULL, NULL);
+		}
+		break;		
 	case Mhistory:
 		url = ehistory(current->bw);
 		if (url != NULL) {
@@ -786,6 +799,7 @@ main(int argc, char *argv[])
 	struct browser_window *bw;
 	nsurl *url;
 	nserror ret;
+	char *path;
 	struct netsurf_table plan9_table = {
 		.misc = plan9_misc_table,
 		.window = plan9_window_table,
@@ -833,15 +847,19 @@ main(int argc, char *argv[])
 		sysfatal("netsurf initialization failed: %s", messages_get_errorcode(ret));
 	}
 
+	path = filepath_find(respaths, "SearchEngines");
+	ret = search_web_init(path);
+	if(ret != NSERROR_OK) {
+		fprintf(stderr, "unable to initialize web search: %s\n", messages_get_errorcode(ret));
+	}
+
 	ret = drawui_init(argc, argv);
 	if(ret != NSERROR_OK) {
 		fprintf(stderr, "netsurf plan9 initialization failed: %s", messages_get_errorcode(ret));
 	} else {
 		drawui_run();
 	}
-
-	netsurf_exit();
-	nsoption_finalise(nsoptions, nsoptions_default);
-	nslog_finalise();
+	
+	drawui_exit(0);
 	return 0;
 }

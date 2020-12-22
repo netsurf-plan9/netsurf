@@ -19,6 +19,8 @@ extern Image *forward_button_icon;
 extern Image *stop_button_icon;
 extern Image *reload_button_icon;
 extern Image *close_button_icon;
+extern Image *menu_button_icon;
+extern Image *search_icon;
 extern Image *tick;
 
 /* cursors */
@@ -30,3 +32,4 @@ extern Cursor helpcursor;
 extern Cursor *cornercursors[9];
 
 #endif
+
