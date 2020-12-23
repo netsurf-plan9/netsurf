@@ -399,9 +399,6 @@ LIBS=\
 	../libnsbmp/src/libnsbmp.$O.a \
 	../libnsgif/src/libnsgif.$O.a \
 	../libutf8proc/src/libutf8proc.$O.a \
-#	../libsvgtiny/src/libsvgtiny.$O.a \
-#	../libdom/src/libdom.$O.a \
-#	/$objtype/lib/ape/libexpat.a \
 
 CC=pcc
 
@@ -426,7 +423,6 @@ CFLAGS=\
 	-I ../libnsutils/include \
 	-I ../libnsbmp/include \
 	-I ../libnsgif/include \
-#	-I ../libsvgtiny/include \
 	-I ../libcss/include \
 	-I libinclude \
 	-I content/handlers \
@@ -440,10 +436,10 @@ CFLAGS=\
 	-D__plan9ape__ \
 	-DDUK_F_X64 -DDUK_USE_COMPUTED_INFINITY -DDUK_F_HAVE_INTTYPES \
 	-DNETSURF_HOMEPAGE="about:welcome" \
-	-DNETSURF_BUILTIN_LOG_FILTER="level:WARNING" \
+#	-DNETSURF_BUILTIN_LOG_FILTER="level:WARNING" \
+	-DNETSURF_BUILTIN_LOG_FILTER="level:ERROR" \
 	-DNETSURF_BUILTIN_VERBOSE_FILTER="level:VERBOSE" \
 	-DNETSURF_RESPATH="/sys/lib/netsurf" \
-	-DNETSURF_FONTPATH="/sys/lib/netsurf/fonts" \
 	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF -DWITH_JPEG -DWITH_PNG \
 	-DNETSURF_CONTENT_FETCHERS_FETCH_CURL_H # prevent linking of curl (tmp)
 
@@ -466,11 +462,6 @@ clean:V:
 9res:V:
 	dircp resources 9res
 	dircp resources/en 9res
-	mkdir -p 9res/fonts
-	mkdir -p 9res/pointers
-	dircp frontends/framebuffer/res/fonts 9res/fonts
-	dircp frontends/framebuffer/res/icons 9res/icons
-	dircp frontends/framebuffer/res/pointers 9res/pointers
 
 install:V: 9res
 	mkdir -p /sys/lib/netsurf

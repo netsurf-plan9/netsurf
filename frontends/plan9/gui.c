@@ -136,7 +136,7 @@ static char** init_resource_paths(void)
 	char **pathv;
 	char **respath;
 
-	pathv = filepath_path_to_strvec(NETSURF_RESPATH ":" NETSURF_FONTPATH);
+	pathv = filepath_path_to_strvec(NETSURF_RESPATH);
 	if(pathv == NULL) {
 		return NULL;
 	}
