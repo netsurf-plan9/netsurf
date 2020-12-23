@@ -73,7 +73,8 @@ Image* getimage(struct bitmap *b, int w, int h)
 	Rectangle r;
 	ulong chan;
 	uint8_t *out;
-	int iw, ih;
+	int iw, ih, c, i;
+	double alpha;
 
 	if (b == NULL)
 		return NULL;
@@ -84,6 +85,14 @@ Image* getimage(struct bitmap *b, int w, int h)
 	if(h == 0)
 		h = ih;
 	if (b->i == NULL) {
+		/* premultiply alpha */
+		c = ((b->width * 32 + 8 - 1) / 8) * b->height;
+		for (i = 0; i < c; i += 4) {
+			alpha = (double)b->data[i+3] / 255.0;
+			b->data[i+0] = alpha * b->data[i+0];
+			b->data[i+1] = alpha * b->data[i+1];
+			b->data[i+2] = alpha * b->data[i+2];
+		}
 		if (b->opaque)
 			chan = XBGR32;
 		else
@@ -389,8 +398,9 @@ plotter_bitmap(const struct redraw_context *ctx,
 	Rectangle r;
 	Image *i, *m;
 
+	if (flags != BITMAPF_NONE)
+		return NSERROR_OK;
 	b = ctx->priv;
-	bitmap_alpha_blend(bitmap, bg);
 	if ((i = getimage(bitmap, width, height)) == NULL)
 		return NSERROR_NOMEM;
 	r = rectaddpt(i->r, Pt(x, y));
