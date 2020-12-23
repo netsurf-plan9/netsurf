@@ -398,8 +398,6 @@ plotter_bitmap(const struct redraw_context *ctx,
 	Rectangle r;
 	Image *i, *m;
 
-	if (flags != BITMAPF_NONE)
-		return NSERROR_OK;
 	b = ctx->priv;
 	if ((i = getimage(bitmap, width, height)) == NULL)
 		return NSERROR_NOMEM;
