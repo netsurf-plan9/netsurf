@@ -130,6 +130,29 @@ static bool nslog_stream_configure(FILE *fptr)
 	return true;
 }
 
+static char* userdir_file(char *filename)
+{
+	nserror ret;
+	char buf[255];
+	char *home, *path;
+
+	if (filename == NULL) {
+		return NULL;
+	}
+	home = getenv("home");
+	if (home == NULL) {
+		home = "/tmp";
+	}
+	snprint(buf, sizeof buf, "%s/lib/netsurf/%s", home, filename);
+	ret = netsurf_mkdir_all(buf);
+	if (ret != NSERROR_OK) {
+		fprintf(stderr, "unable to create %s/lib/netsurf: %s\n", path, messages_get_errorcode(ret));
+		return NULL;
+	}
+	path = strdup(buf);
+	return path;
+}
+
 static char** init_resource_paths(void)
 {
 	char *langv[] = { "C", 0 }; /* XXX: no lang management on plan9 */
@@ -154,10 +177,23 @@ static nserror init_options(int argc, char *argv[])
 	if(ret != NSERROR_OK) {
 		return ret;
 	}
-	options = filepath_find(respaths, "Choices");
+	options = userdir_file("options");
 	nsoption_read(options, nsoptions);
 	free(options);
 	nsoption_commandline(&argc, argv, nsoptions);
+}
+
+static void save_options(void)
+{
+	nserror ret;
+	char *path;
+
+	path = userdir_file("options");
+	ret = nsoption_write(path, nsoptions, nsoptions_default);
+	if (ret != NSERROR_OK) {
+		fprintf(stderr, "unable to save options: %s\n", messages_get_errorcode(ret));
+	}
+	free(path);
 }
 
 static nserror init_messages(void)
@@ -174,45 +210,47 @@ static nserror init_messages(void)
 static nserror init_history(void)
 {
 	nserror ret;
-	char path[255];
-	char *home;
+	char *path;
 
-	home = getenv("home");
-	if (home == NULL) {
-		home = "/tmp";
-	}
-	snprint(path, sizeof path, "%s/lib/netsurf/history", home);
-	ret = netsurf_mkdir_all(path);
-	if (ret != NSERROR_OK) {
-		fprintf(stderr, "unable to create $home/lib/netsurf: %s\n", messages_get_errorcode(ret));
-		return;
+	path = userdir_file("history");
+	if (access(path, F_OK) < 0) {
+		return NSERROR_OK;
 	}
 	ret = urldb_load(path);
+	free(path);
 	return ret;
 }
 
 static void save_history(void)
 {
 	nserror ret;
-	char path[255];
-	char *home;
+	char *path;
 
-	home = getenv("home");
-	if (home == NULL) {
-		home = "/tmp";
-	}
-	snprint(path, sizeof path, "%s/lib/netsurf/history", home);
-	ret = netsurf_mkdir_all(path);
-	if (ret != NSERROR_OK) {
-		fprintf(stderr, "unable to create $home/lib/netsurf: %s\n", messages_get_errorcode(ret));
-		return;
-	}
+	path = userdir_file("history");
 	ret = urldb_save(path);
 	if (ret != NSERROR_OK) {
 		fprintf(stderr, "unable to save history: %s\n", messages_get_errorcode(ret));
 	}
+	free(path);
 }
-	
+
+static void init_bookmarks(void)
+{
+	char *path;
+	FILE *fp;
+
+	path = userdir_file("bookmarks.html");
+	if (access(path, F_OK) < 0) {
+		fp = fopen(path, "a");
+		fprintf(fp, "<html><head>\n");
+		fprintf(fp, "<link rel=\"stylesheet\" type=\"text/css\" href=\"resource:internal.css\">\n");
+		fprintf(fp, "<title>Bookmarks</title></head>\n");
+		fprintf(fp, "<body id=\"dirlist\" class=\"ns-even-bg ns-even-fg ns-border\">\n");
+		fprintf(fp, "<h1 class=\"ns-border\">Bookmarks</h1>\n<br/>");
+		fclose(fp);
+	}
+	free(path);
+}	
 
 static nserror drawui_init(int argc, char *argv[])
 {
@@ -227,7 +265,6 @@ static nserror drawui_init(int argc, char *argv[])
 	}
 	einit(Emouse|Ekeyboard);
 	data_init();
-//	browser_set_dpi(96);
 
 	addr = NULL;
 	if (argc > 1) {
@@ -312,6 +349,7 @@ static void drawui_exit(int status)
 	save_history();
 	search_web_finalise();
 	netsurf_exit();
+	save_options();
 	nsoption_finalise(nsoptions, nsoptions_default);
 	nslog_finalise();
 	exit(status);
@@ -470,48 +508,33 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 
 static void add_bookmark(const char *title, struct browser_window *bw)
 {
-	char *home;
-	char path[255];
+	char *path;
 	FILE *fp;
-	int n;
 
-	home = getenv("home");
-	if (home == NULL) {
-		home = "/tmp";
-	}
-	snprint(path, sizeof path, "%s/lib/netsurf/bookmarks.html", home);
-	netsurf_mkdir_all(path);
-	n = (access(path, F_OK) < 0);
+	path = userdir_file("bookmarks.html");
 	fp = fopen(path, "a");
-	if (n) {
-		fprintf(fp, "<html><head>\n");
-		fprintf(fp, "<link rel=\"stylesheet\" title=\"Standard\" type=\"text/css\" href=\"resource:internal.css\">\n");
-		fprintf(fp, "<title>Bookmarks</title></head>\n");
-		fprintf(fp, "<body id=\"dirlist\" class=\"ns-even-bg ns-even-fg ns-border\">\n");
-		fprintf(fp, "<h1 class=\"ns-border\">Bookmarks</h1>\n<br/>");
-	}
 	fprintf(fp, "<p><a href='%s'>%s</a></p>\n", nsurl_access(browser_window_access_url(bw)), title);
 	fclose(fp);
+	free(path);
 }
 
 static void show_bookmarks(struct browser_window *bw)
 {
 	nserror error;
 	nsurl *url;
-	char *home;
-	char path[255];
+	char *path, u[255];
 
-	home = getenv("home");
-	if (home == NULL) {
-		home = "/tmp";
-	}
-	snprint(path, sizeof path, "file://%s/lib/netsurf/bookmarks.html", home);
-	error = nsurl_create(path, &url);
+	path = userdir_file("bookmarks.html");
+	snprint(u, sizeof u, "file://%s", path);
+	error = nsurl_create(u, &url);
 	if (error == NSERROR_OK) {
 		browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_NONE,
 			NULL, NULL, NULL);
 		nsurl_unref(url);
+	} else {
+		fprintf(stderr, "unable to create url: %s\n", messages_get_errorcode(error));
 	}
+	free(path);
 
 }
 
@@ -817,7 +840,7 @@ main(int argc, char *argv[])
 
 	ret = netsurf_register(&plan9_table);
 	if(ret != NSERROR_OK) {
-		sysfatal("netsurf_register failed");
+		sysfatal("netsurf_register failed: %s\n", messages_get_errorcode(ret));
 	}
 
 	nslog_init(nslog_stream_configure, &argc, argv);
@@ -829,22 +852,22 @@ main(int argc, char *argv[])
 
 	ret = init_options(argc, argv);
 	if(ret != NSERROR_OK) {
-		sysfatal("unable to initialize options");
+		sysfatal("unable to initialize options: %s\n", messages_get_errorcode(ret));
 	}
 
 	ret = init_messages();
 	if(ret != NSERROR_OK) {
-		fprintf(stderr, "unable to load messages translations\n");
+		fprintf(stderr, "unable to load messages translations: %s\n", messages_get_errorcode(ret));
 	}
 
 	ret = init_history();
 	if(ret != NSERROR_OK) {
-		fprintf(stderr, "unable to initialize history\n");
+		fprintf(stderr, "unable to initialize history: %s\n", messages_get_errorcode(ret));
 	}
 
 	ret = netsurf_init(NULL);
 	if(ret != NSERROR_OK) {
-		sysfatal("netsurf initialization failed: %s", messages_get_errorcode(ret));
+		sysfatal("netsurf initialization failed: %s\n", messages_get_errorcode(ret));
 	}
 
 	path = filepath_find(respaths, "SearchEngines");
@@ -852,6 +875,8 @@ main(int argc, char *argv[])
 	if(ret != NSERROR_OK) {
 		fprintf(stderr, "unable to initialize web search: %s\n", messages_get_errorcode(ret));
 	}
+
+	init_bookmarks();
 
 	ret = drawui_init(argc, argv);
 	if(ret != NSERROR_OK) {
