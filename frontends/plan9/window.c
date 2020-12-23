@@ -21,6 +21,7 @@
 #include "plan9/utils.h"
 #include "plan9/drawui/window.h"
 #include "plan9/drawui/data.h"
+#include "plan9/drawui/widget.h"
 
 void window_remove_caret(struct gui_window *g);
 
@@ -271,7 +272,11 @@ window_set_icon(struct gui_window *gw, struct hlcache_handle *icon)
 		return;
 
 	b = content_get_bitmap(icon);
-	i = getimage(b, bitmap_get_width(b), bitmap_get_height(b));
+	if(b == NULL)
+		return;
+
+	bitmap_alpha_blend(b, 0xffffffff);
+	i = getimage(b, ICON_SIZE, ICON_SIZE);
 	if(i != NULL)
 		dwindow_set_icon(gw->dw, i);
 }
