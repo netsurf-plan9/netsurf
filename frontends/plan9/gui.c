@@ -440,7 +440,7 @@ void gui_window_resize(struct gui_window *gw)
 	freeimage(gw->b);
 	gw->b = allocimage(display, Rect(0, 0, Dx(r), Dy(r)), XBGR32, 0, DWhite);
 	browser_window_schedule_reformat(gw->bw);
-	gui_window_redraw(gw, r);
+	gui_window_redraw(gw, gw->b->r);
 }
 
 static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
