@@ -823,6 +823,7 @@ main(int argc, char *argv[])
 	nsurl *url;
 	nserror ret;
 	char *path;
+	char *cachedir = "/tmp/nscache";
 	struct netsurf_table plan9_table = {
 		.misc = plan9_misc_table,
 		.window = plan9_window_table,
@@ -831,6 +832,7 @@ main(int argc, char *argv[])
 		.layout = plan9_layout_table,
 		.clipboard = plan9_clipboard_table,
 		.download = plan9_download_table,
+		.llcache = filesystem_llcache_table,
 	};
 
 	if (stat("/mnt/web", &sb) != 0 || !S_ISDIR(sb.st_mode)) {
@@ -865,7 +867,10 @@ main(int argc, char *argv[])
 		fprintf(stderr, "unable to initialize history: %s\n", messages_get_errorcode(ret));
 	}
 
-	ret = netsurf_init(NULL);
+	if (stat(cachedir, &sb) != 0 || !S_ISDIR(sb.st_mode)) {
+		mkdir(cachedir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	}
+	ret = netsurf_init(cachedir);
 	if(ret != NSERROR_OK) {
 		sysfatal("netsurf initialization failed: %s\n", messages_get_errorcode(ret));
 	}
