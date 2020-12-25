@@ -20,6 +20,7 @@
 #include "utils/nsoption.h"
 #include "netsurf/keypress.h"
 #include "netsurf/url_db.h"
+#include "netsurf/cookie_db.h"
 #include "netsurf/browser.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/misc.h"
@@ -250,7 +251,32 @@ static void init_bookmarks(void)
 		fclose(fp);
 	}
 	free(path);
-}	
+}
+
+static nserror init_cookies(void)
+{
+	nserror ret;
+	char *path;
+
+	path = userdir_file("cookies");
+	nsoption_setnull_charp(cookie_file, strdup(path));
+	nsoption_setnull_charp(cookie_jar, strdup(path));
+	if (access(path, F_OK) < 0) {
+		return NSERROR_OK;
+	}
+	urldb_load_cookies(path);
+	free(path);
+	return NSERROR_OK;
+}
+
+static void save_cookies(void)
+{
+	char *path;
+
+	path = userdir_file("cookies");
+	urldb_save_cookies(path);
+	free(path);
+}
 
 static nserror drawui_init(int argc, char *argv[])
 {
@@ -346,6 +372,7 @@ static void drawui_exit(int status)
 	struct browser_window *bw = current->bw;
 	current->bw = NULL;
 	browser_window_destroy(bw);
+	save_cookies();
 	save_history();
 	search_web_finalise();
 	netsurf_exit();
@@ -865,6 +892,11 @@ main(int argc, char *argv[])
 	ret = init_history();
 	if(ret != NSERROR_OK) {
 		fprintf(stderr, "unable to initialize history: %s\n", messages_get_errorcode(ret));
+	}
+
+	ret = init_cookies();
+	if(ret != NSERROR_OK) {
+		fprintf(stderr, "unable to initialize cookies: %s\n", messages_get_errorcode(ret));
 	}
 
 	if (stat(cachedir, &sb) != 0 || !S_ISDIR(sb.st_mode)) {
