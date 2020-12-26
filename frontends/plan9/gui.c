@@ -68,6 +68,7 @@ char *menu2str[] =
 	"cut",
 	"paste",
 	"snarf",
+	"plumb",
 	"search",
 	0 
 };
@@ -84,6 +85,7 @@ enum
 	Mcut,
 	Mpaste,
 	Msnarf,
+	Mplumb,
 	Msearch,
 };
 Menu menu2 = { menu2str };
@@ -92,6 +94,7 @@ char *menu2lstr[] =
 {
 //	"open in new window",
 	"snarf url",
+	"plumb url",
 	0
 };
 
@@ -99,6 +102,7 @@ enum
 {
 //	Mopeninwin,
 	Msnarfurl,
+	Mplumburl,
 };
 Menu menu2l = { menu2lstr };
 
@@ -107,6 +111,7 @@ char *menu2istr[] =
 {
 	"open in page",
 	"snarf url",
+	"plumb url",
 	0,
 };
 
@@ -114,6 +119,7 @@ enum
 {
 	Mopeninpage,
 	Msnarfimageurl,
+	Mplumbimageurl,
 };
 Menu menu2i = { menu2istr };
 
@@ -513,6 +519,8 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 {
 	static char lastbuf[1024] = {0};
 	char buf[1024] = {0};
+	char *s, *e;
+	size_t len;
 	int n, flags, fd;
 
 	n = emenuhit(2, m, &menu2);
@@ -560,6 +568,16 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 	case Msnarf:
 		browser_window_key_press(gw->bw, NS_KEY_COPY_SELECTION);
 		break;
+	case Mplumb:
+		browser_window_key_press(gw->bw, NS_KEY_COPY_SELECTION);
+		plan9_paste(&s, &len);
+		if (s != NULL) {
+			e = strchr(s, ' ');
+			if (e)
+				*e = 0;
+			send_to_plumber(s);
+		}
+		break;
 	}
 }
 
@@ -574,7 +592,7 @@ static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
 	case Mopeninwin:
 		s = nsurl_access(url);
 		if (s != NULL) {
-			spawn_netsurf(argv0, s);
+			exec_netsurf(argv0, s);
 		}
 		break;
 */
@@ -582,6 +600,12 @@ static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
 		s = nsurl_access(url);
 		if (s != NULL) {
 			plan9_snarf(s, strlen(s));
+		}
+		break;
+	case Mplumburl:
+		s = nsurl_access(url);	
+		if (s != NULL) {
+			send_to_plumber(s);
 		}
 		break;
 	}
@@ -606,6 +630,11 @@ static void menu2hitimage(struct gui_window *gw, Mouse *m, struct hlcache_handle
 			plan9_snarf(s, strlen(s));
 		}
 		break;
+	case Mplumbimageurl:
+		s = nsurl_access(url);	
+		if (s != NULL) {
+			send_to_plumber(s);
+		}
 	}
 	nsurl_unref(url);
 }
@@ -931,13 +960,9 @@ void url_entry_activated(char *text, void *data)
 
 static nserror launch_url(const nsurl *url)
 {
-	int fd;
-
-	fd = plumbopen("send", 1); /* 1 = OWRITE */
-	if (fd <= 0)
+	if (send_to_plumber(nsurl_access(url)) < 0) {
 		return NSERROR_NO_FETCH_HANDLER;
-	plumbsendtext(fd, "netsurf", NULL, NULL, nsurl_access(url));
-	close(fd);
+	}
 	return NSERROR_OK;
 }
 
