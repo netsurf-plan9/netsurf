@@ -70,6 +70,7 @@ char *menu2str[] =
 	"snarf",
 	"plumb",
 	"search",
+	"/",
 	0 
 };
 
@@ -87,8 +88,12 @@ enum
 	Msnarf,
 	Mplumb,
 	Msearch,
+	Msearchnext,
 };
-Menu menu2 = { menu2str };
+
+static char *menu2gen(int);
+
+Menu menu2 = { 0, menu2gen };
 
 char *menu2lstr[] =
 {
@@ -158,6 +163,7 @@ Menu menu3 = { 0, menu3gen };
 char **respaths;
 static char *argv0;
 static struct gui_window *current = NULL;
+static char search_buf[1024] = {0};
 
 static bool nslog_stream_configure(FILE *fptr)
 {
@@ -515,9 +521,21 @@ static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 	}
 }
 
+static char* menu2gen(int index)
+{
+	char buf[1025] = {0};
+
+	if (index == Msearchnext) {
+		if (*search_buf == 0)
+			return NULL;
+		snprintf(buf, sizeof buf, "/%s", search_buf);
+		return buf;
+	}
+	return menu2str[index];
+}
+
 static void menu2hit(struct gui_window *gw, Mouse *m)
 {
-	static char lastbuf[1024] = {0};
 	char buf[1024] = {0};
 	char *s, *e;
 	size_t len;
@@ -549,15 +567,17 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 		}
 		break;
 	case Msearch:
-		strcpy(buf, lastbuf);
+		strcpy(buf, search_buf);
 		if(eenter("Search for", buf, sizeof buf, m) > 0) {
-			flags = strcmp(lastbuf, buf) == 0 ? SEARCH_FLAG_FORWARDS : SEARCH_FLAG_SHOWALL;
-			browser_window_search(gw->bw, gw, flags, buf);
-			strcpy(lastbuf, buf);
+			browser_window_search(gw->bw, gw, SEARCH_FLAG_FORWARDS, buf);
+			strcpy(search_buf, buf);
 		} else {
 			browser_window_search_clear(gw->bw);
-			lastbuf[0] = 0;
+			search_buf[0] = 0;
 		}
+		break;
+	case Msearchnext:
+		browser_window_search(gw->bw, gw, SEARCH_FLAG_FORWARDS, search_buf);
 		break;
 	case Mcut:
 		browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
@@ -874,6 +894,7 @@ void browser_keyboard_event(int k, void *data)
 	case Kesc:
 	case Knack:
 		browser_window_search_clear(gw->bw);
+		search_buf[0] = 0;
 		break;
 	case Kstx:
 		dwindow_focus_url_bar(gw->dw);
