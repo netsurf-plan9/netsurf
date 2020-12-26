@@ -108,9 +108,3 @@ nserror misc_schedule(int t, void cb(void *p), void *p)
 	schedlist = s;
 	return NSERROR_OK;
 }
-
-static struct gui_misc_table misc_table = {
-	.schedule = misc_schedule,
-};
-
-struct gui_misc_table *plan9_misc_table = &misc_table;

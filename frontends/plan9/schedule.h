@@ -7,7 +7,6 @@ enum
 };
 
 void schedule_run(void);
-
-extern struct gui_misc_table *plan9_misc_table;
+nserror misc_schedule(int, void(*)(void*), void*);
 
 #endif

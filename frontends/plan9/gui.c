@@ -929,6 +929,23 @@ void url_entry_activated(char *text, void *data)
 	}
 }
 
+static nserror launch_url(const nsurl *url)
+{
+	int fd;
+
+	fd = plumbopen("send", 1); /* 1 = OWRITE */
+	if (fd <= 0)
+		return NSERROR_NO_FETCH_HANDLER;
+	plumbsendtext(fd, "netsurf", NULL, NULL, nsurl_access(url));
+	close(fd);
+	return NSERROR_OK;
+}
+
+static struct gui_misc_table misc_table = {
+	.schedule = misc_schedule,
+	.launch_url = launch_url,
+};
+
 int
 main(int argc, char *argv[])
 {
@@ -939,7 +956,7 @@ main(int argc, char *argv[])
 	char *path;
 	char *cachedir = "/tmp/nscache";
 	struct netsurf_table plan9_table = {
-		.misc = plan9_misc_table,
+		.misc = &misc_table,
 		.window = plan9_window_table,
 		.fetch = plan9_fetch_table,
 		.bitmap = plan9_bitmap_table,
