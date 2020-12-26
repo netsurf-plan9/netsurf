@@ -23,6 +23,7 @@
 #include "netsurf/cookie_db.h"
 #include "netsurf/browser.h"
 #include "netsurf/browser_window.h"
+#include "netsurf/content.h"
 #include "netsurf/misc.h"
 #include "netsurf/bitmap.h"
 #include "netsurf/plotters.h"
@@ -87,6 +88,34 @@ enum
 };
 Menu menu2 = { menu2str };
 
+char *menu2lstr[] =
+{
+//	"open in new window",
+	"snarf url",
+	0
+};
+
+enum
+{
+//	Mopeninwin,
+	Msnarfurl,
+};
+Menu menu2l = { menu2lstr };
+
+
+char *menu2istr[] =
+{
+	"open in page",
+	"snarf url",
+	0,
+};
+
+enum
+{
+	Mopeninpage,
+	Msnarfimageurl,
+};
+Menu menu2i = { menu2istr };
 
 char *menu3str[] =
 {
@@ -121,6 +150,7 @@ Menu menu3 = { 0, menu3gen };
 
 
 char **respaths;
+static char *argv0;
 static struct gui_window *current = NULL;
 
 static bool nslog_stream_configure(FILE *fptr)
@@ -533,6 +563,53 @@ static void menu2hit(struct gui_window *gw, Mouse *m)
 	}
 }
 
+static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
+{
+	int n;
+	char *s;
+
+	n = emenuhit(2, m, &menu2l);
+	switch (n) {
+/*
+	case Mopeninwin:
+		s = nsurl_access(url);
+		if (s != NULL) {
+			spawn_netsurf(argv0, s);
+		}
+		break;
+*/
+	case Msnarfurl:
+		s = nsurl_access(url);
+		if (s != NULL) {
+			plan9_snarf(s, strlen(s));
+		}
+		break;
+	}
+}
+
+static void menu2hitimage(struct gui_window *gw, Mouse *m, struct hlcache_handle *h)
+{
+	int n;
+	char *s;
+	nsurl *url;
+
+	url = hlcache_handle_get_url(h);
+	n = emenuhit(2, m, &menu2i);
+	switch (n) {
+	case Mopeninpage:
+		browser_window_navigate(gw->bw, url, NULL, BW_NAVIGATE_DOWNLOAD,
+			NULL, NULL, NULL);
+		break;
+	case Msnarfimageurl:
+		s = nsurl_access(url);
+		if (s != NULL) {
+			plan9_snarf(s, strlen(s));
+		}
+		break;
+	}
+	nsurl_unref(url);
+}
+
 static void add_bookmark(const char *title, struct browser_window *bw)
 {
 	char *path;
@@ -638,6 +715,8 @@ void browser_mouse_event(Mouse m, void *data)
 	browser_mouse_state mouse = 0;;
 	Rectangle r;
 	int x, y, sx, sy, lx, ly;
+	struct browser_window_features features;
+	nserror err;
 
 	r = dwindow_get_view_rect(current->dw);
 	sx = dwindow_get_scroll_x(current->dw);
@@ -673,7 +752,16 @@ void browser_mouse_event(Mouse m, void *data)
 			browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
 		}
 	} else if (m.buttons & 2) {
-		menu2hit(gw, &m);
+		err = browser_window_get_features(gw->bw, x, y, &features);
+		if (err != NSERROR_OK) {
+			menu2hit(gw, &m);
+		} else if (features.link != NULL) {
+			menu2hitlink(gw, &m, features.link);
+		} else if (features.object != NULL && content_get_type(features.object) == CONTENT_IMAGE) {
+			menu2hitimage(gw, &m, features.object);
+		} else {
+			menu2hit(gw, &m);
+		}
 	} else if (m.buttons & 4) {
 		menu3hit(gw, &m);
 	} else if (m.buttons&8) {
@@ -865,6 +953,8 @@ main(int argc, char *argv[])
 		fprintf(stderr, "webfs not started\n");
 		exit(1);
 	}
+
+	argv0 = argv[0];
 
 	ret = netsurf_register(&plan9_table);
 	if(ret != NSERROR_OK) {
