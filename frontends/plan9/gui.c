@@ -549,11 +549,10 @@ static void show_bookmarks(struct browser_window *bw)
 {
 	nserror error;
 	nsurl *url;
-	char *path, u[255];
+	char *path;
 
 	path = userdir_file("bookmarks.html");
-	snprint(u, sizeof u, "file://%s", path);
-	error = nsurl_create(u, &url);
+	error = netsurf_path_to_nsurl(path, &url);
 	if (error == NSERROR_OK) {
 		browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_NONE,
 			NULL, NULL, NULL);
