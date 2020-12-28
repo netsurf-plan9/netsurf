@@ -1,5 +1,5 @@
-## Compile the native netsurf browser.
-#  Resulting executable: 'frontends/plan9/$O.netsurf'
+## Compile the netsurf browser.
+#  Resulting executable: 'frontend/framebuffer/$O.nsfb'
 
 </$objtype/mkfile
 
@@ -92,9 +92,9 @@ OBJ=\
 	content/handlers/image/ico.$O\
 	content/handlers/image/image.$O\
 	content/handlers/image/image_cache.$O\
-	content/handlers/image/jpeg.$O\
+#	content/handlers/image/jpeg.$O\
 #	content/handlers/image/nssprite.$O\
-	content/handlers/image/png.$O\
+#	content/handlers/image/png.$O\
 #	content/handlers/image/rsvg.$O\
 #	content/handlers/image/svg.$O\
 #	content/handlers/image/video.$O\
@@ -141,24 +141,56 @@ OBJ=\
 	desktop/textinput.$O\
 	desktop/treeview.$O\
 	desktop/version.$O\
-	frontends/plan9/download.$O\
-	frontends/plan9/searchweb.$O\
-	frontends/plan9/history.$O\
-	frontends/plan9/plotter.$O\
-	frontends/plan9/schedule.$O\
-	frontends/plan9/window.$O\
-	frontends/plan9/fetch.$O\
-	frontends/plan9/bitmap.$O\
-	frontends/plan9/layout.$O\
-	frontends/plan9/clipboard.$O\
-	frontends/plan9/utils.$O\
-	frontends/plan9/gui.$O\
-	frontends/plan9/drawui/data.$O\
-	frontends/plan9/drawui/window.$O \
-	frontends/plan9/drawui/button.$O \
-	frontends/plan9/drawui/entry.$O \
-	frontends/plan9/drawui/toolbar.$O \
-	frontends/plan9/drawui/scrollbar.$O \
+	frontends/framebuffer/gui.$O \
+	frontends/framebuffer/framebuffer.$O \
+	frontends/framebuffer/schedule.$O \
+	frontends/framebuffer/bitmap.$O \
+	frontends/framebuffer/fetch.$O \
+	frontends/framebuffer/findfile.$O \
+	frontends/framebuffer/corewindow.$O \
+	frontends/framebuffer/local_history.$O \
+	frontends/framebuffer/plan9_clipboard.$O \
+	frontends/framebuffer/fbtk/fbtk.$O \
+	frontends/framebuffer/fbtk/event.$O \
+	frontends/framebuffer/fbtk/fill.$O \
+	frontends/framebuffer/fbtk/bitmap.$O \
+	frontends/framebuffer/fbtk/user.$O \
+	frontends/framebuffer/fbtk/window.$O \
+	frontends/framebuffer/fbtk/text.$O \
+	frontends/framebuffer/fbtk/scroll.$O \
+	frontends/framebuffer/fbtk/osk.$O \
+	frontends/framebuffer/font_internal.$O \
+	frontends/framebuffer/font-ns-sans.$O \
+	frontends/framebuffer/image-caret_image.$O \
+	frontends/framebuffer/image-hand_image.$O \
+	frontends/framebuffer/image-history_image.$O \
+	frontends/framebuffer/image-history_image_g.$O \
+	frontends/framebuffer/image-left_arrow.$O \
+	frontends/framebuffer/image-left_arrow_g.$O \
+	frontends/framebuffer/image-menu_image.$O \
+	frontends/framebuffer/image-move_image.$O \
+	frontends/framebuffer/image-osk_image.$O \
+	frontends/framebuffer/image-pointer_image.$O \
+	frontends/framebuffer/image-progress_image.$O \
+	frontends/framebuffer/image-reload.$O \
+	frontends/framebuffer/image-reload_g.$O \
+	frontends/framebuffer/image-right_arrow.$O \
+	frontends/framebuffer/image-right_arrow_g.$O \
+	frontends/framebuffer/image-scrolld.$O \
+	frontends/framebuffer/image-scrolll.$O \
+	frontends/framebuffer/image-scrollr.$O \
+	frontends/framebuffer/image-scrollu.$O \
+	frontends/framebuffer/image-stop_image.$O \
+	frontends/framebuffer/image-stop_image_g.$O \
+	frontends/framebuffer/image-throbber0.$O \
+	frontends/framebuffer/image-throbber1.$O \
+	frontends/framebuffer/image-throbber2.$O \
+	frontends/framebuffer/image-throbber3.$O \
+	frontends/framebuffer/image-throbber4.$O \
+	frontends/framebuffer/image-throbber5.$O \
+	frontends/framebuffer/image-throbber6.$O \
+	frontends/framebuffer/image-throbber7.$O \
+	frontends/framebuffer/image-throbber8.$O\
 
 DUKLIB=content/handlers/javascript/duktape/libduktape.$O.a
 DUKOBJ=\
@@ -388,6 +420,7 @@ DUKOBJ=\
 
 # Be sure to compile the libraries first
 LIBS=\
+	../libnsfb/src/libnsfb.$O.a \
 	../libnspsl/src/libnspsl.$O.a \
 	../libdom/src/libdom.$O.a \
 	../libcss/src/libcss.$O.a \
@@ -424,6 +457,7 @@ CFLAGS=\
 	-I ../libnsbmp/include \
 	-I ../libnsgif/include \
 	-I ../libcss/include \
+	-I ../libnsfb/include \
 	-I libinclude \
 	-I content/handlers \
 	-I frontends \
@@ -431,21 +465,21 @@ CFLAGS=\
 	-D_RESEARCH_SOURCE -DHAVE_VA_COPY \
 	-DPATH_MAX=_POSIX_PATH_MAX \
 	-D_PLAN9 \
-	-D_PLAN9_SOURCE \
 	-D __PRETTY_FUNCTION__="func" \
 	-D__plan9ape__ \
 	-DDUK_F_X64 -DDUK_USE_COMPUTED_INFINITY -DDUK_F_HAVE_INTTYPES \
 	-DNETSURF_HOMEPAGE="about:welcome" \
-#	-DNETSURF_BUILTIN_LOG_FILTER="level:WARNING" \
-	-DNETSURF_BUILTIN_LOG_FILTER="level:ERROR" \
+	-DNETSURF_BUILTIN_LOG_FILTER="level:WARNING" \
 	-DNETSURF_BUILTIN_VERBOSE_FILTER="level:VERBOSE" \
-	-DNETSURF_RESPATH="/sys/lib/netsurf" \
-	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF -DWITH_JPEG -DWITH_PNG \
+	-Dnsframebuffer \
+	-DNETSURF_FB_RESPATH="/sys/lib/netsurf" \
+	-DNETSURF_FB_FONTPATH="/sys/lib/netsurf/fonts" \
+	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF \
 	-DNETSURF_CONTENT_FETCHERS_FETCH_CURL_H # prevent linking of curl (tmp)
 
 # To add later: -DWITH_CURL
 
-$O.netsurf: $OBJ $LIBS $DUKLIB
+$O.nsfb: $OBJ $LIBS $DUKLIB
 	$CC -o $target $OBJ $EXTRA $DUKLIB $LIBS
 
 $DUKLIB: $DUKOBJ $LIBS
@@ -455,18 +489,23 @@ $DUKLIB: $DUKOBJ $LIBS
 	$CC $CFLAGS -c -o $target $stem.c
 
 clean:V:
-	rm -f $OBJ $DUKOBJ $DUKLIB $O.netsurf
+	rm -f $OBJ $DUKOBJ $DUKLIB $O.nsfb
 
 # copy resource files into the directory 9res, that
 # is used for install. Run befefore 'mk install'
 9res:V:
 	dircp resources 9res
 	dircp resources/en 9res
+	mkdir -p 9res/fonts
+	mkdir -p 9res/pointers
+	dircp frontends/framebuffer/res/fonts 9res/fonts
+	dircp frontends/framebuffer/res/icons 9res/icons
+	dircp frontends/framebuffer/res/pointers 9res/pointers
 
 install:V: 9res
 	mkdir -p /sys/lib/netsurf
 	dircp 9res /sys/lib/netsurf
-	cp $O.netsurf /$objtype/bin/netsurf
+	cp $O.nsfb /$objtype/bin/nsfb
 
 content/handlers/javascript/duktape/duktape/%.h:Q: content/handlers/javascript/duktape/duktape
 	# nothing to do
