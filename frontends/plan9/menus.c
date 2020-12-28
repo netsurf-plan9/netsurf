@@ -23,6 +23,7 @@
 #include "plan9/utils.h"
 
 extern void drawui_exit(int);
+static char* menu3gen(int); 
 
 char *menu2str[] =
 {
@@ -96,6 +97,26 @@ enum
 };
 Menu menu2i = { menu2istr };
 
+char *menu2ilstr[] =
+{
+	"open in page",
+	"snarf link url",
+	"snarf image url",
+	"plumb link url",
+	"plumb image url",
+	0
+};
+
+enum
+{
+	Milopeninpage,
+	Milsnarflinkurl,
+	Milsnarfimageurl,
+	Milplumblinkurl,
+	Milplumbimageurl,
+};
+Menu menu2il = { menu2ilstr };
+
 char *menu3str[] =
 {
 	"back",
@@ -122,8 +143,6 @@ enum
 	Mjavascript,
 	Mexit,
 };
-
-static char* menu3gen(int); 
 
 Menu menu3 = { 0, menu3gen };
 
@@ -206,10 +225,29 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 	}
 }
 
+static void snarf_url(struct nsurl *url)
+{
+	char *s;
+
+	s = nsurl_access(url);
+	if (s != NULL) {
+		plan9_snarf(s, strlen(s));
+	}
+}
+
+static void plumb_url(struct nsurl *url)
+{
+	char *s;
+
+	s = nsurl_access(url);	
+	if (s != NULL) {
+		send_to_plumber(s);
+	}
+}
+
 static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
 {
 	int n;
-	char *s;
 
 	n = emenuhit(2, m, &menu2l);
 	switch (n) {
@@ -222,16 +260,10 @@ static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
 		break;
 */
 	case Msnarfurl:
-		s = nsurl_access(url);
-		if (s != NULL) {
-			plan9_snarf(s, strlen(s));
-		}
+		snarf_url(url);
 		break;
 	case Mplumburl:
-		s = nsurl_access(url);	
-		if (s != NULL) {
-			send_to_plumber(s);
-		}
+		plumb_url(url);
 		break;
 	}
 }
@@ -239,7 +271,6 @@ static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
 static void menu2hitimage(struct gui_window *gw, Mouse *m, struct hlcache_handle *h)
 {
 	int n;
-	char *s;
 	nsurl *url;
 
 	url = hlcache_handle_get_url(h);
@@ -248,20 +279,60 @@ static void menu2hitimage(struct gui_window *gw, Mouse *m, struct hlcache_handle
 	case Mopeninpage:
 		browser_window_navigate(gw->bw, url, NULL, BW_NAVIGATE_DOWNLOAD,
 			NULL, NULL, NULL);
+		nsurl_unref(url);
 		break;
 	case Msnarfimageurl:
-		s = nsurl_access(url);
-		if (s != NULL) {
-			plan9_snarf(s, strlen(s));
-		}
+		snarf_url(url);
 		break;
 	case Mplumbimageurl:
-		s = nsurl_access(url);	
-		if (s != NULL) {
-			send_to_plumber(s);
-		}
+		plumb_url(url);
+		break;
 	}
-	nsurl_unref(url);
+}
+
+static void menu2hitimagelink(struct gui_window *gw, Mouse *m, struct nsurl *url, struct hlcache_handle *h)
+{
+	int n;
+	nsurl *urli;
+
+	urli = hlcache_handle_get_url(h);
+	n = emenuhit(2, m, &menu2il);
+	switch (n) {
+	case Milopeninpage:
+		browser_window_navigate(gw->bw, urli, NULL, BW_NAVIGATE_DOWNLOAD,
+			NULL, NULL, NULL);
+		nsurl_unref(urli);
+		break;
+	case Milsnarflinkurl:
+		snarf_url(url);
+		break;
+	case Milsnarfimageurl:
+		snarf_url(urli);
+		break;
+	case Milplumblinkurl:
+		plumb_url(url);
+		break;
+	case Milplumbimageurl:
+		plumb_url(urli);
+		break;
+	}
+}
+
+void menu2hit(struct gui_window *gw, Mouse *m, struct browser_window_features *features)
+{
+	bool islink, isimage;
+
+	islink = features->link != NULL;
+	isimage = features->object != NULL && content_get_type(features->object) == CONTENT_IMAGE;
+	if (islink == false && isimage == false) {
+		menu2hitstd(gw, m);
+	} else if (islink == true && isimage == true) {
+		menu2hitimagelink(gw, m, features->link, features->object);
+	} else if (islink == true) {
+		menu2hitlink(gw, m, features->link);
+	} else if (isimage == true) {
+		menu2hitimage(gw, m, features->object);
+	} 
 }
 
 static char* menu3gen(int index)
@@ -273,17 +344,6 @@ static char* menu3gen(int index)
 			return "enable javascript";
 	}
 	return menu3str[index];
-}
-
-void menu2hit(struct gui_window *gw, Mouse *m, struct browser_window_features *features)
-{
-	if (features == NULL || (features->link == NULL && features->object == NULL)) {
-		menu2hitstd(gw, m);
-	} else if (features->link != NULL) {
-		menu2hitlink(gw, m, features->link);
-	} else if (features->object != NULL && content_get_type(features->object) == CONTENT_IMAGE) {
-		menu2hitimage(gw, m, features->object);
-	} 
 }
 
 void menu3hit(struct gui_window *gw, Mouse *m)
