@@ -389,6 +389,7 @@ void browser_mouse_event(Mouse m, void *data)
 	struct browser_window_features features;
 	nserror err;
 
+	//gw->m = m;
 	r = dwindow_get_view_rect(current->dw);
 	sx = dwindow_get_scroll_x(current->dw);
 	sy = dwindow_get_scroll_y(current->dw);
@@ -622,6 +623,7 @@ main(int argc, char *argv[])
 		.layout = plan9_layout_table,
 		.clipboard = plan9_clipboard_table,
 		.download = plan9_download_table,
+		.search = plan9_search_table,
 		.llcache = filesystem_llcache_table,
 	};
 
