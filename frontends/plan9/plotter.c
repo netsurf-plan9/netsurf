@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <draw.h>
+#include <event.h>
 #include "utils/errors.h"
 #include "netsurf/plotters.h"
 #include "plan9/window.h"
@@ -103,8 +104,8 @@ Image* getimage(struct bitmap *b, int w, int h)
 			stbir_resize_uint8_generic(
 				b->data, iw, ih, bitmap_get_rowstride(b),
 				out, w, h, w*BITMAP_BPP,
-				BITMAP_BPP, 3, 0,
-				STBIR_EDGE_CLAMP, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR,
+				BITMAP_BPP, 3, STBIR_FLAG_ALPHA_PREMULTIPLIED,
+				STBIR_EDGE_ZERO, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR,
 				NULL
 			);
 		} else {
