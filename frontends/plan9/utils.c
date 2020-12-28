@@ -1,10 +1,47 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
 #include <lib9.h>
+#include "utils/errors.h"
+#include "utils/filepath.h"
 #include "plan9/utils.h"
 
 static int debug = 0;
+
+static char* userdir(void)
+{
+	static char *home = NULL;
+	
+	if (home == NULL) {
+		home = getenv("home");
+		if (home == NULL) {
+			home = "/tmp";
+		}
+	}
+	return home;
+}
+
+char* userdir_file(char *filename)
+{
+	nserror ret;
+	char buf[255];
+	char *home, *path;
+
+	if (filename == NULL) {
+		return NULL;
+	}
+	home = userdir();
+	snprint(buf, sizeof buf, "%s/lib/netsurf/%s", home, filename);
+	ret = netsurf_mkdir_all(buf);
+	if (ret != NSERROR_OK) {
+		fprintf(stderr, "unable to create %s/lib/netsurf: %s\n", path, messages_get_errorcode(ret));
+		return NULL;
+	}
+	path = strdup(buf);
+	return path;
+}
 
 int
 send_to_plumber(const char *text)

@@ -1,6 +1,12 @@
 #ifndef NETSURF_PLAN9_UTILS_H
 #define NETSURF_PLAN9_UTILS_H
 
+/* 
+ * returns the full path of _filename_ 
+ * in user configuration directory
+ */
+char *userdir_file(char *filename);
+
 int send_to_plumber(const char *text);
 
 void exec_netsurf(const char *cmd, const char *url);

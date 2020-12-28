@@ -141,7 +141,9 @@ OBJ=\
 	desktop/textinput.$O\
 	desktop/treeview.$O\
 	desktop/version.$O\
+	frontends/plan9/bookmarks.$O\
 	frontends/plan9/download.$O\
+	frontends/plan9/search.$O\
 	frontends/plan9/searchweb.$O\
 	frontends/plan9/history.$O\
 	frontends/plan9/plotter.$O\
@@ -152,6 +154,7 @@ OBJ=\
 	frontends/plan9/layout.$O\
 	frontends/plan9/clipboard.$O\
 	frontends/plan9/utils.$O\
+	frontends/plan9/menus.$O\
 	frontends/plan9/gui.$O\
 	frontends/plan9/drawui/data.$O\
 	frontends/plan9/drawui/window.$O \
