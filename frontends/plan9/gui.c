@@ -389,7 +389,7 @@ void browser_mouse_event(Mouse m, void *data)
 	struct browser_window_features features;
 	nserror err;
 
-	//gw->m = m;
+	gw->m = m;
 	r = dwindow_get_view_rect(current->dw);
 	sx = dwindow_get_scroll_x(current->dw);
 	sy = dwindow_get_scroll_y(current->dw);

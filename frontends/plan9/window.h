@@ -6,6 +6,7 @@ struct gui_window
 	struct browser_window *bw;
 	struct dwindow *dw;
 	Image *b;
+	Mouse m;
 	Point caret;
 	int caret_height;
 	struct gui_window *next;

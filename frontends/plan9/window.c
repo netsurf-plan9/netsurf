@@ -270,11 +270,9 @@ window_set_icon(struct gui_window *gw, struct hlcache_handle *icon)
 	i = NULL;
 	if (content_get_type(icon) != CONTENT_IMAGE)
 		return;
-
 	b = content_get_bitmap(icon);
 	if(b == NULL)
 		return;
-
 	i = getimage(b, ICON_SIZE, ICON_SIZE);
 	if(i != NULL)
 		dwindow_set_icon(gw->dw, i);
@@ -313,7 +311,6 @@ window_set_pointer(struct gui_window *g, enum gui_pointer_shape shape)
 		break;
 	case GUI_POINTER_WAIT:
 	case GUI_POINTER_PROGRESS:
-	case GUI_POINTER_MENU:
 		c = &waitcursor;
 		break;
 	case GUI_POINTER_CROSS:
@@ -347,6 +344,7 @@ window_set_pointer(struct gui_window *g, enum gui_pointer_shape shape)
 		c = cornercursors[8];
 		break;
 	/* not handled */
+	case GUI_POINTER_MENU:
 	case GUI_POINTER_MOVE:
 	case GUI_POINTER_NO_DROP:
 	case GUI_POINTER_NOT_ALLOWED:
@@ -441,7 +439,40 @@ window_save_link(struct gui_window *g, struct nsurl *url, const char *title)
 void
 window_create_form_select_menu(struct gui_window *gw, struct form_control *control)
 {
-	DBG("IN window_create_form_select_menu");
+	int count, item;
+	Menu m;
+	char **mstr;
+	struct form_option *option;
+
+	count = 0;
+	item = 0;
+	option = form_select_get_option(control, item);
+	while (option != NULL) {
+		++count;
+		++item;
+		option = form_select_get_option(control, item);
+	}
+
+	mstr = calloc(count + 1, sizeof *mstr);
+	if (mstr == NULL) {
+		fprintf(stderr, "OOM\n");
+		return;
+	}
+	item = 0;
+	option = form_select_get_option(control, item);
+	while (option != NULL) {
+		mstr[item++] = option->text;
+		option = form_select_get_option(control, item);
+	}
+	m.item = mstr;
+	m.gen = NULL;
+	m.lasthit = 0;
+	gw->m.buttons = 1;
+	item = emenuhit(1, &gw->m, &m);
+	if (item > 0) {
+		form_select_process_selection(control, item);
+	}
+	free(mstr);
 }
 
 /**
