@@ -105,7 +105,7 @@ Image* getimage(struct bitmap *b, int w, int h)
 				b->data, iw, ih, bitmap_get_rowstride(b),
 				out, w, h, w*BITMAP_BPP,
 				BITMAP_BPP, 3, STBIR_FLAG_ALPHA_PREMULTIPLIED,
-				STBIR_EDGE_ZERO, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR,
+				STBIR_EDGE_CLAMP, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR,
 				NULL
 			);
 		} else {
