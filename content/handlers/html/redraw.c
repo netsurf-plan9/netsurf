@@ -63,7 +63,7 @@
 #include "html/form_internal.h"
 #include "html/private.h"
 #include "html/layout.h"
-
+float ceilf(float);	/* until libap.a gets ceilf() */
 
 bool html_redraw_debug = false;
 
