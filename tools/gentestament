@@ -1,0 +1,39 @@
+#!/bin/rc
+
+rfork en
+
+if(~ $#* 0)
+	exit 'usage'
+
+
+ifs='
+'
+git_diff=`{git/diff -s}
+gecos=$user
+git_user=`{git/conf user.name}
+wt_root=`{pwd}
+wt_hostname=$sysname
+wt_compiledate=`{date -i}
+wt_branch=`{git/branch}
+wt_revid=`{cat .git/refs/$wt_branch}
+wt_modified=$#git_diff
+
+>$1 {
+	echo '#'ifndef NETSURF_REVISION_TESTAMENT
+	echo '#'define NETSURF_REVISION_TESTAMENT
+	echo
+	echo '#'define USERNAME "$git_user"
+	echo '#'define GECOS "$gecos"
+	echo '#'define WT_ROOT "$wt_root"
+	echo '#'define WT_HOSTNAME "$wt_hostname"
+	echo '#'define WT_COMPILEDATE "$wt_compiledate"
+	echo '#'define WT_BRANCHPATH "$wt_branch"
+	echo '#'define WT_BRANCHISMASTER 1
+	echo '#'define WT_REVID "$wt_revid"
+	echo '#'define WT_MODIFIED $wt_modified
+	echo '#'define WT_MODIFICATIONS '{'\
+	for(i in $git_diff)echo $i| awk '{ printf "\t{ \"%s\", \"%s\" },\\\n", $2, $1 }'
+	echo '}'
+	echo
+	echo '#'endif
+}

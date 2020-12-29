@@ -387,9 +387,18 @@ DUKOBJ=\
 	content/handlers/javascript/duktape/duktape/worker_location.$O\
 	content/handlers/javascript/duktape/duktape/worker_navigator.$O\
 	content/handlers/javascript/duktape/duktape/xml_document.$O\
-	content/handlers/javascript/duktape/duktape/xml_serializer.$O\
+	content/handlers/javascript/duktape/duktape/xml_serializer.$O
 
-# Be sure to compile the libraries first
+EXTRA=\
+	../posix/src/iconv.$O\
+	../posix/src/preadwrite.$O\
+	../posix/src/math9.$O
+
+HFILES=\
+	content/handlers/javascript/duktape/duktape/binding.h\
+	content/handlers/javascript/duktape/duktape/generics.js.inc\
+	content/handlers/javascript/duktape/duktape/polyfill.js.inc
+
 LIBS=\
 	../libnspsl/src/libnspsl.$O.a \
 	../libdom/src/libdom.$O.a \
@@ -402,16 +411,6 @@ LIBS=\
 	../libnsbmp/src/libnsbmp.$O.a \
 	../libnsgif/src/libnsgif.$O.a \
 	../libutf8proc/src/libutf8proc.$O.a \
-
-CC=pcc
-
-# See to that these are also complied before, along with the libraries
-EXTRA=../posix/src/iconv.$O ../posix/src/preadwrite.$O ../posix/src/math9.$O
-
-HFILES=\
-	content/handlers/javascript/duktape/duktape/binding.h\
-	content/handlers/javascript/duktape/duktape/generics.js.inc\
-	content/handlers/javascript/duktape/duktape/polyfill.js.inc
 
 CFLAGS=\
 	-B\
@@ -427,7 +426,6 @@ CFLAGS=\
 	-I ../libnsbmp/include \
 	-I ../libnsgif/include \
 	-I ../libcss/include \
-	-I libinclude \
 	-I content/handlers \
 	-I frontends \
 	-D_BSD_EXTENSION -D_SUSV2_SOURCE -D_POSIX_SOURCE \
@@ -446,7 +444,7 @@ CFLAGS=\
 	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF -DWITH_JPEG -DWITH_PNG \
 	-DNETSURF_CONTENT_FETCHERS_FETCH_CURL_H # prevent linking of curl (tmp)
 
-# To add later: -DWITH_CURL
+CC=pcc
 
 $O.netsurf: $OBJ $LIBS $DUKLIB
 	$CC -o $target $OBJ $EXTRA $DUKLIB $LIBS
@@ -456,20 +454,6 @@ $DUKLIB: $DUKOBJ $LIBS
 
 %.$O:	%.c $HFILES content/handlers/javascript/duktape/duktape
 	$CC $CFLAGS -c -o $target $stem.c
-
-clean:V:
-	rm -f $OBJ $DUKOBJ $DUKLIB $O.netsurf
-
-# copy resource files into the directory 9res, that
-# is used for install. Run befefore 'mk install'
-9res:V:
-	dircp resources 9res
-	dircp resources/en 9res
-
-install:V: 9res
-	mkdir -p /sys/lib/netsurf
-	dircp 9res /sys/lib/netsurf
-	cp $O.netsurf /$objtype/bin/netsurf
 
 content/handlers/javascript/duktape/duktape/%.h:Q: content/handlers/javascript/duktape/duktape
 	# nothing to do
@@ -483,3 +467,21 @@ content/handlers/javascript/duktape/duktape/%.inc:Q: content/handlers/javascript
 content/handlers/javascript/duktape/duktape:
 	mkdir -p content/handlers/javascript/duktape/duktape
 	dircp ../genfiles/netsurf/duktape content/handlers/javascript/duktape/duktape
+
+content/fetchers/about/testament.$O: include/testament.h
+
+include/testament.h:
+	tools/gentestament $target
+
+resources/Messages: resources/FatMessages
+	tools/genmessages $prereq $target
+
+clean:V:
+	rm -f $OBJ $DUKOBJ $DUKLIB $O.netsurf include/testament.h resources/Messages
+
+install:V: resources/Messages
+	mkdir -p /sys/lib/netsurf
+	dircp resources /sys/lib/netsurf
+	dircp resources/en /sys/lib/netsurf
+	cp $O.netsurf /$objtype/bin/netsurf
+

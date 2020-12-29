@@ -1,0 +1,9 @@
+#!/bin/rc
+
+rfork en
+
+if(! ~ $#* 2)
+	exit 'usage'
+
+grep '^en\.all' $1 |sed 's/^en\.all\.//' |gzip -c > $2
+

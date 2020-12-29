@@ -6,4 +6,5 @@
 # you can bind the runtime resource directory 9res over that directory.
 
 aux/stub -d /sys/lib/netsurf
-bind 9res /sys/lib/netsurf
+bind resources /sys/lib/netsurf
+bind -a resources/en /sys/lib/netsurf
