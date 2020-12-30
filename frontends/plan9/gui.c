@@ -283,13 +283,11 @@ void drawui_exit(int status)
 
 void eresized(int new)
 {
-	if (new) {
-		if (getwindow(display, Refnone) < 0) {
-			fprintf(stderr, "cannot reattach to window\n");
-			exit(1);
-		}
-		gui_window_resize(current);
+	if (new && getwindow(display, Refnone) < 0) {
+		fprintf(stderr, "cannot reattach to window\n");
+		exit(1);
 	}
+	gui_window_resize(current);
 }
 
 struct gui_window* gui_window_create(struct browser_window *bw)
