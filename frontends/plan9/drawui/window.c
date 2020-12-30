@@ -101,15 +101,11 @@ void dwindow_resize(struct dwindow *window, Rectangle newr)
 
 static void draw_icon(dwindow *window)
 {
-	Image *i;
-
-	i = bg_color;
-	if (window->icon != NULL) {
-		i = window->icon;
-	}
 	replclipr(screen, 0, window->iconr);
 	draw(screen, window->iconr, bg_color, nil, ZP);
-	draw(screen, window->iconr, i, nil, ZP);
+	if (window->icon != NULL) {
+		draw(screen, window->iconr, window->icon, nil, ZP);
+	}
 }
 
 static void draw_title(dwindow *window)
@@ -222,7 +218,11 @@ int dwindow_try_scroll(struct dwindow *window, int sx, int sy)
 
 void dwindow_set_icon(struct dwindow *window, Image *icon)
 {
-	window->icon = icon;
+	freeimage(window->icon);
+	if(icon != NULL) {
+		window->icon = allocimage(display, icon->r, icon->chan, 0, DWhite);
+		draw(window->icon, icon->r, icon, nil, ZP);
+	}
 	draw_icon(window);
 }
 
