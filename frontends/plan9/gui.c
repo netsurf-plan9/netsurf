@@ -99,6 +99,7 @@ static nserror init_options(int argc, char *argv[])
 	nsoption_read(options, nsoptions);
 	free(options);
 	nsoption_commandline(&argc, argv, nsoptions);
+	nsoption_set_bool(animate_images, false);
 }
 
 static void save_options(void)
