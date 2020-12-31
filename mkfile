@@ -414,10 +414,16 @@ LIBS=\
 	../libsvgtiny/src/libsvgtiny.$O.a \
 	../libdom/src/libdom.$O.a \
 	../expat/lib/libexpat.$O.a \
+	../libjpeg/libjpeg.$O.a \
+	../libpng/libpng.$O.a \
+	../zlib/libz.$O.a
 
 CFLAGS=\
 	-B\
 	-I . -I include -I ../posix/include \
+	-I ../zlib \
+	-I ../libjpeg \
+	-I ../libpng \
 	-I ../libparserutils/include \
 	-I ../libdom/include \
 	-I ../libdom/ \
