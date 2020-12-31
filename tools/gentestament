@@ -33,6 +33,7 @@ wt_modified=$#git_diff
 	echo '#'define WT_MODIFIED $wt_modified
 	echo '#'define WT_MODIFICATIONS '{'\
 	for(i in $git_diff)echo $i| awk '{ printf "\t{ \"%s\", \"%s\" },\\\n", $2, $1 }'
+	echo 'NULL,\'
 	echo '}'
 	echo
 	echo '#'endif
