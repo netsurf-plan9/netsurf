@@ -96,7 +96,7 @@ OBJ=\
 #	content/handlers/image/nssprite.$O\
 	content/handlers/image/png.$O\
 #	content/handlers/image/rsvg.$O\
-#	content/handlers/image/svg.$O\
+	content/handlers/image/svg.$O\
 #	content/handlers/image/video.$O\
 #	content/handlers/image/webp.$O\
 	content/handlers/javascript/content.$O\
@@ -411,6 +411,9 @@ LIBS=\
 	../libnsbmp/src/libnsbmp.$O.a \
 	../libnsgif/src/libnsgif.$O.a \
 	../libutf8proc/src/libutf8proc.$O.a \
+	../libsvgtiny/src/libsvgtiny.$O.a \
+	../libdom/src/libdom.$O.a \
+	../expat/lib/libexpat.$O.a \
 
 CFLAGS=\
 	-B\
@@ -425,6 +428,7 @@ CFLAGS=\
 	-I ../libnsutils/include \
 	-I ../libnsbmp/include \
 	-I ../libnsgif/include \
+	-I ../libsvgtiny/include \
 	-I ../libcss/include \
 	-I content/handlers \
 	-I frontends \
@@ -441,7 +445,7 @@ CFLAGS=\
 	-DNETSURF_BUILTIN_LOG_FILTER="level:ERROR" \
 	-DNETSURF_BUILTIN_VERBOSE_FILTER="level:VERBOSE" \
 	-DNETSURF_RESPATH="/sys/lib/netsurf" \
-	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF -DWITH_JPEG -DWITH_PNG \
+	-DWITH_NSLOG -DWITH_BMP -DWITH_GIF -DWITH_JPEG -DWITH_PNG -DWITH_NS_SVG \
 	-DNETSURF_CONTENT_FETCHERS_FETCH_CURL_H # prevent linking of curl (tmp)
 
 CC=pcc
