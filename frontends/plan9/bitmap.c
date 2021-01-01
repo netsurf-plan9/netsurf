@@ -238,7 +238,6 @@ bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 	}
 	ctx.priv = i;
 	content_scaled_redraw(content, w, h, &ctx);
-	unloadimage(i, Rect(0, 0, bitmap->width, bitmap->height), bitmap->data, BITMAP_BPP*bitmap->width*bitmap->height);
 	return NSERROR_OK;
 }
 
