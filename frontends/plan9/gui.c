@@ -100,6 +100,7 @@ static nserror init_options(int argc, char *argv[])
 	free(options);
 	nsoption_commandline(&argc, argv, nsoptions);
 	nsoption_set_bool(animate_images, false);
+	return NSERROR_OK;
 }
 
 static void save_options(void)
