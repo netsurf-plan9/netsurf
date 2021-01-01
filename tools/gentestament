@@ -11,6 +11,7 @@ ifs='
 git_diff=`{git/diff -s}
 gecos=$user
 git_user=`{git/conf user.name}
+if(~ $git_user '') git_user=$user
 wt_root=`{pwd}
 wt_hostname=$sysname
 wt_compiledate=`{date -i}
