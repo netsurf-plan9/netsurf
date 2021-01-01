@@ -147,6 +147,7 @@ OBJ=\
 	frontends/plan9/searchweb.$O\
 	frontends/plan9/history.$O\
 	frontends/plan9/plotter.$O\
+	frontends/plan9/vpath.$O\
 	frontends/plan9/schedule.$O\
 	frontends/plan9/window.$O\
 	frontends/plan9/fetch.$O\

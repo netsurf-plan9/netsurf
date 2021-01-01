@@ -6,6 +6,7 @@
 #include "netsurf/plotters.h"
 #include "plan9/window.h"
 #include "plan9/plotter.h"
+#include "plan9/vpath.h"
 #include "plan9/bitmap.h"
 #include "plan9/layout.h"
 #include "plan9/utils.h"
@@ -336,6 +337,14 @@ plotter_polygon(const struct redraw_context *ctx,
 	return NSERROR_OK;
 }
 
+static Point transformpt(float x, float y, float transform[6])
+{
+	Point p;
+
+	p.x = x * transform[0] + y * transform[1] + transform[4];
+	p.y = x * transform[2] + y * transform[3] + transform[5];
+	return p;
+}
 
 /**
  * Plots a path.
@@ -357,7 +366,55 @@ nserror plotter_path(
 		unsigned int n,
 		const float transform[6])
 {
-	DBG("IN plotter_path");
+	Image *b, *c;
+	Point p0, p1, p2, p3;
+	struct vpath vp;
+	int i, w;
+
+	if (n == 0) {
+		return NSERROR_OK;
+	}
+	if (p[0] != PLOTTER_PATH_MOVE) {
+		DBG("plotter_path: path not starting with a move");
+		return NSERROR_INVALID;
+	}
+	vp.np = 0;
+	vp.p = NULL;
+	for(i = 0; i < n; ) {
+		if (p[i] == PLOTTER_PATH_MOVE) {
+			p0 = transformpt(p[i+1], p[i+2], transform);
+			vpath_move_to(&vp, p0);
+			i += 3;
+		} else if (p[i] == PLOTTER_PATH_CLOSE) {
+			vpath_close(&vp);
+			i += 1;
+		} else if (p[i] == PLOTTER_PATH_LINE) {
+			p0 = transformpt(p[i+1], p[i+2], transform);
+			vpath_line_to(&vp, p1);
+			i += 3;
+		} else if (p[i] == PLOTTER_PATH_BEZIER) {
+			p1 = transformpt(p[i+1], p[i+2], transform);
+			p2 = transformpt(p[i+3], p[i+4], transform);
+			p3 = transformpt(p[i+5], p[i+6], transform);
+			vpath_bezier(&vp, p1, p2, p3);
+			i += 7;
+		} else {
+			return NSERROR_INVALID;
+		}
+	}
+	b = ctx->priv;
+	c = NULL;
+	w = plot_style_fixed_to_int(pstyle->stroke_width);
+	if (pstyle->stroke_colour != NS_TRANSPARENT) {
+		if ((c = getcolor(pstyle->stroke_colour)) == NULL)
+			return NSERROR_NOMEM;
+		poly(b, vp.p, vp.np, Enddisc, Enddisc, w, c, ZP);
+	}
+	if (pstyle->fill_colour != NS_TRANSPARENT) {
+		if ((c = getcolor(pstyle->fill_colour)) == NULL)
+			return NSERROR_NOMEM;
+		fillpoly(b, vp.p, vp.np, 1, c, ZP);
+	}
 	return NSERROR_OK;
 }
 
