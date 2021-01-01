@@ -5,7 +5,6 @@ struct vpath
 {
 	Point *p;
 	int np;
-	int pos;
 };
 
 void vpath_move_to(struct vpath*, Point);
