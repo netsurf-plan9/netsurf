@@ -50,6 +50,7 @@
 #include "plan9/clipboard.h"
 #include "plan9/drawui/window.h"
 #include "plan9/drawui/data.h"
+#include "plan9/webfs.h"
 
 static void back_button_mouse_event(Mouse, void*);
 static void fwd_button_mouse_event(Mouse, void*);
@@ -620,7 +621,7 @@ void fwd_button_mouse_event(Mouse m, void *data)
 	}
 
 	if (browser_window_forward_available(current->bw)) {
-		browser_window_history_forward(current->bw);
+		browser_window_history_forward(current->bw, false);
 	}
 }
 
@@ -738,6 +739,8 @@ main(int argc, char *argv[])
 	if(ret != NSERROR_OK) {
 		sysfatal("netsurf initialization failed: %s\n", messages_get_errorcode(ret));
 	}
+
+	webfs_register();
 
 	path = filepath_find(respaths, "SearchEngines");
 	ret = search_web_init(path);
