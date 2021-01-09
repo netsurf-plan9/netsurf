@@ -7,6 +7,12 @@
  */
 char *userdir_file(char *filename);
 
+/*
+ * read file and return its content
+ * size is set to the content length
+ */
+char *read_file(char *path, int *size);
+
 int send_to_plumber(const char *text);
 
 void exec_netsurf(const char *cmd, const char *url);

@@ -3,6 +3,8 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <sys/limits.h>
 #include <lib9.h>
 #include "utils/errors.h"
 #include "utils/filepath.h"
@@ -26,7 +28,7 @@ static char* userdir(void)
 char* userdir_file(char *filename)
 {
 	nserror ret;
-	char buf[255];
+	char buf[PATH_MAX+1];
 	char *home, *path;
 
 	if (filename == NULL) {
@@ -42,6 +44,45 @@ char* userdir_file(char *filename)
 	path = strdup(buf);
 	return path;
 }
+
+char* read_file(char *path, int *size)
+{
+	char *buf;
+	int fd, n, s, r;
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		DBG("unable to open file %s: %r");
+		return NULL;
+	}
+	n = 0;
+	s = 256;
+	buf = malloc(s * sizeof(char));
+	if (buf == NULL) {
+		DBG("unable to allocate memory: %r");
+		close(fd);
+		return NULL;
+	}
+	for (;;) {
+		r = read(fd, buf+n, s-n);
+		if (r == 0)
+			break;
+		if (r == -1) {
+			free(buf);
+			return NULL;
+		}
+		n += r;
+		if (n == s) {
+			s *= 1.5;
+			buf = realloc(buf, s*sizeof(char));
+		}
+	}
+	buf[n] = '\0';
+	*size = n;
+	close(fd);
+	return buf;
+}
+
 
 int
 send_to_plumber(const char *text)
