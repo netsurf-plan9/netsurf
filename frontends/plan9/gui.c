@@ -32,6 +32,7 @@
 #include "content/backing_store.h"
 #include "desktop/search.h"
 #include "desktop/searchweb.h"
+#include "desktop/browser_history.h"
 #include "plan9/menus.h"
 #include "plan9/bookmarks.h"
 #include "plan9/search.h"
@@ -538,13 +539,72 @@ void scrollbar_mouse_event(Mouse m, void *data)
 	}
 }
 
+struct hentry_list
+{
+	struct history_entry **entries;
+	int size;
+	int count;
+};
+
+bool history_enumerate(const struct browser_window *bw,
+					int x0, int y0, int x1, int y1,
+					const struct history_entry *entry,
+					void *user_data)
+{
+	struct hentry_list *l;
+
+	l = user_data;
+	if (l->count >= l->size) {
+		l->size *= 1.5;
+		l->entries = realloc(l->entries, l->size * sizeof(struct history_entry*));
+	}
+	l->entries[l->count++] = entry;
+	return true;
+}
+
+void show_back_history_menu(struct gui_window *gw, Mouse m)
+{
+	struct hentry_list *l;
+	struct nsurl *u;
+	char **items;
+	Menu menu;
+	int n;
+
+	l = malloc(sizeof *l);
+	l->entries = calloc(16, sizeof *(l->entries));
+	l->size = 16;
+	l->count = 0;
+	browser_window_history_enumerate_back(gw->bw, history_enumerate, l);
+	if (l->count <= 0)
+		goto Error;
+	items = calloc(l->count + 1, sizeof *items);
+	for (n = 0; n < l->count; n++) {
+		items[n] = browser_window_history_entry_get_title(l->entries[n]);
+	}
+	menu.item = items;
+	n = emenuhit(3, &m, &menu);
+	if (n >= 0) {
+		u = browser_window_history_entry_get_url(l->entries[n]);
+		browser_window_navigate(gw->bw, u, NULL, BW_NAVIGATE_HISTORY,
+			NULL, NULL, NULL);
+	}
+	free(items);
+Error:
+	free(l->entries);
+	free(l);
+}
+
 void back_button_mouse_event(Mouse m, void *data)
 {
-	if (m.buttons&1 == 0) {
-		return;
-	}
-	if (browser_window_back_available(current->bw)) {
-		browser_window_history_back(current->bw);
+	struct gui_window *gw;
+
+	gw = data;
+	if (m.buttons&1) {
+		if (browser_window_back_available(gw->bw)) {
+			browser_window_history_back(gw->bw, false);
+		}
+	} else if (m.buttons&4) {
+		show_back_forward_history_menu(gw, m, 1);
 	}
 }
 
