@@ -110,7 +110,6 @@ OBJ=\
 	content/textsearch.$O\
 	content/no_backing_store.$O\
 	content/urldb.$O\
-	content/webfs.$O\
 	desktop/browser.$O\
 	desktop/browser_history.$O\
 	desktop/browser_window.$O\
@@ -163,6 +162,7 @@ OBJ=\
 	frontends/plan9/drawui/entry.$O \
 	frontends/plan9/drawui/toolbar.$O \
 	frontends/plan9/drawui/scrollbar.$O \
+	frontends/plan9/webfs.$O \
 
 DUKLIB=content/handlers/javascript/duktape/libduktape.$O.a
 DUKOBJ=\

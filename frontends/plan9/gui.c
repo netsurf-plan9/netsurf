@@ -610,7 +610,7 @@ void back_button_mouse_event(Mouse m, void *data)
 			browser_window_history_back(gw->bw, false);
 		}
 	} else if (m.buttons&4) {
-		show_back_forward_history_menu(gw, m, 1);
+		show_back_history_menu(gw, m);
 	}
 }
 
