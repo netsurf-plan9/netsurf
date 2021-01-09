@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <draw.h>
 #include "utils/errors.h"
 #include "utils/nsurl.h"
+#include "utils/sys_time.h"
 #include "netsurf/misc.h"
 #include "plan9/schedule.h"
 #include "plan9/utils.h"
@@ -13,65 +15,75 @@ struct Slist
 {
 	void (*cb)(void*);
 	void *p;
-	int t;
+	struct timeval tv;
 	Slist *next;
-	Slist *prev;
 };
 
 static Slist *schedlist;
 
 static nserror schedule_remove(void (*cb)(void*), void *p)
 {
-	Slist *s, *next;
+	Slist *cur, *prev, *del;
 
-	for(s = schedlist; s != NULL; s = next){
-		next = s->next;
-		if(s->cb==cb && s->p==p){
-			if(next != NULL)
-				next->prev = s->prev;
-			if(s->prev != NULL)
-				s->prev->next = next;
-			else
-				schedlist = next;
-			free(s);
+	if (schedlist == NULL) {
+		return NSERROR_OK;
+	}
+	cur = schedlist;
+	prev = NULL;
+	while (cur != NULL) {
+		if ((cur->cb == cb) && (cur->p == p)) {
+			del = cur;
+			cur = del->next;
+			if (prev == NULL) {
+				schedlist = cur;
+			} else {
+				prev->next = cur;
+			}
+			free(del);
+		} else {
+			prev = cur;
+			cur = prev->next;
 		}
 	}
 	return NSERROR_OK;
 }
 
-void schedule_run(void)
+int schedule_run(void)
 {
-	Slist *s, *next, *old;
+	Slist *cur, *prev, *del;
+	struct timeval tv, nexttime, rettime;
 
-	old = schedlist;
-	schedlist = NULL;
-
-	for(s = old; s != NULL; s = next){
-		next = s->next;
-		if(s->t <= SCHEDULE_PERIOD){
-			if(next != NULL)
-				next->prev = s->prev;
-			if(s->prev != NULL)
-				s->prev->next = next;
-			else
-				old = next;
-			s->cb(s->p);
-			free(s);
-		}else{
-			s->t -= SCHEDULE_PERIOD;
-		}
-	}
-
-	/* newly added tasks: put them into scheduler again */
-	if (old != NULL) {
-		for (s = schedlist; s != NULL && s->next != NULL; s = s->next);
-		if (s != NULL) {
-			s->next = old;
-			old->prev = s;
+	if (schedlist == NULL)
+		return -1;
+	cur = schedlist;
+	prev = NULL;
+	nexttime = cur->tv;
+	gettimeofday(&tv, NULL);
+	while (cur != NULL) {
+		if (timercmp(&tv, &cur->tv, >)) {
+			del = cur;
+			if (prev == NULL) {
+				schedlist = del->next;
+			} else {
+				prev->next = del->next;
+			}
+			del->cb(del->p);
+			free(del);
+			if (schedlist == NULL) /* no more callbacks */
+				return -1;
+			cur = schedlist;
+			prev = NULL;
+			nexttime = cur->tv;
 		} else {
-			schedlist = old;
+			if (timercmp(&nexttime, &cur->tv, >)) {
+				nexttime = cur->tv;
+			}
+			prev = cur;
+			cur = prev->next;
 		}
 	}
+	timersub(&nexttime, &tv, &rettime);
+	return (rettime.tv_sec*1000 + rettime.tv_usec/1000);
 }
 
 /**
@@ -94,17 +106,19 @@ nserror misc_schedule(int t, void cb(void *p), void *p)
 {
 	Slist *s;
 	nserror err;
+	struct timeval tv;
 
 	err = schedule_remove(cb, p);
 	if(t < 0)
 		return err;
+	tv.tv_sec  = t/1000;
+	tv.tv_usec = (t%1000)*1000;
 	s = calloc(1, sizeof(Slist));
 	s->cb = cb;
 	s->p  = p;
-	s->t  = t;
+	gettimeofday(&s->tv, NULL);
+	timeradd(&s->tv, &tv, &s->tv);
 	s->next = schedlist;
-	if(schedlist != NULL)
-		schedlist->prev = s;
 	schedlist = s;
 	return NSERROR_OK;
 }

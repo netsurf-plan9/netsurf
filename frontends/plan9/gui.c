@@ -238,33 +238,38 @@ static void drawui_run(void)
 	enum { Eplumb = 128 };
 	Plumbmsg *pm;
 	Event ev;
-	int e, timer;
+	int e, t, i, s;
+	ulong keys;
+	fd_set rs, ws, es;
+	int maxfd;
 
-	timer = etimer(0, SCHEDULE_PERIOD);
+	keys = (Emouse|Ekeyboard|Eplumb);
 	eresized(0);
 	eplumb(Eplumb, "web");
 	for(;;){
-		e = event(&ev);
-		switch(e){
-		default:
-			if(e == timer)
-				schedule_run();
-			break;
-		case Eplumb:
-			pm = ev.v;
-			if (pm->ndata > 0) {
-				if(!plumbed_to_page(pm->data)) {
-					url_entry_activated(strdup(pm->data), current);
+		t = schedule_run();
+		_SLEEP(10);
+		while(ecanread(keys)) {
+			e = eread(keys, &ev);
+			switch(e){
+			case Eplumb:
+				pm = ev.v;
+				if (pm->ndata > 0) {
+					if(!plumbed_to_page(pm->data)) {
+						url_entry_activated(strdup(pm->data), current);
+					}
 				}
+				plumbfree(pm);
+				break;
+			case Ekeyboard:
+				dwindow_keyboard_event(current->dw, ev);
+				break;
+			case Emouse:
+				dwindow_mouse_event(current->dw, ev);
+				break;
 			}
-			plumbfree(pm);
-			break;
-		case Ekeyboard:
-			dwindow_keyboard_event(current->dw, ev);
-			break;
-		case Emouse:
-			dwindow_mouse_event(current->dw, ev);
-			break;
+			if (!ecanread(keys))
+				flushimage(display, 1);
 		}
 	}
 }
