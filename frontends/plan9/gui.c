@@ -99,9 +99,16 @@ static nserror init_options(int argc, char *argv[])
 	}
 	options = userdir_file("options");
 	nsoption_read(options, nsoptions);
+	/* set default options */
+	if (access(options, F_OK) < 0) {
+		nsoption_set_int(max_fetchers, 44);
+		nsoption_set_int(max_fetchers_per_host, 20);
+		nsoption_set_bool(animate_images, true);
+		nsoption_set_bool(enable_javascript, false);
+		nsoption_set_charp(homepage_url, "about:welcome");
+	}
 	free(options);
 	nsoption_commandline(&argc, argv, nsoptions);
-	nsoption_set_bool(animate_images, false);
 	return NSERROR_OK;
 }
 
