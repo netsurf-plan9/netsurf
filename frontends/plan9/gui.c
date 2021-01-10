@@ -1,4 +1,5 @@
 #include <u.h>
+#include <lib9.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -62,7 +63,6 @@ static void browser_mouse_event(Mouse, void*);
 static void browser_keyboard_event(int, void*);
 
 char **respaths;
-static char *argv0;
 static struct gui_window *current = NULL;
 
 static bool nslog_stream_configure(FILE *fptr)
@@ -71,6 +71,21 @@ static bool nslog_stream_configure(FILE *fptr)
 	setbuf(fptr, NULL);
 
 	return true;
+}
+
+static void init_log(bool verbose)
+{
+	int argc;
+	char *argv[] = { argv0, "-v", 0 };
+
+	argc = 1;
+	if (verbose) {
+		++argc;
+	}
+	nslog_init(nslog_stream_configure, &argc, argv);
+	if (log_debug) {
+		nslog_stream_configure(stderr);
+	}
 }
 
 static char** init_resource_paths(void)
@@ -88,7 +103,7 @@ static char** init_resource_paths(void)
 	return respath;
 }
 
-static nserror init_options(int argc, char *argv[])
+static nserror init_options(void)
 {
 	nserror ret;
 	char *options;
@@ -108,7 +123,6 @@ static nserror init_options(int argc, char *argv[])
 		nsoption_set_charp(homepage_url, "about:welcome");
 	}
 	free(options);
-	nsoption_commandline(&argc, argv, nsoptions);
 	return NSERROR_OK;
 }
 
@@ -203,8 +217,8 @@ static nserror drawui_init(int argc, char *argv[])
 	data_init();
 
 	addr = NULL;
-	if (argc > 1) {
-		addr = argv[1];
+	if (argc > 0) {
+		addr = argv[0];
 	} else if ((nsoption_charp(homepage_url) != NULL) && 
 	    	   (nsoption_charp(homepage_url)[0] != '\0')) {
 		addr = nsoption_charp(homepage_url);
@@ -688,6 +702,7 @@ main(int argc, char *argv[])
 	nserror ret;
 	char *path;
 	char *cachedir = "/tmp/nscache";
+	bool verbose;
 	struct netsurf_table plan9_table = {
 		.misc = &misc_table,
 		.window = plan9_window_table,
@@ -700,26 +715,37 @@ main(int argc, char *argv[])
 		.llcache = filesystem_llcache_table,
 	};
 
+	verbose = false;
+	ARGBEGIN {
+	case 'd':
+		log_debug = true;
+		break;
+	case 'v':
+		verbose = true;
+		break;
+	default:
+		fprintf(stderr, "usage: %s [-dv] [url]\n", argv0);
+		exit(1);
+	} ARGEND
+
 	if (stat("/mnt/web", &sb) != 0 || !S_ISDIR(sb.st_mode)) {
 		fprintf(stderr, "webfs not started\n");
 		exit(1);
 	}
-
-	argv0 = argv[0];
 
 	ret = netsurf_register(&plan9_table);
 	if(ret != NSERROR_OK) {
 		sysfatal("netsurf_register failed: %s\n", messages_get_errorcode(ret));
 	}
 
-	nslog_init(nslog_stream_configure, &argc, argv);
+	init_log(verbose);
 
 	respaths = init_resource_paths();
 	if(respaths == NULL) {
 		sysfatal("unable to initialize resource paths");
 	}
 
-	ret = init_options(argc, argv);
+	ret = init_options();
 	if(ret != NSERROR_OK) {
 		sysfatal("unable to initialize options: %s\n", messages_get_errorcode(ret));
 	}
