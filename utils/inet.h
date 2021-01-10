@@ -35,7 +35,11 @@
 
 #ifdef HAVE_POSIX_INET_HEADERS
 
-#include <sys/socket.h>
+#ifdef _PLAN9
+	#include <socket_nobind.h>
+#else
+	#include <sys/socket.h>
+#endif
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/select.h>
