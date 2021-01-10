@@ -1,6 +1,8 @@
 #ifndef NETSURF_PLAN9_UTILS_H
 #define NETSURF_PLAN9_UTILS_H
 
+extern bool log_debug;
+
 /* 
  * returns the full path of _filename_ 
  * in user configuration directory

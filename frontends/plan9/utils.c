@@ -10,7 +10,7 @@
 #include "utils/filepath.h"
 #include "plan9/utils.h"
 
-static int debug = 0;
+bool log_debug = false;
 
 static char* userdir(void)
 {
@@ -38,7 +38,7 @@ char* userdir_file(char *filename)
 	snprint(buf, sizeof buf, "%s/lib/netsurf/%s", home, filename);
 	ret = netsurf_mkdir_all(buf);
 	if (ret != NSERROR_OK) {
-		fprintf(stderr, "unable to create %s/lib/netsurf: %s\n", path, messages_get_errorcode(ret));
+		fprintf(stderr, "unable to create %s/lib/netsurf: %s\n", home, messages_get_errorcode(ret));
 		return NULL;
 	}
 	path = strdup(buf);
@@ -114,13 +114,13 @@ exec_netsurf(const char *cmd, const char *url)
 void
 DBG(const char *format, ...)
 {
-	char buf[1024];
 	va_list ap;
 
-	if(!debug)
+	if(!log_debug)
 		return;
+	fprintf(stderr, "(debug) ");
 	va_start(ap, format);
-	vsnprintf(buf, sizeof buf - 1, format, ap);
+	vfprintf(stderr, format, ap);
 	va_end(ap);
-	fprintf(stderr, "(debug) %s\n", buf);
+	fprintf(stderr, "\n");
 }
