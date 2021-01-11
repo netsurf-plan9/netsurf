@@ -264,7 +264,7 @@ struct nsurl* ehistory(const struct browser_window *bw)
 		case Emouse:
 			dbutton_mouse_event(close_button, ev);
 			if ((ev.mouse.buttons & 1) && ptinrect(ev.mouse.xy, listr)) {
-				n = (ev.mouse.xy.y - listr.min.y) / lineh;
+				n = offset + (ev.mouse.xy.y - listr.min.y) / lineh;
 				if (n < nentries) {
 					selurl = entries[n]->url;
 					done = 1;
