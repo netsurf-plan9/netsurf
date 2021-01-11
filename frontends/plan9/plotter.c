@@ -389,7 +389,7 @@ nserror plotter_path(
 			vpath_close(&vp);
 			i += 1;
 		} else if (p[i] == PLOTTER_PATH_LINE) {
-			p0 = transformpt(p[i+1], p[i+2], transform);
+			p1 = transformpt(p[i+1], p[i+2], transform);
 			vpath_line_to(&vp, p1);
 			i += 3;
 		} else if (p[i] == PLOTTER_PATH_BEZIER) {
