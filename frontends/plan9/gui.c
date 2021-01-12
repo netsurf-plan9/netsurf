@@ -298,9 +298,13 @@ static void drawui_run(void)
 
 void drawui_exit(int status)
 {
-	struct browser_window *bw = current->bw;
-	current->bw = NULL;
-	browser_window_destroy(bw);
+	struct browser_window *bw;
+
+	if (current != NULL) {
+		bw = current->bw;
+		current->bw = NULL;
+		browser_window_destroy(bw);
+	}
 	save_cookies();
 	save_history();
 	search_web_finalise();
