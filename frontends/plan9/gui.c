@@ -410,6 +410,21 @@ static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 	}
 }
 
+/* http://fqa.9front.org/fqa8.html#8.2.4 */
+static void gui_window_galaxy_scroll(struct gui_window *gw, Mouse m, int x, int y)
+{
+	Rectangle r;
+	int dy;
+
+	r = dwindow_get_view_rect(gw->dw);
+	dy = m.xy.y - r.min.y;
+	if (m.buttons&8) {
+		gui_window_scroll_y(gw, x, y, -dy);
+	} else if (m.buttons&16) {
+		gui_window_scroll_y(gw, x, y, dy);
+	}
+}
+
 void browser_mouse_event(Mouse m, void *data)
 {
 	static Mouse lastm;
@@ -460,10 +475,8 @@ void browser_mouse_event(Mouse m, void *data)
 		menu2hit(gw, &m, (err == NSERROR_OK) ? &features : NULL);
 	} else if (m.buttons & 4) {
 		menu3hit(gw, &m);
-	} else if (m.buttons&8) {
-		gui_window_scroll_y(current, x, y, -100);
-	} else if (m.buttons&16) {
-		gui_window_scroll_y(current, x, y, 100);
+	} else if ((m.buttons&8) || (m.buttons&16)) {
+		gui_window_galaxy_scroll(current, m, x, y);
 	}
 	browser_window_mouse_track(current->bw, mouse, x, y);
 }
