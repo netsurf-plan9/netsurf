@@ -6,6 +6,7 @@ void data_init(void);
 /* colors */
 extern Image *bg_color;
 extern Image *fg_color;
+extern Image *sel_color;
 extern Image *scroll_bg_color;
 extern Image *focus_color;
 extern Image *back_button_focus_color;

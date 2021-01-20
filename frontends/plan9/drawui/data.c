@@ -7,6 +7,7 @@
 /* colors */
 Image *bg_color;
 Image *fg_color;
+Image *sel_color;
 Image *scroll_bg_color;
 Image *focus_color;
 Image *back_button_focus_color;
@@ -244,6 +245,7 @@ void data_init(void)
 
 	bg_color = display->white;
 	fg_color = display->black;
+	sel_color = allocimage(display, Rect(0,0,1,1), screen->chan, 1, 0xCCCCCCFF);
 	scroll_bg_color = allocimage(display, Rect(0,0,1,1), screen->chan, 1, 0x999999FF);
 	focus_color = allocimage(display, Rect(0,0,1,1), screen->chan, 1, DGreygreen);
 	back_button_focus_color = focus_color;

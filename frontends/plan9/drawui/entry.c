@@ -106,7 +106,7 @@ void dentry_draw(dentry *entry)
 		sels = min(entry->pos, entry->pos2);
 		sele = max(entry->pos, entry->pos2);
 		p.x += stringnwidth(font, entry->text, sels);
-		stringnbg(screen, p, bg_color, ZP, font, entry->text+sels, sele-sels, fg_color, ZP);
+		stringnbg(screen, p, fg_color, ZP, font, entry->text+sels, sele-sels, sel_color, ZP);
 	} else if (entry->state & STATE_FOCUSED) {
 		entry->tick_x = stringnwidth(font, entry->text, entry->pos);
 		p.x += entry->tick_x;
