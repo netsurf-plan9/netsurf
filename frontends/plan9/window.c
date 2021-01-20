@@ -372,6 +372,8 @@ window_place_caret(struct gui_window *g, int x, int y, int height, const struct 
 	Rectangle r;
 	int sx, sy;
 
+	window_remove_caret(g);
+
 	g->caret = Pt(x, y);
 	g->caret_height = height;
 
