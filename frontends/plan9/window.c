@@ -147,7 +147,6 @@ window_set_scroll(struct gui_window *gw, const struct rect *rect)
 			dwindow_set_scroll(gw->dw, rect->x0, rect->y0);
 		else
 			dwindow_set_scroll(gw->dw, 0, rect->y0);
-		gui_window_redraw(gw, gw->b->r);
 	}
 	return NSERROR_OK;
 }
