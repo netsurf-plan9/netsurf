@@ -370,6 +370,9 @@ void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 		.priv = gw->b,
 	};
 
+	if (browser_window_redraw_ready(gw->bw) == false) {
+		return;
+	}
 	clipr = dwindow_rect_in_view_rect(gw->dw, clipr);
 	r = dwindow_get_view_rect(gw->dw);
 	clip.x0 = 0;
@@ -386,7 +389,6 @@ void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 	}
 	replclipr(screen, 0, clipr);
 	draw(screen, r, gw->b, 0, ZP);
-	dwindow_draw(gw->dw);
 }
 
 void gui_window_resize(struct gui_window *gw)
@@ -399,6 +401,7 @@ void gui_window_resize(struct gui_window *gw)
 	gw->b = allocimage(display, Rect(0, 0, Dx(r), Dy(r)), XBGR32, 0, DWhite);
 	browser_window_schedule_reformat(gw->bw);
 	gui_window_redraw(gw, gw->b->r);
+	dwindow_draw(gw->dw);
 }
 
 static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
