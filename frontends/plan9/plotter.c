@@ -175,18 +175,13 @@ plotter_arc(const struct redraw_context *ctx,
 	Image *b;
 	Image *c;
 	Point p;
-	int t;
 
 	b = ctx->priv;
-	if ((c = getcolor(pstyle->stroke_colour)) == NULL)
+	if ((c = getcolor(pstyle->fill_colour)) == NULL)
 		return NSERROR_NOMEM;
-	t = plot_style_fixed_to_int(pstyle->stroke_width);
 	p = Pt(x, y);
-	if(pstyle->fill_type != PLOT_OP_TYPE_NONE){
-		fillarc(b, p, radius, radius, c, ZP, angle1, angle2);
-	} else {
-		arc(b, p, radius, radius, t, c, ZP, angle1, angle2);
-	}
+	if(pstyle->fill_type != PLOT_OP_TYPE_NONE)
+		arc(b, p, radius, radius, 0, c, ZP, angle1, angle2);
 	return NSERROR_OK;
 }
 
@@ -215,13 +210,16 @@ plotter_disc(const struct redraw_context *ctx,
 	int t;
 
 	b = ctx->priv;
-	if ((c = getcolor(pstyle->stroke_colour)) == NULL)
-		return NSERROR_NOMEM;
-	t = plot_style_fixed_to_int(pstyle->stroke_width);
+	t = plot_style_fixed_to_int(pstyle->stroke_width / 2);
 	p = Pt(x, y);
 	if(pstyle->fill_type != PLOT_OP_TYPE_NONE){
+		if((c = getcolor(pstyle->fill_colour)) == NULL)
+			return NSERROR_NOMEM;
 		fillellipse(b, p, radius, radius, c, ZP);
-	} else {
+	}
+	if(pstyle->stroke_type != PLOT_OP_TYPE_NONE){
+		if((c = getcolor(pstyle->stroke_colour)) == NULL)
+			return NSERROR_NOMEM;
 		ellipse(b, p, radius, radius, t, c, ZP);
 	}
 	return NSERROR_OK;
@@ -252,7 +250,7 @@ plotter_line(const struct redraw_context *ctx,
 	b = ctx->priv;
 	if ((c = getcolor(pstyle->stroke_colour)) == NULL)
 		return NSERROR_NOMEM;
-	t = plot_style_fixed_to_int(pstyle->stroke_width);
+	t = plot_style_fixed_to_int(pstyle->stroke_width / 2);
 	p0 = Pt(l->x0, l->y0);
 	p1 = Pt(l->x1, l->y1);
 	line(b, p0, p1, 0, 0, t, c, ZP);
@@ -280,8 +278,10 @@ plotter_rectangle(const struct redraw_context *ctx,
 	Image *b;
 	Rectangle r;
 	Image *c;
+	int t;
 
 	b = ctx->priv;
+	t = plot_style_fixed_to_int(pstyle->stroke_width / 2);
 	r = Rect(rectangle->x0, rectangle->y0, rectangle->x1, rectangle->y1);
 	if (pstyle->fill_type != PLOT_OP_TYPE_NONE) {
 		if ((c = getcolor(pstyle->fill_colour)) == NULL)
@@ -291,7 +291,7 @@ plotter_rectangle(const struct redraw_context *ctx,
 	if (pstyle->stroke_type != PLOT_OP_TYPE_NONE) {
 		if ((c = getcolor(pstyle->stroke_colour)) == NULL)
 			return NSERROR_NOMEM;
-		border(b, r, pstyle->stroke_width, c, ZP);
+		border(b, r, t, c, ZP);
 	}
 	return NSERROR_OK;
 }
@@ -404,7 +404,7 @@ nserror plotter_path(
 	}
 	b = ctx->priv;
 	c = NULL;
-	w = plot_style_fixed_to_int(pstyle->stroke_width);
+	w = plot_style_fixed_to_int(pstyle->stroke_width / 2);
 	if (pstyle->stroke_colour != NS_TRANSPARENT) {
 		if ((c = getcolor(pstyle->stroke_colour)) == NULL)
 			return NSERROR_NOMEM;
