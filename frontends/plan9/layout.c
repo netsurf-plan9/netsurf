@@ -71,10 +71,10 @@ Font* getfont(const plot_font_style_t *fstyle)
 	else
 		s = FONT_SIZE_HUGE;
 
-	if(fstyle->family == PLOT_FONT_FAMILY_MONOSPACE)
-		t = FONT_MONO;
 	if(fstyle->weight >= 500)
 		t = FONT_BOLD;
+	else if(fstyle->family == PLOT_FONT_FAMILY_MONOSPACE)
+		t = FONT_MONO;
 	else if(fstyle->flags == FONTF_ITALIC || fstyle->flags == FONTF_OBLIQUE)
 		t = FONT_ITALIC;
 	else
