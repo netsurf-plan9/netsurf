@@ -373,12 +373,12 @@ void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 	if (browser_window_redraw_ready(gw->bw) == false) {
 		return;
 	}
+	clip.x0 = clipr.min.x;
+	clip.y0 = clipr.min.y;
+	clip.x1 = clipr.max.x;
+	clip.y1 = clipr.max.y;
 	clipr = dwindow_rect_in_view_rect(gw->dw, clipr);
 	r = dwindow_get_view_rect(gw->dw);
-	clip.x0 = 0;
-	clip.y0 = 0;
-	clip.x1 = Dx(r);
-	clip.y1 = Dy(r);
 	x = dwindow_get_scroll_x(gw->dw);
 	y = dwindow_get_scroll_y(gw->dw);
 	browser_window_redraw(gw->bw, -x, -y, &clip, &ctx);
