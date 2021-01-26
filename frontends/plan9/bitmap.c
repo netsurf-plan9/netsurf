@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <draw.h>
 #include "utils/errors.h"
+#include "utils/utils.h"
 #include "netsurf/bitmap.h"
 #include "netsurf/content.h"
 #include "netsurf/plotters.h"
@@ -220,9 +221,8 @@ bitmap_modified(void *bitmap)
 nserror
 bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 {
-/* XXX: what is this used for ? */
 	Image *i;
-	int w, h;
+	int w, h, iw, ih;
 	uint8_t *data;
 	size_t sz;
 	struct redraw_context ctx = {
@@ -230,8 +230,13 @@ bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 		.background_images = true,
 		.plot = plan9_plotter_table,
 	};
-	w = content_get_width(content);
-	h = content_get_height(content);
+
+	/* ensure that target bitmap is no wider than 1024px
+	   to not impact performances */
+	iw = bitmap_get_width(bitmap);
+	ih = bitmap_get_height(bitmap);
+	w = min(max(content_get_width(content), iw), 1024);
+	h = ((w * ih) + (iw / 2)) / iw;
 	i = getimage(bitmap, w, h);
 	if (i == NULL) {
 		return NSERROR_INVALID;
