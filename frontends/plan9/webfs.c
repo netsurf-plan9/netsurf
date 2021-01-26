@@ -258,6 +258,7 @@ static void handle_error(struct webfs_fetch *f, char *path, char *err)
 	int len;
 	long code;
 
+	p = NULL;
 	code = 0;
 	len = strlen(path);
 	/* HTTP error returned from webfs with format:
@@ -267,21 +268,23 @@ static void handle_error(struct webfs_fetch *f, char *path, char *err)
 		p = err+1+len+1+1;
 		code = strtol(p, NULL, 10);
 	}
+	/* message needs to be sent after start so we add the fetch 
+	 * to the fetch list. It will be processed during the next
+	 * webfs_poll() call and handled appropriately 
+	 */
 	switch (code) {
 	case 304:
 		fetch_set_http_code(f->parent, code);
 		f->state = Snotmodified;
-		/* message needs to be sent after start so add to fetch list*/
 		fetch_list_add(f);
 		break;
 	case 0:
 		code = 400;
 	default:
-		DBG("[handle_error] unable to open %s: %s", nsurl_access(f->url), err);
 		fetch_set_http_code(f->parent, code);
-		msg.type = FETCH_ERROR;
-		msg.data.error = err;
-		fetch_send_callback(&msg, f->parent);
+		f->state = Serror;
+		f->data = p != NULL ? p : err;
+		fetch_list_add(f);
 		break;
 	}
 }
@@ -490,6 +493,10 @@ static void webfs_poll(lwc_string *scheme)
 			fetch_send_callback(&msg, l->fetch->parent);
 		} else if (l->fetch->state == Sredirect) {
 			msg.type = FETCH_REDIRECT;
+			msg.data.redirect = l->fetch->data;
+			fetch_send_callback(&msg, l->fetch->parent);
+		} else if (l->fetch->state == Serror) {
+			msg.type = FETCH_ERROR;
 			msg.data.redirect = l->fetch->data;
 			fetch_send_callback(&msg, l->fetch->parent);
 		}
