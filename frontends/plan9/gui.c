@@ -737,6 +737,9 @@ main(int argc, char *argv[])
 
 	verbose = false;
 	ARGBEGIN {
+	case 'C':
+		cachedir = NULL;
+		break;
 	case 'd':
 		log_debug = true;
 		break;
@@ -744,7 +747,7 @@ main(int argc, char *argv[])
 		verbose = true;
 		break;
 	default:
-		fprintf(stderr, "usage: %s [-dv] [url]\n", argv0);
+		fprintf(stderr, "usage: %s [-Cdv] [url]\n", argv0);
 		exit(1);
 	} ARGEND
 
@@ -785,7 +788,7 @@ main(int argc, char *argv[])
 		fprintf(stderr, "unable to initialize cookies: %s\n", messages_get_errorcode(ret));
 	}
 
-	if (stat(cachedir, &sb) != 0 || !S_ISDIR(sb.st_mode)) {
+	if (cachedir != NULL && (stat(cachedir, &sb) != 0 || !S_ISDIR(sb.st_mode))) {
 		mkdir(cachedir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	}
 	ret = netsurf_init(cachedir);
