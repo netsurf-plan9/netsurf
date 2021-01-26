@@ -389,7 +389,7 @@ browser_window_history_add(struct browser_window *bw,
 			LOCAL_HISTORY_WIDTH, LOCAL_HISTORY_HEIGHT,
 			BITMAP_NEW | BITMAP_CLEAR_MEMORY | BITMAP_OPAQUE);
 	if (entry->page.bitmap != NULL) {
-		ret = guit->bitmap->render(entry->page.bitmap, content);
+//		ret = guit->bitmap->render(entry->page.bitmap, content);
 		if (ret != NSERROR_OK) {
 			/* Thumbnail render failed */
 			NSLOG(netsurf, WARNING, "Thumbnail render failed");
@@ -452,7 +452,7 @@ nserror browser_window_history_update(struct browser_window *bw,
 	history->current->page.title = title;
 
 	if (history->current->page.bitmap != NULL) {
-		guit->bitmap->render(history->current->page.bitmap, content);
+//		guit->bitmap->render(history->current->page.bitmap, content);
 	}
 
 	if (bw->window != NULL &&
