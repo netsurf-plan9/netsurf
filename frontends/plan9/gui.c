@@ -721,7 +721,7 @@ main(int argc, char *argv[])
 	nsurl *url;
 	nserror ret;
 	char *path;
-	char *cachedir = "/tmp/nscache";
+	char *cachedir;
 	bool verbose;
 	struct netsurf_table plan9_table = {
 		.misc = &misc_table,
@@ -735,10 +735,11 @@ main(int argc, char *argv[])
 		.llcache = filesystem_llcache_table,
 	};
 
+	cachedir = NULL;
 	verbose = false;
 	ARGBEGIN {
-	case 'C':
-		cachedir = NULL;
+	case 'c':
+		cachedir = "/tmp/nscache";
 		break;
 	case 'd':
 		log_debug = true;
@@ -747,7 +748,7 @@ main(int argc, char *argv[])
 		verbose = true;
 		break;
 	default:
-		fprintf(stderr, "usage: %s [-Cdv] [url]\n", argv0);
+		fprintf(stderr, "usage: %s [-cdv] [url]\n", argv0);
 		exit(1);
 	} ARGEND
 
