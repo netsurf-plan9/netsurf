@@ -196,9 +196,9 @@ int dwindowry_scroll(struct dwindow *window, int sx, int sy)
 	return dscrollbar_try_scroll(window->scrollbar, sx, sy);
 }
 
-void dwindow_set_scroll(struct dwindow *window, int sx, int sy)
+int dwindow_set_scroll(struct dwindow *window, int sx, int sy)
 {
-	dscrollbar_set_scroll(window->scrollbar, sx, sy);
+	return dscrollbar_set_scroll(window->scrollbar, sx, sy);
 }
 
 int dwindow_get_scroll_x(struct dwindow *window)

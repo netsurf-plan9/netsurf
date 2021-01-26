@@ -20,7 +20,7 @@ struct dscrollbar
 dscrollbar* dscrollbar_create(void);
 void dscrollbar_set_view_size(dscrollbar *sb, int x, int y);
 void dscrollbar_set_extents(dscrollbar *sb, int x, int y);
-void dscrollbar_set_scroll(dscrollbar *sb, int x, int y);
+int  dscrollbar_set_scroll(dscrollbar *sb, int x, int y);
 int  dscrollbar_try_scroll(dscrollbar *sb, int sx, int sy);
 void dscrollbar_set_rect(dscrollbar *sb, Rectangle r);
 void dscrollbar_draw(dscrollbar *sb);

@@ -37,38 +37,34 @@ void dscrollbar_set_extents(dscrollbar *sb, int x, int y)
 	dscrollbar_draw(sb);
 }
 
-void dscrollbar_set_scroll(dscrollbar *sb, int x, int y)
+int dscrollbar_set_scroll(dscrollbar *sb, int x, int y)
 {
-	sb->scrollx = x;
-	sb->scrolly = y;
-	dscrollbar_draw(sb);
-}
-
-int dscrollbar_try_scroll(dscrollbar *sb, int sx, int sy)
-{
-	int ex, ey, ox, oy;
+	int ex, ey;
 
 	if(sb->viewy == sb->extenty)
 		return 0;
 
-	ox = sb->scrollx + sx;
-	oy = sb->scrolly + sy;
-	ex = sb->extentx;
-	ey = sb->extenty;
-	if (oy < 0) { 
-		if(sb->scrolly == 0)
-			return 0;
-		oy = 0;
-	} else {
-		if(sb->viewy + oy == ey)
-			return 0;
-		if(oy > (sb->extenty - sb->viewy))
-			oy = sb->extenty - sb->viewy;
-	}
-	sb->scrollx = ox;
-	sb->scrolly = oy;
+	ex = sb->extentx - sb->viewx;
+	ey = sb->extenty - sb->viewy;
+	if(x < 0)
+		x = 0;
+	if(x > ex)
+		x = ex;
+	if(y < 0)
+		y = 0;
+	if(y > ey)
+		y = ey;
+	if(x == sb->scrollx && y == sb->scrolly)
+		return 0;
+	sb->scrollx = x;
+	sb->scrolly = y;
 	dscrollbar_draw(sb);
 	return 1;
+}
+
+int dscrollbar_try_scroll(dscrollbar *sb, int sx, int sy)
+{
+	return dscrollbar_set_scroll(sb, sb->scrollx + sx, sb->scrolly + sy);
 }
 
 void dscrollbar_set_mouse_callback(dscrollbar *sb, void(*mouse_cb)(Mouse, void*), void *data)
