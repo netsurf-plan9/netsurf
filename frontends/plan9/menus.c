@@ -152,7 +152,7 @@ static char* menu2gen(int index)
 	char buf[1025] = {0};
 
 	if (index == Msearchnext) {
-		if (search_has_next() == false)
+		if (search_has_next() == false && search_should_wrap() == false)
 			return NULL;
 		snprintf(buf, sizeof buf, "/%s", search_text());
 		return buf;
@@ -201,7 +201,13 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 		}
 		break;
 	case Msearchnext:
-		search_next(gw);
+		if (search_should_wrap() == true) {
+			strcpy(buf, search_text());
+			search_reset(gw);
+			search(gw, buf);
+		} else {
+			search_next(gw);
+		}
 		break;
 	case Mcut:
 		browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);

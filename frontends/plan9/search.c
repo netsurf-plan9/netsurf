@@ -32,6 +32,11 @@ bool search_has_next(void)
 	return found && has_next;
 }
 
+bool search_should_wrap(void)
+{
+	return found && !has_next;
+}
+
 void search_next(struct gui_window *gw)
 {
 	browser_window_search(gw->bw, gw, SEARCH_FLAG_FORWARDS, search_buf);
