@@ -413,21 +413,6 @@ static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
 	}
 }
 
-/* http://fqa.9front.org/fqa8.html#8.2.4 */
-static void gui_window_galaxy_scroll(struct gui_window *gw, Mouse m, int x, int y)
-{
-	Rectangle r;
-	int dy;
-
-	r = dwindow_get_view_rect(gw->dw);
-	dy = m.xy.y - r.min.y;
-	if (m.buttons&8) {
-		gui_window_scroll_y(gw, x, y, -dy);
-	} else if (m.buttons&16) {
-		gui_window_scroll_y(gw, x, y, dy);
-	}
-}
-
 void browser_mouse_event(Mouse m, void *data)
 {
 	static Mouse lastm;
@@ -435,7 +420,7 @@ void browser_mouse_event(Mouse m, void *data)
 	struct gui_window *gw = data;
 	browser_mouse_state mouse = 0;;
 	Rectangle r;
-	int x, y, sx, sy, lx, ly;
+	int x, y, sx, sy, lx, ly, dy;
 	struct browser_window_features features;
 	browser_editor_flags eflags;
 	nserror err;
@@ -466,22 +451,22 @@ void browser_mouse_event(Mouse m, void *data)
 	if (m.buttons == 0) {
 		if((m.msec - lastm.msec < 250) && lastm.buttons & 1) {
 			lastm = m;
-			browser_window_mouse_click(current->bw, BROWSER_MOUSE_CLICK_1, x, y);
+			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_CLICK_1, x, y);
 		} else {
-			browser_window_mouse_track(current->bw, mouse, x, y);
+			browser_window_mouse_track(gw->bw, mouse, x, y);
 		}
 	} else if (m.buttons&1) {
 		lastm = m;
 		if (!in_sel) {
 			in_sel = 1;
-			browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
+			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_PRESS_1, x, y);
 		} else {
-			browser_window_mouse_track(current->bw, mouse, x, y);
+			browser_window_mouse_track(gw->bw, mouse, x, y);
 			eflags = browser_window_get_editor_flags(gw->bw);
 			if (m.buttons == (1|2)) {
 				/* surprinsigly, for readonly selection the editor flags
 				   only become valid after the second mouse track */
-				browser_window_mouse_track(current->bw, mouse, x, y);
+				browser_window_mouse_track(gw->bw, mouse, x, y);
 				eflags = browser_window_get_editor_flags(gw->bw);
 				if (eflags & BW_EDITOR_CAN_CUT)
 					browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
@@ -497,8 +482,12 @@ void browser_mouse_event(Mouse m, void *data)
 		menu2hit(gw, &m, (err == NSERROR_OK) ? &features : NULL);
 	} else if (m.buttons & 4) {
 		menu3hit(gw, &m);
-	} else if ((m.buttons&8) || (m.buttons&16)) {
-		gui_window_galaxy_scroll(current, m, x, y);
+	} else if (m.buttons & 8) {
+		dy = m.xy.y - r.min.y;
+		gui_window_scroll_y(gw, x, y, -dy);
+	} else if (m.buttons & 16) {
+		dy = m.xy.y - r.min.y;
+		gui_window_scroll_y(gw, x, y, dy);
 	}
 	browser_window_mouse_track(current->bw, mouse, x, y);
 }
