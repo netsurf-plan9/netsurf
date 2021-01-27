@@ -489,13 +489,21 @@ plotter_text(const struct redraw_context *ctx,
 	Point p;
 	Image *c;
 	Font *f;
+        uint32_t r;
+        size_t n;
 
+	n = 0;
 	b = ctx->priv;
 	f = getfont(fstyle);
 	p = Pt(x, y -f->ascent);
 	if ((c = getcolor(fstyle->foreground)) == NULL)
 		return NSERROR_NOMEM;
-	stringn(b, p, c, ZP, f, text, length);
+        while (n < length) {
+                r = utf8_to_ucs4(text + n, length - n);
+                n = utf8_next(text, length, n);
+                p = runestringn(b, p, c, ZP, f, &r, 1);
+        }
+
 	return NSERROR_OK;
 }
 
