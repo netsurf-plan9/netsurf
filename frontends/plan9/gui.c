@@ -437,6 +437,7 @@ void browser_mouse_event(Mouse m, void *data)
 	Rectangle r;
 	int x, y, sx, sy, lx, ly;
 	struct browser_window_features features;
+	browser_editor_flags eflags;
 	nserror err;
 
 	gw->m = m;
@@ -450,8 +451,10 @@ void browser_mouse_event(Mouse m, void *data)
 
 	if (m.buttons && in_sel && (abs(x - lastm.xy.x) > 5 || abs(y - lastm.xy.y) > 5)) {
 		if (m.buttons & 1) {
-			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_1, lx, ly);
-			mouse |= BROWSER_MOUSE_DRAG_ON | BROWSER_MOUSE_HOLDING_1;
+			if (m.buttons != (1|2)) {
+				browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_1, lx, ly);
+				mouse |= BROWSER_MOUSE_DRAG_ON | BROWSER_MOUSE_HOLDING_1;
+			}
 		} else if (m.buttons & 2) {
 			browser_window_mouse_click(gw->bw, BROWSER_MOUSE_DRAG_2, lx, ly);
 			mouse |= BROWSER_MOUSE_DRAG_ON | BROWSER_MOUSE_HOLDING_2;
@@ -472,6 +475,22 @@ void browser_mouse_event(Mouse m, void *data)
 		if (!in_sel) {
 			in_sel = 1;
 			browser_window_mouse_click(current->bw, BROWSER_MOUSE_PRESS_1, x, y);
+		} else {
+			browser_window_mouse_track(current->bw, mouse, x, y);
+			eflags = browser_window_get_editor_flags(gw->bw);
+			if (m.buttons == (1|2)) {
+				/* surprinsigly, for readonly selection the editor flags
+				   only become valid after the second mouse track */
+				browser_window_mouse_track(current->bw, mouse, x, y);
+				eflags = browser_window_get_editor_flags(gw->bw);
+				if (eflags & BW_EDITOR_CAN_CUT)
+					browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
+				else if (eflags & BW_EDITOR_CAN_COPY)
+					browser_window_key_press(gw->bw, NS_KEY_COPY_SELECTION);
+			} else if (m.buttons == (1|4)) {
+				if (eflags & BW_EDITOR_CAN_PASTE)
+					browser_window_key_press(gw->bw, NS_KEY_PASTE);
+			}
 		}
 	} else if (m.buttons & 2) {
 		err = browser_window_get_features(gw->bw, x, y, &features);
