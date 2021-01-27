@@ -166,6 +166,7 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 	char *s, *e;
 	size_t len;
 	int n, flags, fd;
+	browser_editor_flags eflags;
 
 	n = emenuhit(2, m, &menu2);
 	switch (n) {
@@ -210,7 +211,11 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 		}
 		break;
 	case Mcut:
-		browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
+		eflags = browser_window_get_editor_flags(gw->bw);
+		if (eflags & BW_EDITOR_CAN_CUT)
+			browser_window_key_press(gw->bw, NS_KEY_CUT_SELECTION);
+		else
+			browser_window_key_press(gw->bw, NS_KEY_COPY_SELECTION);
 		break;
 	case Mpaste:
 		browser_window_key_press(gw->bw, NS_KEY_PASTE);
