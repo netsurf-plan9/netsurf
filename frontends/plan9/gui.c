@@ -691,7 +691,7 @@ void url_entry_activated(char *text, void *data)
 	if (text == NULL || text[0] == 0) {
 		return;
 	}
-	error = nsurl_create(text, &url);
+	error = search_web_omni(text, SEARCH_WEB_OMNI_NONE, &url);
 	if (error == NSERROR_OK) {
 		browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_HISTORY,
 			NULL, NULL, NULL);
