@@ -163,6 +163,9 @@ static int send_request(int cfd, struct webfs_fetch *f)
 	size_t l;
 	struct fetch_multipart_data *part;
 
+	/* User-Agent */
+	write(cfd, "useragent curl/7.68.0", strlen("useragent curl/7.68.0"));
+
 	/* URL */
 	n = 3+1+strlen(nsurl_access(f->url))+1;
 	s = malloc(n*sizeof(char)); /* 'url <url>\0' */
@@ -556,7 +559,7 @@ static void webfs_finalise(lwc_string *scheme)
 			del = l;
 			l = del->next;
 			if (del->fetch != NULL)
-			webfs_free(del->fetch);
+				webfs_free(del->fetch);
 			free(del);
 		}
 	}
