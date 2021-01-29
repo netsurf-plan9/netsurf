@@ -191,11 +191,6 @@ int dwindow_get_extent_y(struct dwindow *window)
 	return window->scrollbar->extenty;
 }
 
-int dwindowry_scroll(struct dwindow *window, int sx, int sy)
-{
-	return dscrollbar_try_scroll(window->scrollbar, sx, sy);
-}
-
 int dwindow_set_scroll(struct dwindow *window, int sx, int sy)
 {
 	return dscrollbar_set_scroll(window->scrollbar, sx, sy);
