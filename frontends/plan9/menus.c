@@ -27,10 +27,6 @@ static char* menu3gen(int);
 
 char *menu2str[] =
 {
-	"orig size",
-	"zoom in",
-	"zoom out",
-	" ",
 	"export as image",
 	"export as text",
 	" ",
@@ -45,13 +41,9 @@ char *menu2str[] =
 
 enum
 {
-	Morigsize,
-	Mzoomin,
-	Mzoomout,
-	Msep,
 	Mexportimage,
 	Mexporttext,
-	Msep2,
+	Msep,
 	Mcut,
 	Mpaste,
 	Msnarf,
@@ -170,15 +162,6 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 
 	n = emenuhit(2, m, &menu2);
 	switch (n) {
-	case Morigsize:
-		browser_window_set_scale(gw->bw, 1.0, true);
-		break;
-	case Mzoomin:
-		browser_window_set_scale(gw->bw, 0.1, false);
-		break;
-	case Mzoomout:
-		browser_window_set_scale(gw->bw, -0.1, false);
-		break;
 	case Mexportimage:
 		if(eenter("Save as", buf, sizeof buf, m) > 0) {
 			fd = open(buf, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
