@@ -197,6 +197,9 @@ window_event(struct gui_window *gw, enum gui_window_event event)
 
 	//DBG("IN window_event - event=%d", event);
 	switch (event) {
+	case GW_EVENT_NEW_CONTENT:
+		esetcursor(NULL);
+		break;
 	case GW_EVENT_UPDATE_EXTENT:
 		if (browser_window_get_extents(gw->bw, true, &w, &h) == NSERROR_OK) {
 			dwindow_set_extents(gw->dw, w, h);
