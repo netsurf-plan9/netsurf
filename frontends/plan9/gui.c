@@ -1,5 +1,6 @@
 #include <u.h>
 #include <lib9.h>
+#include <float.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -760,7 +761,7 @@ main(int argc, char *argv[])
 		exit(1);
 	} ARGEND
 
-	setfcr(getfcr & ~(FPPDBL|FPINVAL|FPZDIV|FPOVFL));
+	setfcr(getfcr() & ~(FPPDBL|FPINVAL|FPZDIV|FPOVFL));
 	if (stat("/mnt/web", &sb) != 0 || !S_ISDIR(sb.st_mode)) {
 		fprintf(stderr, "webfs not started\n");
 		exit(1);
