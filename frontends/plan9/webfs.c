@@ -14,6 +14,7 @@
 #include "utils/corestrings.h"
 #include "utils/nsurl.h"
 #include "utils/string.h"
+#include "utils/useragent.h"
 #include "plan9/utils.h"
 
 enum
@@ -162,9 +163,6 @@ static int send_request(int cfd, struct webfs_fetch *f)
 	int i, n, fd;
 	size_t l;
 	struct fetch_multipart_data *part;
-
-	/* User-Agent */
-	write(cfd, "useragent curl/7.68.0", strlen("useragent curl/7.68.0"));
 
 	/* URL */
 	n = 3+1+strlen(nsurl_access(f->url))+1;
@@ -569,6 +567,8 @@ nserror webfs_register(void)
 {
 	nserror err;
 	lwc_string *scheme;
+	char *uas, *s;
+	int n, fd;
 	const struct fetcher_operation_table fetcher_ops = {
 		.initialise = webfs_initialise,
 		.finalise = webfs_finalise,
@@ -592,5 +592,14 @@ nserror webfs_register(void)
 		DBG("webfs_register: unable to register as HTTPS fetcher (%s)", messages_get_errorcode(err));
 		return err;
 	}
+
+	uas = user_agent_string();
+	n = strlen("useragent ") + strlen(uas) + 1;
+	s = malloc(n * sizeof(char));
+	n = snprintf(s, n, "useragent %s", uas);
+	fd = open("/mnt/web/ctl", O_WRONLY);
+	write(fd, s, n);
+	close(fd);
+
 	return NSERROR_OK;
 }
