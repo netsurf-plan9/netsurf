@@ -39,7 +39,6 @@ OBJ=\
 	content/content.$O\
 	content/content_factory.$O\
 	content/fetch.$O\
-#	content/fetchers/curl.$O\
 	content/fetchers/data.$O\
 	content/fetchers/resource.$O\
 	content/fetchers/file/dirlist.$O\
@@ -163,6 +162,7 @@ OBJ=\
 	frontends/plan9/drawui/toolbar.$O \
 	frontends/plan9/drawui/scrollbar.$O \
 	frontends/plan9/webfs.$O \
+	frontends/plan9/emenuhit.$O \
 
 DUKLIB=content/handlers/javascript/duktape/libduktape.$O.a
 DUKOBJ=\
@@ -475,7 +475,7 @@ content/handlers/javascript/duktape/duktape/%.c:Q: content/handlers/javascript/d
 content/handlers/javascript/duktape/duktape/%.inc:Q: content/handlers/javascript/duktape/duktape
 	# nothing to do
 
-content/handlers/javascript/duktape/duktape:
+content/handlers/javascript/duktape/duktape:V:
 	mkdir -p content/handlers/javascript/duktape/duktape
 	dircp ../genfiles/netsurf/duktape content/handlers/javascript/duktape/duktape
 

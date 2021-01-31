@@ -22,6 +22,7 @@
 #include "plan9/menus.h"
 #include "plan9/utils.h"
 
+extern int esepmenuhit(int but, Mouse *m, Menu *menu);
 extern void drawui_exit(int);
 static char* menu3gen(int); 
 
@@ -29,7 +30,7 @@ char *menu2str[] =
 {
 	"export image",
 	"export text",
-	" ",
+	"-",
 	"cut",
 	"paste",
 	"snarf",
@@ -76,8 +77,8 @@ Menu menu2l = { menu2lstr };
 char *menu2istr[] =
 {
 	"open in page",
-	"snarf url",
-	"plumb url",
+	"snarf image url",
+	"plumb image url",
 	0,
 };
 
@@ -91,25 +92,26 @@ Menu menu2i = { menu2istr };
 
 char *menu2ilstr[] =
 {
+	"snarf url",
+	"plumb url",
+	"-",
 	"open in page",
-	"snarf link url",
 	"snarf image url",
-	"plumb link url",
 	"plumb image url",
 	0
 };
 
 enum
 {
-	Milopeninpage,
 	Milsnarflinkurl,
-	Milsnarfimageurl,
 	Milplumblinkurl,
+	Milopeninpage,
+	Milsnarfimageurl,
 	Milplumbimageurl,
 };
 Menu menu2il = { menu2ilstr };
 
-char *menu3str[] =
+static char *menu3str[] =
 {
 	"back",
 	"forward",
@@ -136,7 +138,7 @@ enum
 	Mexit,
 };
 
-Menu menu3 = { 0, menu3gen };
+static Menu menu3 = { 0, menu3gen };
 
 
 static char* menu2gen(int index)
@@ -160,7 +162,7 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 	int n, flags, fd;
 	browser_editor_flags eflags;
 
-	n = emenuhit(2, m, &menu2);
+	n = esepmenuhit(2, m, &menu2);
 	switch (n) {
 	case Mexportimage:
 		if(eenter("Save as", buf, sizeof buf, m) > 0) {
@@ -243,7 +245,7 @@ static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
 {
 	int n;
 
-	n = emenuhit(2, m, &menu2l);
+	n = esepmenuhit(2, m, &menu2l);
 	switch (n) {
 /*
 	case Mopeninwin:
@@ -268,7 +270,7 @@ static void menu2hitimage(struct gui_window *gw, Mouse *m, struct hlcache_handle
 	nsurl *url;
 
 	url = hlcache_handle_get_url(h);
-	n = emenuhit(2, m, &menu2i);
+	n = esepmenuhit(2, m, &menu2i);
 	switch (n) {
 	case Mopeninpage:
 		browser_window_navigate(gw->bw, url, NULL, BW_NAVIGATE_DOWNLOAD,
@@ -290,7 +292,7 @@ static void menu2hitimagelink(struct gui_window *gw, Mouse *m, struct nsurl *url
 	nsurl *urli;
 
 	urli = hlcache_handle_get_url(h);
-	n = emenuhit(2, m, &menu2il);
+	n = esepmenuhit(2, m, &menu2il);
 	switch (n) {
 	case Milopeninpage:
 		browser_window_navigate(gw->bw, urli, NULL, BW_NAVIGATE_DOWNLOAD,
