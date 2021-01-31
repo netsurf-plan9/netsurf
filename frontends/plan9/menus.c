@@ -27,14 +27,14 @@ static char* menu3gen(int);
 
 char *menu2str[] =
 {
-	"export as image",
-	"export as text",
+	"export image",
+	"export text",
 	" ",
 	"cut",
 	"paste",
 	"snarf",
 	"plumb",
-	"search",
+	"look",
 	"/",
 	0 
 };
@@ -114,11 +114,11 @@ char *menu3str[] =
 	"back",
 	"forward",
 	"reload",
-	"search web",
+	"search",
 	"history",
-	"add bookmark",
+	"bookmark",
 	"bookmarks",
-	"enable javascript",
+	"js",
 	"exit",
 	0
 };
@@ -333,9 +333,9 @@ static char* menu3gen(int index)
 {
 	if (index == Mjavascript) {
 		if (nsoption_bool(enable_javascript) == true)
-			return "disable javascript";
+			return "nojs";
 		else
-			return "enable javascript";
+			return "js";
 	}
 	return menu3str[index];
 }
