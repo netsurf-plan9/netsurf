@@ -105,6 +105,7 @@ enum
 {
 	Milsnarflinkurl,
 	Milplumblinkurl,
+	Milsep,
 	Milopeninpage,
 	Milsnarfimageurl,
 	Milplumbimageurl,
