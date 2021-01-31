@@ -43,6 +43,10 @@ int dscrollbar_set_scroll(dscrollbar *sb, int x, int y)
 
 	ex = sb->extentx - sb->viewx;
 	ey = sb->extenty - sb->viewy;
+	if(ex < 0)
+		ex = 0;
+	if(ey < 0)
+		ey = 0;
 	if(x < 0)
 		x = 0;
 	if(x > ex)
