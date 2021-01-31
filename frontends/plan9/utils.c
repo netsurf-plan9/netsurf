@@ -5,6 +5,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/limits.h>
+#include <time.h>
 #include <lib9.h>
 #include "utils/errors.h"
 #include "utils/filepath.h"
@@ -115,10 +116,15 @@ void
 DBG(const char *format, ...)
 {
 	va_list ap;
+	time_t t = time(NULL);
+	struct tm *tm;
+	char buf[20];
 
 	if(!log_debug)
 		return;
-	fprintf(stderr, "(debug) ");
+	tm = localtime(&t);
+	strftime(buf, sizeof buf, "%Y/%m/%d %H:%M:%S", tm);
+	fprintf(stderr, "%s (debug) ", buf);
 	va_start(ap, format);
 	vfprintf(stderr, format, ap);
 	va_end(ap);
