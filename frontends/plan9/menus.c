@@ -383,7 +383,7 @@ void menu3hit(struct gui_window *gw, Mouse *m)
 		}
 		break;
 	case Mbookmarks:
-		bookmarks_show(gw->bw);
+		bookmarks_show(gw);
 		break;
 	case Mjavascript:
 		if (nsoption_bool(enable_javascript) == true) {
