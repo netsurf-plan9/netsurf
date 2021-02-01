@@ -253,6 +253,15 @@ void dentry_keyboard_event(dentry *entry, Event e)
 	case Kbs:
 		text_delete(entry, 1);
 		break;
+	case Ketb:
+		while(sels > 0 && !isalnum(entry->text[sels-1]))
+			sels--;
+		while(sels > 0 && isalnum(entry->text[sels-1]))
+			sels--;
+		entry->pos = sels;
+		entry->pos2 = sele;
+		text_delete(entry, 0);
+		break;
 	case Kesc:
 		if (sels == sele) {
 			sels = entry->pos = 0;
