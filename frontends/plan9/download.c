@@ -2,9 +2,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <lib9.h>
+#include <draw.h>
+#include <event.h>
 #include "utils/log.h"
 #include "utils/utils.h"
 #include "utils/nsurl.h"
@@ -14,12 +17,17 @@
 #include "desktop/download.h"
 #include "netsurf/download.h"
 #include "plan9/download.h"
+#include "plan9/window.h"
 #include "plan9/utils.h"
 
 
 struct gui_download_window
 {
+	bool page;
 	int fd;
+	int ofd;
+	long r;
+	long t;
 };
 
 static bool can_page(struct download_context *ctx)
@@ -39,9 +47,22 @@ struct gui_download_window *download_create(struct download_context *ctx, struct
 {
 	struct gui_download_window *w;
 	int p[2], fd;
+	long len;
+	char buf[PATH_MAX+1] = {0}, cmd[1024] = {0};
+	bool page;
 
-	if (can_page(ctx) == false)
-		return NULL;
+	page = can_page(ctx);
+	if(!page){
+		snprintf(buf, sizeof buf, download_context_get_filename(ctx));
+		if(eenter("Save as:", buf, sizeof buf, &parent->m)<=0)
+			return NULL;
+		fd = open(buf, O_WRONLY|O_CREAT|O_TRUNC);
+		if(fd < 0){
+			DBG("unable to open '%s': %s", buf, strerror(errno));
+			return NULL;
+		}
+		len = download_context_get_total_length(ctx);
+	}
 	if (pipe(p) < 0) {
 		fprintf(stderr, "cannot create pipe\n");
 		return NULL;
@@ -54,12 +75,21 @@ struct gui_download_window *download_create(struct download_context *ctx, struct
 		close(p[1]);
 		dup2(p[0], 0);
 		close(p[0]);
-		execl("/bin/page", "page", "-w", 0);
+		if (page)
+			execl("/bin/rc", "rc", "-c", "page -w", 0);
+		else{
+			snprintf(cmd, sizeof cmd, "aux/statusbar %s", buf);
+			execl("/bin/rc", "rc", "-c", cmd, 0);
+		}
 		fprintf(stderr, "exec failed\n");
 		exit(1);
 	default:
 		w = calloc(1, sizeof *w);
+		w->page = page;
 		w->fd = p[1];
+		w->ofd = fd;
+		w->r = 0;
+		w->t = len;
 		close(p[0]);
 		break;
 	}
@@ -68,10 +98,20 @@ struct gui_download_window *download_create(struct download_context *ctx, struct
 
 nserror download_data(struct gui_download_window *dw, const char *data, unsigned int size)
 {
-	int n;
+	int fd, n;
+	char buf[64];
 
-	n = write(dw->fd, data, size);
-	DBG("IN download_data (in:%zd out:%d errno:%d)", size, n, errno);
+	fd = dw->page ? dw->fd : dw->ofd;
+	n = write(fd, data, size);
+	if (n < 0) {
+		DBG("download error: %s", strerror(errno));
+		return NSERROR_SAVE_FAILED;
+	}
+	if (!dw->page){
+		dw->r += size;
+		n = snprintf(buf, sizeof buf, "%ld %ld\n", dw->r, dw->t);
+		write(dw->fd, buf, n);
+	}
 	return NSERROR_OK;
 }
 
@@ -82,8 +122,10 @@ void download_error(struct gui_download_window *dw, const char *error_msg)
 
 void download_done(struct gui_download_window *dw)
 {
-	DBG("IN download_done");
+	esetcursor(NULL);
 	close(dw->fd);
+	if (!dw->page)
+		close(dw->ofd);
 	free(dw);
 }
 
