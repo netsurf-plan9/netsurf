@@ -56,7 +56,7 @@ struct gui_download_window *download_create(struct download_context *ctx, struct
 		snprintf(buf, sizeof buf, download_context_get_filename(ctx));
 		if(eenter("Save as:", buf, sizeof buf, &parent->m)<=0)
 			return NULL;
-		fd = open(buf, O_WRONLY|O_CREAT|O_TRUNC);
+		fd = open(buf, O_WRONLY|O_CREAT|O_TRUNC, 00644);
 		if(fd < 0){
 			DBG("unable to open '%s': %s", buf, strerror(errno));
 			return NULL;
