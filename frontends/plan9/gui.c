@@ -505,6 +505,9 @@ int getnskey(int k)
 	case Kbs:
 		n = NS_KEY_DELETE_LEFT;
 		break;
+	case Ketb:
+		n = NS_KEY_DELETE_WORD_LEFT;
+		break;
 	case Knack:
 		n = NS_KEY_DELETE_LINE_START;
 		break;
