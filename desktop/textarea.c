@@ -2452,7 +2452,7 @@ bool textarea_keypress(struct textarea *ta, uint32_t key)
 	struct textarea_msg msg;
 	struct rect r;	/**< Redraw rectangle */
 	char utf8[6];
-	unsigned int caret, length, b_off, b_len;
+	unsigned int caret, oldcaret, length, b_off, b_len;
 	int h_extent = ta->h_extent;
 	int v_extent = ta->v_extent;
 	int line;
@@ -2466,7 +2466,7 @@ bool textarea_keypress(struct textarea *ta, uint32_t key)
 	/* Word separators */
 	static const char *sep = " .\n";
 
-	caret = textarea_get_caret(ta);
+	oldcaret = caret = textarea_get_caret(ta);
 	line = ta->caret_pos.line;
 	readonly = (ta->flags & TEXTAREA_READONLY ? true : false);
 
@@ -2740,6 +2740,7 @@ bool textarea_keypress(struct textarea *ta, uint32_t key)
 				textarea_clear_selection(ta);
 			}
 			break;
+		case NS_KEY_DELETE_WORD_LEFT:
 		case NS_KEY_WORD_LEFT:
 			if (readonly)
 				break;
@@ -2756,6 +2757,16 @@ bool textarea_keypress(struct textarea *ta, uint32_t key)
 					break;
 				}
 			}
+
+			if (key == NS_KEY_DELETE_WORD_LEFT) {
+				if (!textarea_replace_text(ta,
+						caret, oldcaret,
+						"", 0,
+						false, &byte_delta, &r))
+					return false;
+				redraw = true;
+			}
+
 			if (ta->sel_start != -1) {
 				textarea_clear_selection(ta);
 			}
