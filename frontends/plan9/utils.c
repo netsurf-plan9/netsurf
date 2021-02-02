@@ -7,7 +7,10 @@
 #include <sys/limits.h>
 #include <time.h>
 #include <lib9.h>
+#include <plumb.h>
+#include <errno.h>
 #include "utils/errors.h"
+#include "utils/log.h"
 #include "utils/filepath.h"
 #include "plan9/utils.h"
 
@@ -96,6 +99,58 @@ send_to_plumber(const char *text)
 	plumbsendtext(fd, "netsurf", NULL, NULL, text);
 	close(fd);
 	return 0;
+}
+
+int
+send_data_to_plumber(char *dst, char *data, int ndata)
+{
+	int fd, r;
+	Plumbmsg *m;
+	Plumbattr *a;
+
+	r = 0;
+	a = malloc(sizeof *a);
+	if (a == NULL) {
+		NSLOG(netsurf, WARNING,
+			"unable to allocate memory for plumb attribute: %s",
+			strerror(errno));
+		r = -1;
+		goto done;
+	}
+	a->name = "action";
+	a->value = "showdata";
+	a->next = NULL;
+	m = malloc(sizeof *m);
+	if (m == NULL) {
+		NSLOG(netsurf, WARNING,
+			"unable to allocate memory for plumb message: %s",
+			strerror(errno));
+		r = -1;
+		goto done;
+	}
+	m->src = "netsurf";
+	m->dst = dst;
+	m->wdir = NULL;
+	m->type = "text";
+	m->data = data;
+	m->ndata = ndata;
+	m->attr = a;
+	fd = plumbopen("send", 1);
+	if (fd < 0) {
+		NSLOG(netsurf, WARNING,
+			"unable to open plumb send port: %s", strerror(errno));
+		r = -1;
+		goto done;
+	}
+	if (plumbsend(fd, m) < 0) {
+		NSLOG(netsurf, WARNING,
+			"unable to send plumb message: %s", strerror(errno));
+		r = -1;
+	}
+done:
+	free(a);
+	free(m);
+	return r;
 }
 
 void

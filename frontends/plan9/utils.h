@@ -15,7 +15,17 @@ char *userdir_file(char *filename);
  */
 char *read_file(char *path, int *size);
 
+/*
+ * send the given text through the plumber
+ * send channel
+ */
 int send_to_plumber(const char *text);
+
+/*
+ * send a plumb message to the send channel
+ * using action=showdata
+ */
+int send_data_to_plumber(char *dst, char *data, int ndata);
 
 void exec_netsurf(const char *cmd, const char *url);
 
