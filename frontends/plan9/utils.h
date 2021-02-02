@@ -25,7 +25,7 @@ int send_to_plumber(const char *text);
  * send a plumb message to the send channel
  * using action=showdata
  */
-int send_data_to_plumber(char *dst, char *data, int ndata);
+int send_data_to_plumber(char *dst, char *filename, char *data, int ndata);
 
 void exec_netsurf(const char *cmd, const char *url);
 

@@ -101,25 +101,27 @@ send_to_plumber(const char *text)
 	return 0;
 }
 
+static Plumbattr*
+plumbattr(char *name, char *value)
+{
+	Plumbattr *a;
+
+	a = malloc(sizeof *a);
+	if (a == NULL)
+		return NULL;
+	a->name = name;
+	a->value = value;
+	a->next = NULL;
+}
+
 int
-send_data_to_plumber(char *dst, char *data, int ndata)
+send_data_to_plumber(char *dst, char *filename, char *data, int ndata)
 {
 	int fd, r;
 	Plumbmsg *m;
 	Plumbattr *a;
 
 	r = 0;
-	a = malloc(sizeof *a);
-	if (a == NULL) {
-		NSLOG(netsurf, WARNING,
-			"unable to allocate memory for plumb attribute: %s",
-			strerror(errno));
-		r = -1;
-		goto done;
-	}
-	a->name = "action";
-	a->value = "showdata";
-	a->next = NULL;
 	m = malloc(sizeof *m);
 	if (m == NULL) {
 		NSLOG(netsurf, WARNING,
@@ -134,7 +136,27 @@ send_data_to_plumber(char *dst, char *data, int ndata)
 	m->type = "text";
 	m->data = data;
 	m->ndata = ndata;
-	m->attr = a;
+	m->attr = NULL;
+	a = plumbattr("action", "showdata");
+	if(a == NULL) {
+		NSLOG(netsurf, WARNING,
+			"unable to allocate memory for plumb attribute: %s",
+			strerror(errno));
+		r = -1;
+		goto done;
+	}
+	m->attr = plumbaddattr(m->attr, a);
+	if (filename != NULL) {
+		a = plumbattr("filename", strdup(filename));
+		if(a == NULL) {
+			NSLOG(netsurf, WARNING,
+				"unable to allocate memory for plumb attribute: %s",
+				strerror(errno));
+			r = -1;
+			goto done;
+		}
+		m->attr = plumbaddattr(m->attr, a);
+	}	
 	fd = plumbopen("send", 1);
 	if (fd < 0) {
 		NSLOG(netsurf, WARNING,
