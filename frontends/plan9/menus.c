@@ -28,6 +28,7 @@ static char* menu3gen(int);
 
 char *menu2str[] =
 {
+	"source",
 	"export image",
 	"export text",
 	"-",
@@ -42,6 +43,7 @@ char *menu2str[] =
 
 enum
 {
+	Msource,
 	Mexportimage,
 	Mexporttext,
 	Msep,
@@ -155,6 +157,26 @@ static char* menu2gen(int index)
 	return menu2str[index];
 }
 
+static void viewsource(struct browser_window *bw)
+{
+	struct hlcache_handle *hlcontent;
+	const uint8_t *source_data;
+	size_t source_size;
+	char *filename;
+	nserror err;
+ 
+	hlcontent = browser_window_get_content(bw);
+	if (hlcontent == NULL)
+		return;	
+	if (content_get_type(hlcontent) != CONTENT_HTML)
+		return;
+	source_data = content_get_source_data(hlcontent, &source_size);
+	err = nsurl_nice(browser_window_access_url(bw), &filename, false);
+	if (err != NSERROR_OK)
+		filename = "netsurf:view-source";
+	send_data_to_plumber("edit", filename, (char*)source_data, source_size);
+}
+
 static void menu2hitstd(struct gui_window *gw, Mouse *m)
 {
 	char buf[1024] = {0};
@@ -165,6 +187,9 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 
 	n = esepmenuhit(2, m, &menu2);
 	switch (n) {
+	case Msource:
+		viewsource(gw->bw);
+		break;
 	case Mexportimage:
 		if(eenter("Save as", buf, sizeof buf, m) > 0) {
 			fd = open(buf, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
