@@ -141,7 +141,7 @@ void download_done(struct gui_download_window *dw)
 {
 	esetcursor(NULL);
 	if (dw->page) {
-		send_data_to_plumber("image", dw->data, dw->r);
+		send_data_to_plumber("image", NULL, dw->data, dw->r);
 		free(dw->data);
 	} else {
 		close(dw->fd);
