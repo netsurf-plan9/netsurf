@@ -276,7 +276,6 @@ static void menu2hitimage(struct gui_window *gw, Mouse *m, struct hlcache_handle
 	case Mopeninpage:
 		browser_window_navigate(gw->bw, url, NULL, BW_NAVIGATE_DOWNLOAD,
 			NULL, NULL, NULL);
-		nsurl_unref(url);
 		break;
 	case Msnarfimageurl:
 		snarf_url(url);
@@ -298,7 +297,6 @@ static void menu2hitimagelink(struct gui_window *gw, Mouse *m, struct nsurl *url
 	case Milopeninpage:
 		browser_window_navigate(gw->bw, urli, NULL, BW_NAVIGATE_DOWNLOAD,
 			NULL, NULL, NULL);
-		nsurl_unref(urli);
 		break;
 	case Milsnarflinkurl:
 		snarf_url(url);
