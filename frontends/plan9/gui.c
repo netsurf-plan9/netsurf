@@ -715,7 +715,12 @@ void url_entry_activated(char *text, void *data)
 
 static nserror launch_url(const nsurl *url)
 {
-	if (send_to_plumber(nsurl_access(url)) < 0) {
+	char *s;
+
+	s = nsurl_access(url);
+	if (strncmp(s, "mailto:", 7) == 0)
+		s += 7;
+	if (send_to_plumber(s) < 0) {
 		return NSERROR_NO_FETCH_HANDLER;
 	}
 	return NSERROR_OK;
