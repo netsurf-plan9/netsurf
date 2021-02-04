@@ -27,7 +27,10 @@ int send_to_plumber(const char *text);
  */
 int send_data_to_plumber(char *dst, char *filename, char *data, int ndata);
 
-void exec_netsurf(const char *cmd, const char *url);
+/*
+ * spawn a new netsurf process for the given url
+ */
+void exec_netsurf(const char *url);
 
 void DBG(const char *format, ...);
 

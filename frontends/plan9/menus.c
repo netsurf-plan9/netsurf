@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <draw.h>
 #include <event.h>
+#include <lib9.h>
 #include "utils/errors.h"
 #include "utils/nsurl.h"
 #include "utils/nsoption.h"
@@ -61,7 +62,7 @@ Menu menu2 = { 0, menu2gen };
 
 char *menu2lstr[] =
 {
-//	"open in new window",
+	"new window",
 	"snarf url",
 	"plumb url",
 	0
@@ -69,7 +70,7 @@ char *menu2lstr[] =
 
 enum
 {
-//	Mopeninwin,
+	Mnewwin,
 	Msnarfurl,
 	Mplumburl,
 };
@@ -269,18 +270,14 @@ static void plumb_url(struct nsurl *url)
 
 static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
 {
+	char *s;
 	int n;
 
 	n = esepmenuhit(2, m, &menu2l);
 	switch (n) {
-/*
-	case Mopeninwin:
-		s = nsurl_access(url);
-		if (s != NULL) {
-			exec_netsurf(argv0, s);
-		}
+	case Mnewwin:
+		exec_netsurf(nsurl_access(url));
 		break;
-*/
 	case Msnarfurl:
 		snarf_url(url);
 		break;

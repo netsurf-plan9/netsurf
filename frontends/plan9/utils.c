@@ -176,14 +176,17 @@ done:
 }
 
 void
-exec_netsurf(const char *cmd, const char *url)
+exec_netsurf(const char *url)
 {
-	switch (rfork(RFPROC|RFFDG|RFNAMEG|RFENVG|RFNOWAIT)) {
+	char buf[1024] = {0};
+
+	switch (rfork(RFPROC|RFNAMEG|RFENVG|RFNOWAIT)) {
 	case -1:
 		fprintf(stderr, "rfork failed\n");
 		return;
 	case 0:
-		execl("/bin/netsurf", "netsurf", url, 0);
+		snprintf(buf, sizeof buf, "window netsurf %s", url);
+		execl("/bin/rc", "rc", "-c", buf, 0);
 		fprintf(stderr, "exec failed\n");
 		exit(1);
 	}
