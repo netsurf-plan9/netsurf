@@ -360,8 +360,8 @@ static const int georgian_weights[] = {
 };
 static struct list_counter_style lcs_georgian =	{
 	.name="georgian",
-	.range.start = 1,
-	.range.end = 19999,
+	.range = {.start = 1},
+	.range{.end = 19999},
 	.symbols = georgian_symbols,
 	.weights = georgian_weights,
 	.items = (sizeof(georgian_symbols) / SYMBOL_SIZE),
@@ -383,8 +383,8 @@ static const int armenian_weights[] = {
 };
 static struct list_counter_style lcs_armenian =	{
 	.name = "armenian",
-	.range.start = 1,
-	.range.end = 9999,
+	.range = {.start = 1},
+	.range = {.end = 9999},
 	.symbols = armenian_symbols,
 	.weights = armenian_weights,
 	.items = (sizeof(armenian_symbols) / SYMBOL_SIZE),
@@ -405,8 +405,8 @@ static struct list_counter_style lcs_decimal = {
 
 static struct list_counter_style lcs_decimal_leading_zero = {
 	.name = "decimal-leading-zero",
-	.pad.length = 2,
-	.pad.value = "0",
+	.pad = {.length = 2},
+	.pad = {.value = "0"},
 	.symbols = decimal_symbols,
 	.items = (sizeof(decimal_symbols) / SYMBOL_SIZE),
 	.calc = calc_numeric_system,
