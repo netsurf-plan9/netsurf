@@ -80,6 +80,7 @@ OBJ=\
 	content/handlers/html/imagemap.$O\
 	content/handlers/html/interaction.$O\
 	content/handlers/html/layout.$O\
+	content/handlers/html/list_counter_style.$O\
 	content/handlers/html/object.$O\
 	content/handlers/html/redraw.$O\
 	content/handlers/html/redraw_border.$O\
