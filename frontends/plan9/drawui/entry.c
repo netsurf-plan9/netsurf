@@ -177,6 +177,8 @@ int dentry_mouse_event(dentry *entry, Event e)
 		if (!in && !entry->buttons && e.mouse.buttons) {
 			entry->state ^= STATE_FOCUSED; /* remove focus */
 			entry->buttons = 0;
+			entry->pos = entry->len;
+			entry->pos2 = entry->len;
 			dentry_draw(entry);
 			return -1;
 		}
