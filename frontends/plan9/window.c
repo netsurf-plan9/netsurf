@@ -383,7 +383,7 @@ window_place_caret(struct gui_window *g, int x, int y, int height, const struct 
 
 	sx = dwindow_get_scroll_x(g->dw);
 	sy = dwindow_get_scroll_y(g->dw);
-	r = Rect(x - sx, y - sy, x + 1 - sx, y + height + 1 - sy);	
+	r = Rect(x - sx, y - sy, x + Dx(tick->r) - sx, y + height + 2 - sy);	
 	gui_window_redraw(g, r);
 }
 
@@ -404,7 +404,7 @@ window_remove_caret(struct gui_window *g)
 
 	sx = dwindow_get_scroll_x(g->dw);
 	sy = dwindow_get_scroll_y(g->dw);
-	r = Rect(x - sx, y - sy, x + 1 - sx, y + height + 1 - sy);
+	r = Rect(x - sx, y - sy, x + Dx(tick->r) - sx, y + height + 2 - sy);
 	gui_window_redraw(g, r);
 }
 

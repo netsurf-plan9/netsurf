@@ -362,7 +362,7 @@ void gui_window_destroy(struct gui_window *gw)
 void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 {
 	Rectangle r;
-	Point p0, p1;
+	Point p;
 	struct rect clip;
 	int x, y;
 	struct redraw_context ctx = {
@@ -385,9 +385,8 @@ void gui_window_redraw(struct gui_window *gw, Rectangle clipr)
 	y = dwindow_get_scroll_y(gw->dw);
 	browser_window_redraw(gw->bw, -x, -y, &clip, &ctx);
 	if(gw->caret_height > 0) {
-		p0 = addpt(gw->caret, Pt(-x, -y));
-		p1 = addpt(p0, Pt(0, gw->caret_height));
-		line(gw->b, p0, p1, 1, 1, 0, display->black, ZP);
+		p = addpt(gw->caret, Pt(-x, -y+1));
+		draw(gw->b, rectaddpt(tick->r, p), tick, 0, ZP);
 	}
 	replclipr(screen, 0, clipr);
 	draw(screen, r, gw->b, 0, ZP);
