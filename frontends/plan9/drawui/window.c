@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <draw.h>
 #include <event.h>
 #include "netsurf/browser_window.h"
@@ -299,5 +300,5 @@ void dwindow_set_browser_keyboard_callback(struct dwindow *window, keyboard_call
 
 void dwindow_focus_url_bar(struct dwindow *window)
 {
-	dentry_set_focused(window->toolbar->url_entry);
+	dentry_set_focused(window->toolbar->url_entry, true);
 }

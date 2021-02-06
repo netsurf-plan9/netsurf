@@ -48,12 +48,16 @@ dentry *dentry_create(void)
 	return e;
 }
 
-void dentry_set_focused(dentry *entry)
+void dentry_set_focused(dentry *entry, bool select_all)
 {
 	if (entry->state & STATE_FOCUSED) {
 		return;
 	}
 	entry->state |= STATE_FOCUSED;
+	if (select_all) {
+		entry->pos = 0;
+		entry->pos2 = entry->len;
+	}
 	dentry_draw(entry);
 }
 

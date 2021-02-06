@@ -172,7 +172,7 @@ static void searchweb_window_draw(void)
 	dbutton_draw(menu_button);
 	dbutton_draw(close_button);
 	dentry_draw(search_entry);
-	dentry_set_focused(search_entry);
+	dentry_set_focused(search_entry, false);
 }
 
 static void searchweb_init(void)

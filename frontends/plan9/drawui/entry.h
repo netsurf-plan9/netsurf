@@ -17,7 +17,7 @@ struct dentry
 };
 
 dentry *dentry_create(void);
-void dentry_set_focused(dentry *entry);
+void dentry_set_focused(dentry *entry, int sel);
 void dentry_set_text(dentry *entry, const char *text);
 void dentry_set_activated_callback(dentry *entry, void(*cb)(char*, void*), void*);
 
