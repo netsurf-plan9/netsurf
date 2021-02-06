@@ -135,8 +135,34 @@ static int dentry_mouse_to_position(dentry *entry, Mouse m)
 	return i;
 }
 
+static bool is_separator(char c)
+{
+	return c == 0 || c == '/' || (!isalnum(c) && c != '-');
+}
+
+static void entry_click_sel(dentry *entry)
+{
+	int s, e;
+
+	if (entry->pos == 0)
+		entry->pos2 = entry->len;
+	else if (entry->pos == entry->len)
+		entry->pos = 0;
+	else {
+		s = entry->pos;
+		e = entry->pos;
+		while ((s - 1) >= 0 && !is_separator(entry->text[s - 1]))
+			--s;
+		while (e < entry->len && !is_separator(entry->text[e]))
+			++e;
+		entry->pos = s;
+		entry->pos2 = e;
+	}
+}
+
 int dentry_mouse_event(dentry *entry, Event e)
 {
+	static int lastn = -1, lastms = -1;
 	int in, n, sels, sele;
 	char *s;
 	size_t len;
@@ -146,7 +172,6 @@ int dentry_mouse_event(dentry *entry, Event e)
 	if (in && !entry->buttons && e.mouse.buttons) {
 		entry->state |= STATE_FOCUSED;
 	}
-
 	if (entry->state & STATE_FOCUSED) {
 		n = dentry_mouse_to_position(entry, e.mouse);
 		if (!in && !entry->buttons && e.mouse.buttons) {
@@ -170,10 +195,15 @@ int dentry_mouse_event(dentry *entry, Event e)
 				free(s);
 			} else if (e.mouse.buttons == 1 && entry->buttons <= 1) {
 				entry->pos = n;
-				if (entry->buttons == 0)
+				if (entry->buttons == 0) {
 					entry->pos2 = n;
+					if (n == lastn && lastms > 0 && (e.mouse.msec - lastms)<=250)
+						entry_click_sel(entry);
+				}
 			}
 			dentry_draw(entry);
+			lastn = n;
+			lastms = e.mouse.msec;
 		} else if (e.mouse.buttons & 2) {
 			sels = min(entry->pos, entry->pos2);
 			sele = max(entry->pos, entry->pos2);
