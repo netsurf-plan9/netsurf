@@ -48,9 +48,23 @@ dentry *dentry_create(void)
 	return e;
 }
 
+int dentry_has_focus(dentry *entry) {
+	return (entry->state & STATE_FOCUSED);
+}
+
+static void dentry_unfocus(dentry *entry) {
+	if (!dentry_has_focus(entry))
+		return;
+	entry->state ^= STATE_FOCUSED; /* remove focus */
+	entry->buttons = 0;
+	entry->pos = entry->len;
+	entry->pos2 = entry->len;
+	dentry_draw(entry);
+}
+
 void dentry_set_focused(dentry *entry, bool select_all)
 {
-	if (entry->state & STATE_FOCUSED) {
+	if (dentry_has_focus(entry)) {
 		return;
 	}
 	entry->state |= STATE_FOCUSED;
@@ -179,11 +193,7 @@ int dentry_mouse_event(dentry *entry, Event e)
 	if (entry->state & STATE_FOCUSED) {
 		n = dentry_mouse_to_position(entry, e.mouse);
 		if (!in && !entry->buttons && e.mouse.buttons) {
-			entry->state ^= STATE_FOCUSED; /* remove focus */
-			entry->buttons = 0;
-			entry->pos = entry->len;
-			entry->pos2 = entry->len;
-			dentry_draw(entry);
+			dentry_unfocus(entry);
 			return -1;
 		}
 		if (e.mouse.buttons & 1) { /* holding left button */
@@ -306,6 +316,9 @@ void dentry_keyboard_event(dentry *entry, Event e)
 		plan9_snarf(entry->text+sels, sele-sels);
 		text_delete(entry, 0);
 		break;
+	case 0x7: /* ^G: remove focus */
+		dentry_unfocus(entry);
+		return;
 	default:
 		if (k < 0x20 || (k & 0xFF00) == KF || (k & 0xFF00) == Spec || (n = runetochar(s, &k)) < 1) {
 			return;

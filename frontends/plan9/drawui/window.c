@@ -156,7 +156,7 @@ void dwindow_mouse_event(struct dwindow *window, Event e)
 void dwindow_keyboard_event(struct dwindow *window, Event e)
 {
 	dtoolbar_keyboard_event(window->toolbar, e);
-	if(!(window->toolbar->url_entry->state & STATE_FOCUSED) && window->view_keyboard_cb != NULL) {
+	if(!dentry_has_focus(window->toolbar->url_entry) && window->view_keyboard_cb != NULL) {
 		window->view_keyboard_cb(e.kbdc, window->view_keyboard_cb_data);
 	}
 }
