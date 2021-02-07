@@ -770,7 +770,7 @@ main(int argc, char *argv[])
 	} ARGEND
 
 	setfcr(getfcr() & ~(FPPDBL|FPINVAL|FPZDIV|FPOVFL));
-	if (stat("/mnt/web", &sb) != 0 || !S_ISDIR(sb.st_mode)) {
+	if (access("/mnt/web/clone", F_OK) != 0) {
 		fprintf(stderr, "webfs not started\n");
 		exit(1);
 	}
