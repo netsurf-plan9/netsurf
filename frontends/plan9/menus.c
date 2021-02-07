@@ -392,11 +392,7 @@ void menu3hit(struct gui_window *gw, Mouse *m)
 		}
 		break;		
 	case Mhistory:
-		url = ehistory(gw->bw);
-		if (url != NULL) {
-			browser_window_navigate(gw->bw, url, NULL, BW_NAVIGATE_HISTORY,
-				NULL, NULL, NULL);
-		}
+		history_show(gw);
 		break;
 	case Maddbookmark:
 		if (eenter("Add bookmark: ", buf, sizeof buf, m) > 0) {

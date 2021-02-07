@@ -1,6 +1,6 @@
 #ifndef NETSURF_PLAN9_HISTORY_H
 #define NETSURF_PLAN9_HISTORY_H
 
-struct nsurl* ehistory(const struct browser_window *bw);
+void history_show(const struct gui_window *gw);
 
 #endif
