@@ -3,4 +3,6 @@
 
 extern struct gui_fetch_table *plan9_fetch_table;
 
+const char* fetch_filetype(const char *unix_path);
+
 #endif

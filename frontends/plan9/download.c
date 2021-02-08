@@ -18,6 +18,7 @@
 #include "netsurf/download.h"
 #include "plan9/download.h"
 #include "plan9/window.h"
+#include "plan9/fetch.h"
 #include "plan9/utils.h"
 
 
@@ -31,15 +32,32 @@ struct gui_download_window
 	char *data;
 };
 
+static bool is_page_mime(char *mime)
+{
+	if(strncmp(mime, "application/pdf", 15) == 0
+	|| strncmp(mime, "application/postscript", 22) == 0
+	|| strncmp(mime, "image/", 6) == 0)
+		return true;
+	return false;
+}
+
 static bool can_page(struct download_context *ctx)
 {
 	char *mime;
+	char *filename;
 
 	mime = download_context_get_mime_type(ctx);
-	if(strncmp(mime, "application/pdf", 15) == 0
-	|| strncmp(mime, "application/postscript", 22) == 0
-	|| strncmp(mime, "image/", 6) == 0) {
+	if(is_page_mime(mime))
 		return true;
+	/* some web servers do not send the Content-Type header
+	   leading to netsurf using text/plain.
+	   we do another check based on filename to be sure we
+	   really cannot send to page */
+	if(strncmp(mime, "text/plain", 10) == 0){
+		filename = download_context_get_filename(ctx);
+		mime = fetch_filetype(filename);
+		if(is_page_mime(mime))
+			return true;
 	}
 	return false;
 }
