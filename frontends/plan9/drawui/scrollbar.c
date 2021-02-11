@@ -65,7 +65,9 @@ int dscrollbar_set_scroll(dscrollbar *sb, int x, int y)
 
 int dscrollbar_try_scroll(dscrollbar *sb, int sx, int sy)
 {
-	if(sb->viewy == sb->extenty)
+	if(sx != 0 && sb->viewx == sb->extentx)
+		return 0;
+	if(sy != 0 && sb->viewy == sb->extenty)
 		return 0;
 
 	return dscrollbar_set_scroll(sb, sb->scrollx + sx, sb->scrolly + sy);

@@ -251,8 +251,10 @@ static bool plumbed_to_page(char *s)
 				NULL, NULL, NULL);
 			nsurl_unref(url);
 		}
+DBG("plumbed_to_page: %s => OK", s);
 		return true;
 	}
+DBG("plumbed_to_page: %s => KO", s);
 	return false;
 }
 
@@ -405,10 +407,10 @@ void gui_window_resize(struct gui_window *gw)
 	dwindow_draw(gw->dw);
 }
 
-static void gui_window_scroll_y(struct gui_window *gw, int x, int y, int sy)
+static void gui_window_scroll(struct gui_window *gw, int x, int y, int sx, int sy)
 {
-	if (browser_window_scroll_at_point(gw->bw, x, y, 0, sy) == false) {
-		if (dwindow_try_scroll(gw->dw, 0, sy)) {
+	if (browser_window_scroll_at_point(gw->bw, x, y, sx, sy) == false) {
+		if (dwindow_try_scroll(gw->dw, sx, sy)) {
 			gui_window_redraw(gw, gw->b->r);
 		}
 	}
@@ -485,10 +487,10 @@ void browser_mouse_event(Mouse m, void *data)
 		menu3hit(gw, &m);
 	} else if (m.buttons & 8) {
 		dy = m.xy.y - r.min.y;
-		gui_window_scroll_y(gw, x, y, -dy);
+		gui_window_scroll(gw, x, y, 0, -dy);
 	} else if (m.buttons & 16) {
 		dy = m.xy.y - r.min.y;
-		gui_window_scroll_y(gw, x, y, dy);
+		gui_window_scroll(gw, x, y, 0, dy);
 	}
 	browser_window_mouse_track(current->bw, mouse, x, y);
 }
@@ -549,22 +551,28 @@ void browser_keyboard_event(int k, void *data)
 	r = dwindow_get_view_rect(gw->dw);
 	switch(k) {
 	case Kpgup:
-		gui_window_scroll_y(gw, 0, 0, -Dy(r));
+		gui_window_scroll(gw, 0, 0, 0, -Dy(r));
 		break;
 	case Kpgdown:
-		gui_window_scroll_y(gw, 0, 0, Dy(r));
+		gui_window_scroll(gw, 0, 0, 0, Dy(r));
 		break;
 	case Kup:
-		gui_window_scroll_y(gw, 0, 0, -100);
+		gui_window_scroll(gw, 0, 0, 0, -100);
 		break;
 	case Kdown:
-		gui_window_scroll_y(gw, 0, 0, 100);
+		gui_window_scroll(gw, 0, 0, 0, 100);
 		break;
 	case Khome:
-		gui_window_scroll_y(gw, 0, 0, INT_MIN/2);
+		gui_window_scroll(gw, 0, 0, 0, INT_MIN/2);
 		break;
 	case Kend:
-		gui_window_scroll_y(gw, 0, 0, INT_MAX/2);
+		gui_window_scroll(gw, 0, 0, 0, INT_MAX/2);
+		break;
+	case Kleft:
+		gui_window_scroll(gw, 0, 0, -100, 0);
+		break;
+	case Kright:
+		gui_window_scroll(gw, 0, 0, 100, 0);
 		break;
 	case Kesc:
 	case Knack:
@@ -589,12 +597,12 @@ void scrollbar_mouse_event(Mouse m, void *data)
 	y = sy + m.xy.y - r.min.y;
 	dy = m.xy.y - r.min.y;
 	if (m.buttons&1) {
-		gui_window_scroll_y(gw, x, y, -dy);
+		gui_window_scroll(gw, x, y, 0, -dy);
 	} else if (m.buttons & 4) {
-		gui_window_scroll_y(gw, x, y, dy);
+		gui_window_scroll(gw, x, y, 0, dy);
 	} else if (m.buttons & 2) {
 		dy = (m.xy.y - r.min.y) * dwindow_get_extent_y(gw->dw) / Dy(r);
-		gui_window_scroll_y(gw, x, y, dy - sy);
+		gui_window_scroll(gw, x, y, 0, dy - sy);
 	}
 }
 
