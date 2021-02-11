@@ -65,6 +65,7 @@ static void browser_keyboard_event(int, void*);
 
 char **respaths;
 static struct gui_window *current = NULL;
+static bool unhide_on_plumb;
 
 static bool nslog_stream_configure(FILE *fptr)
 {
@@ -251,10 +252,8 @@ static bool plumbed_to_page(char *s)
 				NULL, NULL, NULL);
 			nsurl_unref(url);
 		}
-DBG("plumbed_to_page: %s => OK", s);
 		return true;
 	}
-DBG("plumbed_to_page: %s => KO", s);
 	return false;
 }
 
@@ -292,7 +291,8 @@ static void drawui_run(void)
 				pm = ev.v;
 				if (pm->ndata > 0) {
 					if(!plumbed_to_page(pm->data)) {
-						gui_window_unhide();
+						if(unhide_on_plumb)
+							gui_window_unhide();
 						url_entry_activated(strdup(pm->data), current);
 					}
 				}
@@ -773,10 +773,14 @@ main(int argc, char *argv[])
 	};
 
 	cachedir = NULL;
+	unhide_on_plumb = false;
 	verbose = false;
 	ARGBEGIN {
 	case 'c':
 		cachedir = "/tmp/nscache";
+		break;
+	case 'u':
+		unhide_on_plumb = true;
 		break;
 	case 'd':
 		log_debug = true;
