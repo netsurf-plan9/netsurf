@@ -258,6 +258,17 @@ DBG("plumbed_to_page: %s => KO", s);
 	return false;
 }
 
+static void gui_window_unhide(void)
+{
+	int fd;
+
+	fd = open("/mnt/wsys/wctl", O_WRONLY);
+	if(fd < 0)
+		return;
+	write(fd, "unhide", 6);
+	close(fd);
+}
+
 static void drawui_run(void)
 {
 	enum { Eplumb = 128 };
@@ -281,6 +292,7 @@ static void drawui_run(void)
 				pm = ev.v;
 				if (pm->ndata > 0) {
 					if(!plumbed_to_page(pm->data)) {
+						gui_window_unhide();
 						url_entry_activated(strdup(pm->data), current);
 					}
 				}
