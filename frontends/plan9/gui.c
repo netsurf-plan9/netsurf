@@ -241,11 +241,7 @@ static bool plumbed_to_page(char *s)
 	nserror error;
 	size_t l;
 
-	l = strlen(s);
-	if (strcmp(s + l - 3, "png") == 0
-	 || strcmp(s + l - 3, "jpg") == 0
-	 || strcmp(s + l - 4, "jpeg") == 0
-	 || strcmp(s + l - 3, "gif") == 0) {
+	if(page_accept_file(s)) {
 		error = nsurl_create(s, &url);
 		if (error == NSERROR_OK) {
 			browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_DOWNLOAD,

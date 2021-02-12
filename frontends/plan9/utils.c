@@ -12,6 +12,7 @@
 #include "utils/errors.h"
 #include "utils/log.h"
 #include "utils/filepath.h"
+#include "utils/utils.h"
 #include "plan9/utils.h"
 
 bool log_debug = false;
@@ -87,6 +88,76 @@ char* read_file(char *path, int *size)
 	return buf;
 }
 
+char*
+file_ext(const char *filename)
+{
+	char *d;
+
+	d = strrchr(filename, '.');
+	if (d == 0)
+		return NULL;
+	return d+1;
+}
+
+const char*
+file_type(const char *path)
+{
+	char *mime_types[] = {
+		"html",	"text/html",
+		"htm",	"text/html",
+		"css",	"text/css",
+		"f79",	"text/css",
+		"jpg",	"image/jpeg",
+		"jpeg", "image/jpeg",
+		"gif",	"image/gif",
+		"png",	"image/png",
+		"b60",	"image/png",
+		"jng",	"image/jng",
+		"svg",	"image/svg",
+		"bmp",	"image/bmp",
+		"ps",	"application/postscript",
+		"pdf",	"application/pdf",
+		0
+	};
+	char *ext;
+	int i;
+
+	ext = file_ext(path);
+	if (ext == NULL)
+		return "text/plain";
+	for(i = 0; mime_types[i] != NULL; i += 2) {
+		if(strcasecmp(ext, mime_types[i]) == 0)
+			return mime_types[i+1];
+	}
+	return "text/plain";
+}
+
+bool
+page_accept_mimetype(char *mime)
+{
+	char *types[] = {
+		"application/pdf",
+		"application/postscript",
+		"image/",
+		0
+	};
+	int i;
+
+	for(i = 0; types[i] != NULL; i++) {
+		if(strncmp(mime, types[i], strlen(types[i])) == 0)
+			return true;
+	}
+	return false;
+}
+
+bool
+page_accept_file(char *filename)
+{
+	char *type;
+
+	type = file_type(filename);
+	return page_accept_mimetype(type);
+}
 
 int
 send_to_plumber(const char *text)

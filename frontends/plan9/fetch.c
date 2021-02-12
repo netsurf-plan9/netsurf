@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
@@ -24,34 +25,7 @@ extern char **respaths;
 const char*
 fetch_filetype(const char *unix_path)
 {
-	int l;
-
-	l = strlen(unix_path);
-	if (2 < l && strcasecmp(unix_path + l - 3, "css") == 0)
-		return "text/css";
-	if (2 < l && strcasecmp(unix_path + l - 3, "f79") == 0)
-		return "text/css";
-	if (2 < l && strcasecmp(unix_path + l - 3, "jpg") == 0)
-		return "image/jpeg";
-	if (3 < l && strcasecmp(unix_path + l - 4, "jpeg") == 0)
-		return "image/jpeg";
-	if (2 < l && strcasecmp(unix_path + l - 3, "gif") == 0)
-		return "image/gif";
-	if (2 < l && strcasecmp(unix_path + l - 3, "png") == 0)
-		return "image/png";
-	if (2 < l && strcasecmp(unix_path + l - 3, "b60") == 0)
-		return "image/png";
-	if (2 < l && strcasecmp(unix_path + l - 3, "jng") == 0)
-		return "image/jng";
-	if (2 < l && strcasecmp(unix_path + l - 3, "svg") == 0)
-		return "image/svg";
-	if (2 < l && strcasecmp(unix_path + l - 3, "bmp") == 0)
-		return "image/bmp";
-	if (3 < l && strcasecmp(unix_path + l - 4, "html") == 0)
-		return "text/html";
-	if (2 < l && strcasecmp(unix_path + l - 3, "htm") == 0)
-		return "text/html";
-	return "text/plain";
+	return file_type(unix_path);
 }
 
 /**

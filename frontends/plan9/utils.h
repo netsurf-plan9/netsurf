@@ -16,6 +16,29 @@ char *userdir_file(char *filename);
 char *read_file(char *path, int *size);
 
 /*
+ * returns the file extension of _filename_
+ */
+char* file_ext(const char *filename);
+
+/*
+ * returns the mime-type of _path_ based
+ * on its file extension
+ */
+const char* file_type(const char *path);
+
+/*
+ * check whether page(1) can open the given
+ * mime-type
+ */
+bool page_accept_mimetype(char *mime);
+
+/*
+ * check whether _filename_ can be opened 
+ * with page
+ */
+bool page_accept_file(char *filename);
+
+/*
  * send the given text through the plumber
  * send channel
  */
