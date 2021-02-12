@@ -16,6 +16,11 @@ char *userdir_file(char *filename);
 char *read_file(char *path, int *size);
 
 /*
+ * get the full rooted path of _filename_
+ */
+char* file_fullpath(char *filename);
+
+/*
  * returns the file extension of _filename_
  */
 char* file_ext(const char *filename);

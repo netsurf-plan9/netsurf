@@ -208,8 +208,9 @@ static nserror drawui_init(int argc, char *argv[])
 {
 	struct browser_window *bw;
 	nserror ret;
-	char *addr;
+	char *addr, *path;
 	nsurl *url;
+	size_t len;
 
 	if(initdraw(nil, nil, "netsurf") < 0) {
 		fprintf(stderr, "initdraw failed\n");
@@ -220,7 +221,21 @@ static nserror drawui_init(int argc, char *argv[])
 
 	addr = NULL;
 	if (argc > 0) {
-		addr = argv[0];
+		if (access(argv[0], F_OK) == F_OK) {
+			path = file_fullpath(argv[0]);
+			if (path != NULL) {
+				len = SLEN("file://") + strlen(path) + 1;
+				addr = malloc(len*sizeof(char));
+				if(addr != NULL)
+					snprintf(addr, len, "file://%s", path);
+				free(path);
+			}
+		} else {
+			addr = argv[0];
+		}
+	}
+	if (addr != NULL) {
+		/* file url */
 	} else if ((nsoption_charp(homepage_url) != NULL) && 
 	    	   (nsoption_charp(homepage_url)[0] != '\0')) {
 		addr = nsoption_charp(homepage_url);

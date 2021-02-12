@@ -88,6 +88,22 @@ char* read_file(char *path, int *size)
 	return buf;
 }
 
+char* file_fullpath(char *filename)
+{
+	int fd, n;
+	char buf[256], *path;
+
+	path = NULL;
+	fd = open(filename, 0); /* 0: OREAD */
+	if(fd < 0)
+		return NULL;
+	n = _FD2PATH(fd, buf, sizeof buf);
+	if(n == 0)
+		path = strdup(buf);
+	close(fd);
+	return path;
+}
+
 char*
 file_ext(const char *filename)
 {
