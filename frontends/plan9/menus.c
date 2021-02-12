@@ -119,6 +119,7 @@ static char *menu3str[] =
 {
 	"back",
 	"forward",
+	"stop",
 	"reload",
 	"search",
 	"history",
@@ -133,6 +134,7 @@ enum
 {
 	Mback,
 	Mforward,
+	Mstop,
 	Mreload,
 	Msearchweb,
 	Mhistory,
@@ -380,6 +382,9 @@ void menu3hit(struct gui_window *gw, Mouse *m)
 		if (browser_window_forward_available(gw->bw)) {
 			browser_window_history_forward(gw->bw);
 		}
+		break;
+	case Mstop:
+		browser_window_stop(gw->bw);
 		break;
 	case Mreload:
 		browser_window_reload(gw->bw, true);
