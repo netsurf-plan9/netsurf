@@ -256,7 +256,7 @@ exec_netsurf(const char *url)
 		fprintf(stderr, "rfork failed\n");
 		return;
 	case 0:
-		snprintf(buf, sizeof buf, "window %s %s", "netsurf", url);
+		snprintf(buf, sizeof buf, "window %s '''%s'''", "netsurf", url);
 		execl("/bin/rc", "rc", "-c", buf, 0);
 		fprintf(stderr, "exec failed\n");
 		exit(1);
