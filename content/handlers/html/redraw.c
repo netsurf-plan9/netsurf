@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <math9.h>
 #include <dom/dom.h>
 
 #include "utils/log.h"
@@ -63,7 +64,6 @@
 #include "html/form_internal.h"
 #include "html/private.h"
 #include "html/layout.h"
-float ceilf(float);	/* until libap.a gets ceilf() */
 
 bool html_redraw_debug = false;
 
