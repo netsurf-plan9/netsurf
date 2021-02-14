@@ -1,3 +1,4 @@
+#include <u.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -86,6 +87,7 @@ void dentry_set_text(dentry *entry, const char *text)
 	}
 	strncpy(entry->text, text, l);
 	entry->text[l] = 0;
+	entry->off = 0;
 	entry->len = l;
 	entry->pos = entry->len;
 	entry->pos2 = entry->pos;
@@ -161,7 +163,7 @@ static bool is_separator(char c)
 static void entry_click_sel(dentry *entry)
 {
 	int s, e;
-
+DBG("entry_click_sel");
 	if (entry->pos == 0)
 		entry->pos2 = entry->len;
 	else if (entry->pos == entry->len)
@@ -180,7 +182,8 @@ static void entry_click_sel(dentry *entry)
 
 int dentry_mouse_event(dentry *entry, Event e)
 {
-	static int lastn = -1, lastms = -1;
+	static int lastn = -1;
+	static ulong lastms = 0;
 	int in, n, sels, sele;
 	char *s;
 	size_t len;
