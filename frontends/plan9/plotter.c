@@ -26,6 +26,7 @@ struct Color {
 };
 
 static Color cache[64];
+static Rectangle clipr;
 
 /**
  * \brief Converts a netsurf colour type to a libdraw image
@@ -144,6 +145,7 @@ plotter_clip(const struct redraw_context *ctx, const struct rect *clip)
 	if (clip->x0 == clip->x1 && clip->x0 == 0)
 		r = b->r;
 	replclipr(b, 0, r);
+	clipr = r;
 	return NSERROR_OK;
 }
 
@@ -453,14 +455,23 @@ plotter_bitmap(const struct redraw_context *ctx,
 		bitmap_flags_t flags)
 {
 	Image *b;
-	Rectangle r;
+	Rectangle r, cr;
+	Point p;
 	Image *i, *m;
 
 	b = ctx->priv;
 	if ((i = getimage(bitmap, width, height)) == NULL)
 		return NSERROR_NOMEM;
-	r = rectaddpt(i->r, Pt(x, y));
-	draw(b, r, i, 0, ZP);
+	if (flags == BITMAPF_NONE) {
+		r = rectaddpt(i->r, Pt(x, y));
+		p = ZP;
+	} else {
+		r = clipr;
+		cr = rectsubpt(clipr, clipr.min);
+		p = Pt(clipr.min.x - x, clipr.min.y - y);
+		replclipr(i, 1, rectaddpt(cr, p));
+	}
+	draw(b, r, i, 0, p);
 	bitmap->i = i;
 	return NSERROR_OK;
 }
