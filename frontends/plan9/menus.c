@@ -29,6 +29,14 @@ static char* menu3gen(int);
 
 char *menu2str[] =
 {
+/*
+	"debug render",
+	"debug dom",
+*/
+	"orig size",
+	"zoom in",
+	"zoom out",
+	"-",
 	"source",
 	"export image",
 	"export text",
@@ -44,6 +52,14 @@ char *menu2str[] =
 
 enum
 {
+/*
+	Mdebugrender,
+	Mdebugdom,
+*/
+	Morigsize,
+	Mzoomin,
+	Mzoomout,
+	Msep1,
 	Msource,
 	Mexportimage,
 	Mexporttext,
@@ -190,6 +206,23 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 
 	n = esepmenuhit(2, m, &menu2);
 	switch (n) {
+/*
+	case Mdebugrender:
+		browser_window_debug_dump(gw->bw, stderr, CONTENT_DEBUG_RENDER);
+		break;
+	case Mdebugdom:
+		browser_window_debug_dump(gw->bw, stderr, CONTENT_DEBUG_DOM);
+		break;
+*/
+	case Morigsize:
+		browser_window_set_scale(gw->bw, 1.0, true);
+		break;
+	case Mzoomin:
+		browser_window_set_scale(gw->bw, 0.1, false);
+		break;
+	case Mzoomout:
+		browser_window_set_scale(gw->bw, -0.1, false);
+		break;
 	case Msource:
 		viewsource(gw->bw);
 		break;
