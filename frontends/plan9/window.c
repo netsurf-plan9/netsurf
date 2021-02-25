@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <sys/limits.h>
 #include <draw.h>
 #include <event.h>
 #include <cursor.h>
@@ -493,7 +495,15 @@ window_create_form_select_menu(struct gui_window *gw, struct form_control *contr
 void
 window_file_gadget_open(struct gui_window *gw, struct hlcache_handle *hl, struct form_control *gadget)
 {
-	DBG("IN window_file_gadget_open");
+	char buf[PATH_MAX] = {0};
+	int n;
+
+	n = eenter("File:", buf, sizeof buf, &gw->m);
+	if (n <= 0)
+		return;
+	if (access(buf, F_OK) != F_OK)
+		return;
+	browser_window_set_gadget_filename(gw->bw, gadget, buf);
 }
 
 /**
