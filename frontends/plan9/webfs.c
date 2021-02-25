@@ -219,14 +219,22 @@ static int send_request(int cfd, struct webfs_fetch *f)
 		} else if(f->post_data != NULL) {
 			for(part = f->post_data; part != NULL; part = part->next) {
 				if(part->file == true) {
-					DBG("webfs: file part not implemented");
-					continue;
+					n = snprintf(NULL, 0, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n", part->name);
+					s = malloc((n+1)*sizeof(char));
+					snprintf(s, n+1, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n", part->name);
+					write(fd, s, n);
+					free(s);
+					s = read_file(part->rawfile, &n);
+					write(fd, s, n);
+					free(s);
+					write(fd, "\r\n", 2);
+				} else {
+					n = snprintf(NULL, 0, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n", part->name, part->value);
+					s = malloc((n+1)*sizeof(char));
+					snprintf(s, n+1, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n", part->name, part->value);
+					write(fd, s, n);
+					free(s);
 				}
-				n = snprintf(NULL, 0, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n", part->name, part->value);
-				s = malloc((n+1)*sizeof(char));
-				snprintf(s, n+1, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n", part->name, part->value);
-				write(fd, s, n);
-				free(s);
 			}
 			write(fd, "--HJBOUNDARY--\r\n", strlen("--HJBOUNDARY--\r\n"));
 		}
