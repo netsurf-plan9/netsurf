@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/limits.h>
-#include <lock.h>
+#include <fmt.h>
 #include <libwapcaplet/libwapcaplet.h>
 #include "content/fetch.h"
 #include "content/fetchers.h"
@@ -157,6 +157,39 @@ static void send_headers(struct webfs_fetch *f)
 	}
 }
 
+static void send_post_part(int fd, struct fetch_multipart_data *part)
+{
+	const char Kboundary[] = "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n";
+	const char KVboundary[] = "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n";
+	int n, ffd;
+	char *s, buf[1024];
+
+	if(part->file == true) {
+		n = snprintf(NULL, 0, Kboundary, part->name);
+		s = malloc((n+1)*sizeof(char));
+		snprintf(s, n+1, Kboundary, part->name);
+		write(fd, s, n);
+		free(s);
+		ffd = open(part->rawfile, O_RDONLY);
+		if(ffd <= 0)
+			return;
+		for(;;) {
+			n = read(ffd, buf, sizeof buf);
+			if (n <= 0)
+				break;
+			write(fd, buf, n);
+		}
+		close(ffd);
+		write(fd, "\r\n", 2);
+	} else {
+		n = snprintf(NULL, 0, KVboundary, part->name, part->value);
+		s = malloc((n+1)*sizeof(char));
+		snprintf(s, n, KVboundary, part->name, part->value);
+		write(fd, s, n);
+		free(s);
+	}
+}
+
 static int send_request(int cfd, struct webfs_fetch *f)
 {
 	char path[PATH_MAX+1], *s;
@@ -218,23 +251,7 @@ static int send_request(int cfd, struct webfs_fetch *f)
 			}
 		} else if(f->post_data != NULL) {
 			for(part = f->post_data; part != NULL; part = part->next) {
-				if(part->file == true) {
-					n = snprintf(NULL, 0, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n", part->name);
-					s = malloc((n+1)*sizeof(char));
-					snprintf(s, n+1, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n", part->name);
-					write(fd, s, n);
-					free(s);
-					s = read_file(part->rawfile, &n);
-					write(fd, s, n);
-					free(s);
-					write(fd, "\r\n", 2);
-				} else {
-					n = snprintf(NULL, 0, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n", part->name, part->value);
-					s = malloc((n+1)*sizeof(char));
-					snprintf(s, n+1, "--HJBOUNDARY\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n", part->name, part->value);
-					write(fd, s, n);
-					free(s);
-				}
+				send_post_part(fd, part);
 			}
 			write(fd, "--HJBOUNDARY--\r\n", strlen("--HJBOUNDARY--\r\n"));
 		}
