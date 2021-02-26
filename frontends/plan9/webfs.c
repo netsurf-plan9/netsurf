@@ -104,13 +104,13 @@ static char* header_string(char *path, char *name, int *size)
 	int n;
 	s = read_file(path, &n);
 	if (s == NULL) {
-		DBG("cannot open %s: %r", path);
+		NSLOG(netsurf, WARNING, "webfs cannot open %s: %s", path, strerror(errno));
 		return NULL;
 	}
 	n = strlen(name) + 1 + 1 + n + 1; /* <name>: <s>\0 */
 	h = malloc(n*sizeof(char));
 	if ((n = snprintf(h, n, "%s: %s", name, s)) != n) {
-		DBG("unable to create header string: %r");
+		NSLOG(netsurf, WARNING, "unable to create header string: %r");
 		free(s);
 		free(h);
 		return NULL;
@@ -146,10 +146,8 @@ static void send_headers(struct webfs_fetch *f)
 		snprintf(path, sizeof path, "/mnt/web/%d/%s", f->id, Headers[i]);
 		if (access(path, R_OK) == 0) {
 			s = header_string(path, Headers[i+1], &n);
-			if (s == NULL) {
-				DBG("NULL header_string");
+			if (s == NULL)
 				continue;
-			}
 			msg.data.header_or_data.buf = (const uint8_t*)s;
 			msg.data.header_or_data.len = n;
 			fetch_send_callback(&msg, f->parent);
@@ -201,7 +199,7 @@ static int send_request(int cfd, struct webfs_fetch *f)
 	n = 3+1+strlen(nsurl_access(f->url))+1;
 	s = malloc(n*sizeof(char)); /* 'url <url>\0' */
 	if ((n = snprintf(s, n, "url %s", nsurl_access(f->url))) != n) {
-		DBG("unable to create url string: %s", strerror(errno));
+		NSLOG(netsurf, WARNING, "unable to create url string: %s", strerror(errno));
 		free(s);
 		return -1;
 	}
@@ -222,7 +220,7 @@ static int send_request(int cfd, struct webfs_fetch *f)
 				return -1;
 			}
 			if ((n = write(cfd, s, l)) != l) {
-				DBG("could not write headers: %s", strerror(errno));
+				NSLOG(netsurf, WARNING, "could not write headers: %s", strerror(errno));
 				free(s);
 				return -1;
 			}
@@ -234,19 +232,19 @@ static int send_request(int cfd, struct webfs_fetch *f)
 		if(f->post_data != NULL)
 			write(cfd, "headers Content-Type: multipart/form-data; boundary=HJBOUNDARY", 62);
 		if(snprintf(path, sizeof path, "/mnt/web/%d/postbody", f->id) <= 0) {
-			DBG("could not create postbody path: %s", strerror(errno));
+			NSLOG(netsurf, WARNING, "could not create postbody path: %s", strerror(errno));
 			return -1;
 		}
 		fd = open(path, O_WRONLY);
 		if(fd < 0) {
-			DBG("could not open postbody path: %s\n", strerror(errno));
+			NSLOG(netsurf, WARNING, "could not open postbody path: %s\n", strerror(errno));
 			return -1;
 		}
 		if(f->post_url != NULL) {
 			l = strlen(f->post_url);
 			if ((n = write(fd, f->post_url, l)) != l) {
 				close(fd);
-				DBG("could not write post data: %s", strerror(errno));
+				NSLOG(netsurf, WARNING, "could not write post data: %s", strerror(errno));
 				return -1;
 			}
 		} else if(f->post_data != NULL) {
@@ -265,7 +263,7 @@ static bool should_redirect(int cfd, struct webfs_fetch *f)
 	int n;
 
 	if (snprintf(path, sizeof path, "/mnt/web/%d/parsed/url", f->id) <= 0) {
-		DBG("could not create parsed/url path: %s", strerror(errno));
+		NSLOG(netsurf, WARNING, "could not create parsed/url path: %s", strerror(errno));
 		return false;
 	}
 	u = read_file(path, &n);
@@ -387,7 +385,7 @@ static bool webfs_start(void *fetch)
 	f->state = Serror;
 	cfd = open("/mnt/web/clone", O_RDWR);
 	if (cfd <= 0) {
-		DBG("unable to open /mnt/web/clone: %s", strerror(errno));
+		NSLOG(netsurf, WARNING, "unable to open /mnt/web/clone: %s", strerror(errno));
 		f->state = Serror;
 		msg.type = FETCH_ERROR;
 		msg.data.error = e;
@@ -395,13 +393,13 @@ static bool webfs_start(void *fetch)
 		return true;
 	}
 	if ((n = read(cfd, buf, sizeof(buf)-1)) <= 0) {
-		DBG("could not get connection from webfs: %s", strerror(errno));
+		NSLOG(netsurf, WARNING, "could not get connection from webfs: %s", strerror(errno));
 		goto Error;
 	}
 	buf[n-1] = 0; /* remove \n */
 	f->id = strtol(buf, &s, 10);
 	if (f->id == 0 && buf==s) {
-		DBG("could not parse connection id: %s", strerror(errno));
+		NSLOG(netsurf, WARNING, "could not parse connection id: %s", strerror(errno));
 		goto Error;
 	}
 	if (send_request(cfd, f) < 0) {
@@ -481,7 +479,7 @@ static void webfs_read(struct webfs_fetch *f)
 	}
 	if (n < 0) {
 		e = strerror(errno);
-		DBG("webfs read error [%s]: %s", nsurl_access(f->url), e);
+		NSLOG(netsurf, WARNING, "webfs read error [%s]: %s", nsurl_access(f->url), e);
 		f->state = Serror;
 		close(f->fd);
 		f->fd = -1;
@@ -608,13 +606,13 @@ nserror webfs_register(void)
 	scheme = lwc_string_ref(corestring_lwc_http);
 	err = fetcher_add(scheme, &fetcher_ops);
 	if (err != NSERROR_OK) {
-		DBG("webfs_register: unable to register as HTTP fetcher (%s)", messages_get_errorcode(err));
+		NSLOG(netsurf, WARNING, "webfs cannot register as HTTP fetcher (%s)", messages_get_errorcode(err));
 		return err;
 	}
 	scheme = lwc_string_ref(corestring_lwc_https);
 	err = fetcher_add(scheme, &fetcher_ops);
 	if (err != NSERROR_OK) {
-		DBG("webfs_register: unable to register as HTTPS fetcher (%s)", messages_get_errorcode(err));
+		NSLOG(netsurf, WARNING, "webfs cannot register as HTTPS fetcher (%s)", messages_get_errorcode(err));
 		return err;
 	}
 
