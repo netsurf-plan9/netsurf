@@ -313,65 +313,6 @@ static void handle_error(struct webfs_fetch *f, char *path, char *err)
 	}
 }
 
-/* 
-Not useful as such as cookies are handled by webcookies(1).
-This would be useful if we add a cookie explorer window though
- */
-static void read_cookies(struct webfs_fetch *f)
-{
-	char cookie[4097], buf[1024], *p, *e;
-	int fd, n, c, r, s;
-	size_t l;
-
-	fd = open("/mnt/webcookies/http", O_RDWR);
-	if (fd < 0) {
-		DBG("unable to open webcookies: %s", strerror(errno));
-		return;
-	}
-	l = strlen(nsurl_access(f->url));
-	if ((n = write(fd, nsurl_access(f->url), l)) != l) {
-		DBG("unable to write url to webcookies: %s", strerror(errno));
-		close(fd);
-		return;
-	}
-	c = 0;
-	r = 0;
-	for (;;) {
-		n = read(fd, buf + r, sizeof(buf) - r);
-		if (n == 0)
-			break;
-		if (n < 0) {
-			DBG("unable to read from webcookies: %s", strerror(errno));
-			close(fd);
-			break;
-		}
-		buf[n] = 0;
-		p = buf;
-		e = strchr(buf, '\n');
-		s = n;
-		if (c == 0) {
-			p += 8; /* skip 'Cookie: ' */
-			s -= 8;
-		}
-		if (e != NULL) {
-			s = (int)(e - p+s) + 1;
-			strncpy(cookie+c, p, s);
-			c += s;
-			cookie[c] = 0;
-			//DBG("COOKIE [%s]", cookie);
-			fetch_set_cookie(f->parent, cookie);
-			c = 0;
-			r = n-s;
-			memmove(buf, e+1, sizeof(buf) - n);
-		} else {
-			DBG("PARSING [%s]", buf);
-			strncpy(cookie+c, buf, n);
-			c += n;
-		}
-	}
-	close(fd);
-}
-
 static bool webfs_start(void *fetch)
 {
 	struct webfs_fetch_list *l;
@@ -422,7 +363,6 @@ static bool webfs_start(void *fetch)
 	close(cfd);
 	fetch_set_http_code(f->parent, 200);
 	send_headers(f);
-	/* read_cookies(f); */
 	f->state = Sstarted;
 	fetch_list_add(f);
 	return true;
@@ -521,7 +461,7 @@ static void webfs_poll(lwc_string *scheme)
 			fetch_send_callback(&msg, l->fetch->parent);
 		} else if (l->fetch->state == Serror) {
 			msg.type = FETCH_ERROR;
-			msg.data.redirect = l->fetch->data;
+			msg.data.error = l->fetch->data;
 			fetch_send_callback(&msg, l->fetch->parent);
 		}
 		/* new state might have already changed here so we don't want to wait
