@@ -800,7 +800,7 @@ main(int argc, char *argv[])
 		verbose = true;
 		break;
 	default:
-		fprintf(stderr, "usage: %s [-cdv] [url]\n", argv0);
+		fprintf(stderr, "usage: %s [-cudv] [url]\n", argv0);
 		exit(1);
 	} ARGEND
 
