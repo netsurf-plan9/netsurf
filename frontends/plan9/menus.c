@@ -25,6 +25,7 @@
 
 extern int esepmenuhit(int but, Mouse *m, Menu *menu);
 extern void drawui_exit(int);
+static char *menu2gen(int);
 static char* menu3gen(int); 
 
 char *menu2str[] =
@@ -72,45 +73,11 @@ enum
 	Msearchnext,
 };
 
-static char *menu2gen(int);
-
 Menu menu2 = { 0, menu2gen };
 
-char *menu2lstr[] =
+char *menu2altstr[] =
 {
 	"new window",
-	"snarf url",
-	"plumb url",
-	0
-};
-
-enum
-{
-	Mnewwin,
-	Msnarfurl,
-	Mplumburl,
-};
-Menu menu2l = { menu2lstr };
-
-
-char *menu2istr[] =
-{
-	"open in page",
-	"snarf image url",
-	"plumb image url",
-	0,
-};
-
-enum
-{
-	Mopeninpage,
-	Msnarfimageurl,
-	Mplumbimageurl,
-};
-Menu menu2i = { menu2istr };
-
-char *menu2ilstr[] =
-{
 	"snarf url",
 	"plumb url",
 	"-",
@@ -122,14 +89,16 @@ char *menu2ilstr[] =
 
 enum
 {
-	Milsnarflinkurl,
-	Milplumblinkurl,
-	Milsep,
-	Milopeninpage,
-	Milsnarfimageurl,
-	Milplumbimageurl,
+	Mnewwin,
+	Msnarfurl,
+	Mplumburl,
+	Msepm2,
+	Mopeninpage,
+	Msnarfimageurl,
+	Mplumbimageurl,
+	Mlast,
+	Mend,
 };
-Menu menu2il = { menu2ilstr };
 
 static char *menu3str[] =
 {
@@ -162,20 +131,6 @@ enum
 
 static Menu menu3 = { 0, menu3gen };
 
-
-static char* menu2gen(int index)
-{
-	char buf[1025] = {0};
-
-	if (index == Msearchnext) {
-		if (search_has_next() == false && search_should_wrap() == false)
-			return NULL;
-		snprintf(buf, sizeof buf, "/%s", search_text());
-		return buf;
-	}
-	return menu2str[index];
-}
-
 static void viewsource(struct browser_window *bw)
 {
 	struct hlcache_handle *hlcontent;
@@ -194,6 +149,40 @@ static void viewsource(struct browser_window *bw)
 	if (err != NSERROR_OK)
 		filename = "netsurf:view-source";
 	send_data_to_plumber("edit", filename, (char*)source_data, source_size);
+}
+
+static void snarf_url(struct nsurl *url)
+{
+	char *s;
+
+	s = nsurl_access(url);
+	if (s != NULL) {
+		plan9_snarf(s, strlen(s));
+	}
+}
+
+static void plumb_url(struct nsurl *url)
+{
+	char *s;
+
+	s = nsurl_access(url);	
+	if (s != NULL) {
+		send_to_plumber(s);
+	}
+}
+
+
+static char* menu2gen(int index)
+{
+	char buf[1025] = {0};
+
+	if (index == Msearchnext) {
+		if (search_has_next() == false && search_should_wrap() == false)
+			return NULL;
+		snprintf(buf, sizeof buf, "/%s", search_text());
+		return buf;
+	}
+	return menu2str[index];
 }
 
 static void menu2hitstd(struct gui_window *gw, Mouse *m)
@@ -282,34 +271,33 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 		break;
 	}
 }
-
-static void snarf_url(struct nsurl *url)
+static void menu2hitalt(struct gui_window *gw, Mouse *m, struct nsurl *url, struct hlcache_handle *h)
 {
-	char *s;
+#define ADDITEM(ITEM) items[i] = menu2altstr[ITEM]; actions[i] = ITEM; i++;
 
-	s = nsurl_access(url);
-	if (s != NULL) {
-		plan9_snarf(s, strlen(s));
+	Menu menu;
+	char *items[Mend];
+	int actions[Mend], i, n;
+
+	i = 0;
+	if(url != NULL) {
+		ADDITEM(Mnewwin);
+		ADDITEM(Msnarfurl);
+		ADDITEM(Mplumburl);
 	}
-}
-
-static void plumb_url(struct nsurl *url)
-{
-	char *s;
-
-	s = nsurl_access(url);	
-	if (s != NULL) {
-		send_to_plumber(s);
+	if (h != NULL) {
+		if (i > 0)
+			ADDITEM(Msepm2);
+		ADDITEM(Mopeninpage);
+		ADDITEM(Msnarfimageurl);
+		ADDITEM(Mplumbimageurl);
 	}
-}
-
-static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
-{
-	char *s;
-	int n;
-
-	n = esepmenuhit(2, m, &menu2l);
-	switch (n) {
+	items[i] = 0;
+	menu.item = items;
+	n = esepmenuhit(2, m, &menu);
+	if (n < 0)
+		return;
+	switch (actions[n]) {
 	case Mnewwin:
 		exec_netsurf(nsurl_access(url));
 		break;
@@ -319,53 +307,15 @@ static void menu2hitlink(struct gui_window *gw, Mouse *m, struct nsurl *url)
 	case Mplumburl:
 		plumb_url(url);
 		break;
-	}
-}
-
-static void menu2hitimage(struct gui_window *gw, Mouse *m, struct hlcache_handle *h)
-{
-	int n;
-	nsurl *url;
-
-	url = hlcache_handle_get_url(h);
-	n = esepmenuhit(2, m, &menu2i);
-	switch (n) {
 	case Mopeninpage:
-		browser_window_navigate(gw->bw, url, NULL, BW_NAVIGATE_DOWNLOAD,
+		browser_window_navigate(gw->bw, hlcache_handle_get_url(h), NULL, BW_NAVIGATE_DOWNLOAD,
 			NULL, NULL, NULL);
 		break;
 	case Msnarfimageurl:
-		snarf_url(url);
+		snarf_url(hlcache_handle_get_url(h));
 		break;
 	case Mplumbimageurl:
-		plumb_url(url);
-		break;
-	}
-}
-
-static void menu2hitimagelink(struct gui_window *gw, Mouse *m, struct nsurl *url, struct hlcache_handle *h)
-{
-	int n;
-	nsurl *urli;
-
-	urli = hlcache_handle_get_url(h);
-	n = esepmenuhit(2, m, &menu2il);
-	switch (n) {
-	case Milopeninpage:
-		browser_window_navigate(gw->bw, urli, NULL, BW_NAVIGATE_DOWNLOAD,
-			NULL, NULL, NULL);
-		break;
-	case Milsnarflinkurl:
-		snarf_url(url);
-		break;
-	case Milsnarfimageurl:
-		snarf_url(urli);
-		break;
-	case Milplumblinkurl:
-		plumb_url(url);
-		break;
-	case Milplumbimageurl:
-		plumb_url(urli);
+		plumb_url(hlcache_handle_get_url(h));
 		break;
 	}
 }
@@ -378,13 +328,9 @@ void menu2hit(struct gui_window *gw, Mouse *m, struct browser_window_features *f
 	isimage = features->object != NULL && content_get_type(features->object) == CONTENT_IMAGE;
 	if (islink == false && isimage == false) {
 		menu2hitstd(gw, m);
-	} else if (islink == true && isimage == true) {
-		menu2hitimagelink(gw, m, features->link, features->object);
-	} else if (islink == true) {
-		menu2hitlink(gw, m, features->link);
-	} else if (isimage == true) {
-		menu2hitimage(gw, m, features->object);
-	} 
+	} else {
+		menu2hitalt(gw, m, features->link, features->object);
+	}
 }
 
 static char* menu3gen(int index)
