@@ -284,13 +284,18 @@ static void handle_error(struct webfs_fetch *f, char *path, char *err)
 
 	p = NULL;
 	code = 0;
-	len = strlen(path);
-	/* HTTP error returned from webfs with format:
-	 * '/mnt/web/XXX/body' <CODE> <MESSAGE>
-	 */
-	if (strncmp(err+1, path, len) == 0) {
-		p = err+1+len+1+1;
-		code = strtol(p, NULL, 10);
+	if (errno == ENOENT) {
+		code = 404;
+		p = strdup("Not Found");
+	} else {
+		/* HTTP error returned from webfs with format:
+		 * '/mnt/web/XXX/body' <CODE> <MESSAGE>
+		 */
+		len = strlen(path);
+		if (strncmp(err+1, path, len) == 0) {
+			p = err+1+len+1+1;
+			code = strtol(p, NULL, 10);
+		}
 	}
 	/* message needs to be sent after start so we add the fetch 
 	 * to the fetch list. It will be processed during the next
