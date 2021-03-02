@@ -730,11 +730,13 @@ void url_entry_activated(char *text, void *data)
 {
 	nserror error;
 	nsurl *url;
+	int mode;
 
 	if (text == NULL || text[0] == 0) {
 		return;
 	}
-	error = search_web_omni(text, SEARCH_WEB_OMNI_NONE, &url);
+	mode = nsoption_bool(search_url_bar) ? SEARCH_WEB_OMNI_SEARCHONLY : SEARCH_WEB_OMNI_NONE;
+	error = search_web_omni(text, mode, &url);
 	if (error == NSERROR_OK) {
 		browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_HISTORY,
 			NULL, NULL, NULL);
