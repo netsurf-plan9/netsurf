@@ -105,25 +105,29 @@ static char** init_resource_paths(void)
 	return respath;
 }
 
+static nserror init_options_defaults(struct nsoption_s *defaults)
+{
+	nsoption_set_charp(homepage_url, "about:welcome");
+	nsoption_set_int(max_fetchers, 44);
+	nsoption_set_int(max_fetchers_per_host, 20);
+	nsoption_set_bool(animate_images, false);
+	nsoption_set_bool(enable_javascript, false);
+	nsoption_set_bool(search_url_bar, true);
+	nsoption_set_int(search_provider, 18); //ddg
+	return NSERROR_OK;
+}
+
 static nserror init_options(void)
 {
 	nserror ret;
 	char *options;
 
-	ret = nsoption_init(NULL, &nsoptions, &nsoptions_default);
+	ret = nsoption_init(init_options_defaults, &nsoptions, &nsoptions_default);
 	if(ret != NSERROR_OK) {
 		return ret;
 	}
 	options = userdir_file("options");
 	nsoption_read(options, nsoptions);
-	/* set default options */
-	if (access(options, F_OK) < 0) {
-		nsoption_set_int(max_fetchers, 44);
-		nsoption_set_int(max_fetchers_per_host, 20);
-		nsoption_set_bool(animate_images, true);
-		nsoption_set_bool(enable_javascript, false);
-		nsoption_set_charp(homepage_url, "about:welcome");
-	}
 	free(options);
 	return NSERROR_OK;
 }
