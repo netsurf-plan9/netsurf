@@ -208,6 +208,18 @@ static void save_cookies(void)
 	free(path);
 }
 
+static nserror init_websearch(void)
+{
+	nserror ret;
+	char *path;
+	path = filepath_find(respaths, "SearchEngines");
+	ret = search_web_init(path);
+	if (ret == NSERROR_OK && nsoption_int(search_provider) != 0)
+		search_web_select_provider(nsoption_int(search_provider));
+	free(path);
+	return ret;
+}
+
 static nserror drawui_init(int argc, char *argv[])
 {
 	struct browser_window *bw;
@@ -858,8 +870,7 @@ main(int argc, char *argv[])
 
 	webfs_register();
 
-	path = filepath_find(respaths, "SearchEngines");
-	ret = search_web_init(path);
+	ret = init_websearch();
 	if(ret != NSERROR_OK) {
 		fprintf(stderr, "unable to initialize web search: %s\n", messages_get_errorcode(ret));
 	}
