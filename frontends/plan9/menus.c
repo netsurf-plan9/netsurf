@@ -273,7 +273,7 @@ static void menu2hitstd(struct gui_window *gw, Mouse *m)
 }
 static void menu2hitalt(struct gui_window *gw, Mouse *m, struct nsurl *url, struct hlcache_handle *h)
 {
-#define ADDITEM(ITEM) items[i] = menu2altstr[ITEM]; actions[i] = ITEM; i++;
+#define ADDITEM(ITEM) do { items[i] = menu2altstr[ITEM]; actions[i] = ITEM; i++; } while(0);
 
 	Menu menu;
 	char *items[Mend];
