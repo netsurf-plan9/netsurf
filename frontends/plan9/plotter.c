@@ -88,25 +88,35 @@ Image* getimage(struct bitmap *b, int w, int h)
 	if(h == 0)
 		h = ih;
 	if (b->i == NULL) {
-		/* premultiply alpha */
-		c = ((b->width * 32 + 8 - 1) / 8) * b->height;
-		for (i = 0; i < c; i += 4) {
-			alpha = (double)b->data[i+3] / 255.0;
-			b->data[i+0] = alpha * b->data[i+0];
-			b->data[i+1] = alpha * b->data[i+1];
-			b->data[i+2] = alpha * b->data[i+2];
-		}
-		if (b->opaque)
+		if (b->opaque){
 			chan = XBGR32;
-		else
-			chan = ABGR32;
+		}else{
+			c = ((b->width * 32 + 8 - 1) / 8) * b->height;
+			/* don't always trust the rest of the netsurf: test for opaque images */
+			for (i = 0; i < c; i += 4)
+				if(b->data[i+3] != 255)
+					break;
+			if(i >= c){ /* it's opaque, apparently */
+				chan = XBGR32;
+			}else{
+				chan = ABGR32;
+				/* premultiply alpha */
+				c = ((b->width * 32 + 8 - 1) / 8) * b->height;
+				for (i = 0; i < c; i += 4) {
+					alpha = (double)b->data[i+3] / 255.0;
+					b->data[i+0] = alpha * b->data[i+0];
+					b->data[i+1] = alpha * b->data[i+1];
+					b->data[i+2] = alpha * b->data[i+2];
+				}
+			}
+		}
 		if (iw != w || ih != h) {
 			if((out = malloc(w*h*4)) == nil)
 				sysfatal("memory");
 			stbir_resize_uint8_generic(
 				b->data, iw, ih, bitmap_get_rowstride(b),
 				out, w, h, w*BITMAP_BPP,
-				BITMAP_BPP, 3, STBIR_FLAG_ALPHA_PREMULTIPLIED,
+				BITMAP_BPP, chan == ABGR32 ? 3 : -1, STBIR_FLAG_ALPHA_PREMULTIPLIED,
 				STBIR_EDGE_CLAMP, STBIR_FILTER_MITCHELL, STBIR_COLORSPACE_LINEAR,
 				NULL
 			);
