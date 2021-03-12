@@ -101,7 +101,6 @@ Image* getimage(struct bitmap *b, int w, int h)
 			}else{
 				chan = ABGR32;
 				/* premultiply alpha */
-				c = ((b->width * 32 + 8 - 1) / 8) * b->height;
 				for (i = 0; i < c; i += 4) {
 					alpha = (double)b->data[i+3] / 255.0;
 					b->data[i+0] = alpha * b->data[i+0];
