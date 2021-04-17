@@ -38,11 +38,19 @@ static Image *getcolor(colour c)
 {
 	Image *m;
 	int i, f;
-	uint32_t n, r, g, b;
+	uint32_t n, r, g, b, a;
+	float q;
 
 	r = c & 0xff;
 	g = (c & 0xff00) >> 8;
 	b = (c & 0xff0000) >> 16;
+	a = (c & 0xff000000) >> 24;
+	if (a != 0 && a != 255) { /* simulate opacity */
+		q = (255.0 - a) / 255.0;
+		r = 255 - q*(255 - r);
+		g = 255 - q*(255 - g);
+		b = 255 - q*(255 - b);
+	}
 	n = (r << 24) | (g << 16) | (b << 8) | 0xff; 
 	if (n == 0xffffffff)
 		return display->white;
