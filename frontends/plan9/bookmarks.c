@@ -246,6 +246,7 @@ void add_bookmark(char *t, char *u)
 		bookmarks->items = realloc(bookmarks->items, bookmarks->size);
 	}
 	bookmarks->items[bookmarks->count++] = b;
+	bookmarks_save();
 }
 
 void del_bookmark(int i)
@@ -261,6 +262,7 @@ void del_bookmark(int i)
 	bookmarks->items[n] = NULL;
 	memmove(bookmarks->items+n, bookmarks->items+n+1, (bookmarks->count-n-1)*sizeof(struct bookmark*));
 	bookmarks->count--;
+	bookmarks_save();
 }
 
 void bookmarks_init(void)

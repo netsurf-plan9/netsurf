@@ -347,7 +347,6 @@ void drawui_exit(int status)
 		current->bw = NULL;
 		browser_window_destroy(bw);
 	}
-	bookmarks_save();
 	save_cookies();
 	save_history();
 	search_web_finalise();
