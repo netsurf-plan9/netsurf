@@ -563,22 +563,45 @@ static const float stbir__max_uint8_as_float  = 255.0f;
 static const float stbir__max_uint16_as_float = 65535.0f;
 static const double stbir__max_uint32_as_float = 4294967295.0;
 
+static const float stbir__uint8_to_float[] = {
+#define D(x) (x/255.0f)
+      D(0.0f),   D(1.0f),   D(2.0f),   D(3.0f),   D(4.0f),   D(5.0f),   D(6.0f),   D(7.0f),
+      D(8.0f),   D(9.0f),  D(10.0f),  D(11.0f),  D(12.0f),  D(13.0f),  D(14.0f),  D(15.0f),
+     D(16.0f),  D(17.0f),  D(18.0f),  D(19.0f),  D(20.0f),  D(21.0f),  D(22.0f),  D(23.0f),
+     D(24.0f),  D(25.0f),  D(26.0f),  D(27.0f),  D(28.0f),  D(29.0f),  D(30.0f),  D(31.0f),
+     D(32.0f),  D(33.0f),  D(34.0f),  D(35.0f),  D(36.0f),  D(37.0f),  D(38.0f),  D(39.0f),
+     D(40.0f),  D(41.0f),  D(42.0f),  D(43.0f),  D(44.0f),  D(45.0f),  D(46.0f),  D(47.0f),
+     D(48.0f),  D(49.0f),  D(50.0f),  D(51.0f),  D(52.0f),  D(53.0f),  D(54.0f),  D(55.0f),
+     D(56.0f),  D(57.0f),  D(58.0f),  D(59.0f),  D(60.0f),  D(61.0f),  D(62.0f),  D(63.0f),
+     D(64.0f),  D(65.0f),  D(66.0f),  D(67.0f),  D(68.0f),  D(69.0f),  D(70.0f),  D(71.0f),
+     D(72.0f),  D(73.0f),  D(74.0f),  D(75.0f),  D(76.0f),  D(77.0f),  D(78.0f),  D(79.0f),
+     D(80.0f),  D(81.0f),  D(82.0f),  D(83.0f),  D(84.0f),  D(85.0f),  D(86.0f),  D(87.0f),
+     D(88.0f),  D(89.0f),  D(90.0f),  D(91.0f),  D(92.0f),  D(93.0f),  D(94.0f),  D(95.0f),
+     D(96.0f),  D(97.0f),  D(98.0f),  D(99.0f),  D(100.0f), D(101.0f), D(102.0f), D(103.0f),
+     D(104.0f), D(105.0f), D(106.0f), D(107.0f), D(108.0f), D(109.0f), D(110.0f), D(111.0f),
+     D(112.0f), D(113.0f), D(114.0f), D(115.0f), D(116.0f), D(117.0f), D(118.0f), D(119.0f),
+     D(120.0f), D(121.0f), D(122.0f), D(123.0f), D(124.0f), D(125.0f), D(126.0f), D(127.0f),
+     D(128.0f), D(129.0f), D(130.0f), D(131.0f), D(132.0f), D(133.0f), D(134.0f), D(135.0f),
+     D(136.0f), D(137.0f), D(138.0f), D(139.0f), D(140.0f), D(141.0f), D(142.0f), D(143.0f),
+     D(144.0f), D(145.0f), D(146.0f), D(147.0f), D(148.0f), D(149.0f), D(150.0f), D(151.0f),
+     D(152.0f), D(153.0f), D(154.0f), D(155.0f), D(156.0f), D(157.0f), D(158.0f), D(159.0f),
+     D(160.0f), D(161.0f), D(162.0f), D(163.0f), D(164.0f), D(165.0f), D(166.0f), D(167.0f),
+     D(168.0f), D(169.0f), D(170.0f), D(171.0f), D(172.0f), D(173.0f), D(174.0f), D(175.0f),
+     D(176.0f), D(177.0f), D(178.0f), D(179.0f), D(180.0f), D(181.0f), D(182.0f), D(183.0f),
+     D(184.0f), D(185.0f), D(186.0f), D(187.0f), D(188.0f), D(189.0f), D(190.0f), D(191.0f),
+     D(192.0f), D(193.0f), D(194.0f), D(195.0f), D(196.0f), D(197.0f), D(198.0f), D(199.0f),
+     D(200.0f), D(201.0f), D(202.0f), D(203.0f), D(204.0f), D(205.0f), D(206.0f), D(207.0f),
+     D(208.0f), D(209.0f), D(210.0f), D(211.0f), D(212.0f), D(213.0f), D(214.0f), D(215.0f),
+     D(216.0f), D(217.0f), D(218.0f), D(219.0f), D(220.0f), D(221.0f), D(222.0f), D(223.0f),
+     D(224.0f), D(225.0f), D(226.0f), D(227.0f), D(228.0f), D(229.0f), D(230.0f), D(231.0f),
+     D(232.0f), D(233.0f), D(234.0f), D(235.0f), D(236.0f), D(237.0f), D(238.0f), D(239.0f),
+     D(240.0f), D(241.0f), D(242.0f), D(243.0f), D(244.0f), D(245.0f), D(246.0f), D(247.0f),
+     D(248.0f), D(249.0f), D(250.0f), D(251.0f), D(252.0f), D(253.0f), D(254.0f), D(255.0f), 
+#undef D
+};
 
-static stbir__inline int stbir__min(int a, int b)
-{
-    return a < b ? a : b;
-}
-
-static stbir__inline float stbir__saturate(float x)
-{
-    if (x < 0)
-        return 0;
-
-    if (x > 1)
-        return 1;
-
-    return x;
-}
+#define stbir__min(a, b) ((a) < (b) ? (a) : (b))
+#define stbir__saturate(x) ((x) < 0 ? 0 : ((x) > 1 ? 1 : (x)))
 
 #ifdef STBIR_SATURATE_INT
 static stbir__inline stbir_uint8 stbir__saturate8(int x)
@@ -863,20 +886,9 @@ static stbir__filter_info stbir__filter_info_table[] = {
         { stbir__filter_mitchell,   stbir__support_two },
 };
 
-stbir__inline static int stbir__use_upsampling(float ratio)
-{
-    return ratio > 1;
-}
-
-stbir__inline static int stbir__use_width_upsampling(stbir__info* stbir_info)
-{
-    return stbir__use_upsampling(stbir_info->horizontal_scale);
-}
-
-stbir__inline static int stbir__use_height_upsampling(stbir__info* stbir_info)
-{
-    return stbir__use_upsampling(stbir_info->vertical_scale);
-}
+#define stbir__use_upsampling(ratio) ((ratio) > 1)
+#define stbir__use_width_upsampling(info) stbir__use_upsampling((info)->horizontal_scale)
+#define stbir__use_height_upsampling(info) stbir__use_upsampling((info)->vertical_scale)
 
 // This is the maximum number of input samples that can affect an output sample
 // with the given filter
@@ -997,13 +1009,9 @@ static int stbir__edge_wrap_slow(stbir_edge edge, int n, int max)
     }
 }
 
-stbir__inline static int stbir__edge_wrap(stbir_edge edge, int n, int max)
-{
-    // avoid per-pixel switch
-    if (n >= 0 && n < max)
-        return n;
-    return stbir__edge_wrap_slow(edge, n, max);
-}
+#define stbir__edge_wrap(edge, n, max) \
+    (((n) >= 0 && (n) < (max)) ? (n) : stbir__edge_wrap_slow((edge), (n), (max)))
+    // ^ avoid per-pixel switch ^
 
 // What input pixels contribute to this output pixel?
 static void stbir__calculate_sample_range_upsample(int n, float out_filter_radius, float scale_ratio, float out_shift, int* in_first_pixel, int* in_last_pixel, float* in_center_of_out)
@@ -1278,7 +1286,7 @@ static void stbir__decode_scanline(stbir__info* stbir_info, int n)
             int decode_pixel_index = x * channels;
             int input_pixel_index = stbir__edge_wrap(edge_horizontal, x, input_w) * channels;
             for (c = 0; c < channels; c++)
-                decode_buffer[decode_pixel_index + c] = ((float)((const unsigned char*)input_data)[input_pixel_index + c]) / stbir__max_uint8_as_float;
+                decode_buffer[decode_pixel_index + c] = stbir__uint8_to_float[((const unsigned char*)input_data)[input_pixel_index + c]];
         }
         break;
 
@@ -1288,7 +1296,7 @@ static void stbir__decode_scanline(stbir__info* stbir_info, int n)
             int decode_pixel_index = x * channels;
             int input_pixel_index = stbir__edge_wrap(edge_horizontal, x, input_w) * channels;
             for (c = 0; c < channels; c++)
-                decode_buffer[decode_pixel_index + c] = stbir__srgb_uchar_to_linear_float[((const unsigned char*)input_data)[input_pixel_index + c]];
+                decode_buffer[decode_pixel_index + c] = stbir__uint8_to_float[((const unsigned char*)input_data)[input_pixel_index + c]];
 
             if (!(stbir_info->flags&STBIR_FLAG_ALPHA_USES_COLORSPACE))
                 decode_buffer[decode_pixel_index + alpha_channel] = ((float)((const unsigned char*)input_data)[input_pixel_index + alpha_channel]) / stbir__max_uint8_as_float;
