@@ -95,6 +95,12 @@ Image* getimage(struct bitmap *b, int w, int h)
 		w = iw;
 	if(h == 0)
 		h = ih;
+	if (b->i != NULL) {
+		if (w != Dx(b->i->r) || h != Dy(b->i->r)) {
+			freeimage(b->i);
+			b->i = NULL;
+		}
+	}
 	if (b->i == NULL) {
 		if (b->opaque){
 			chan = XBGR32;
