@@ -746,6 +746,7 @@ bool is_url(char *text)
 	return 
 		strncmp(text, "http://", 7) == 0 ||
 		strncmp(text, "https://", 8) == 0 ||
+		strncmp(text, "file://", 7) == 0 ||
 		strncmp(text, "about:", 6) == 0 ||
 		strncmp(text, "resource:", 9) == 0;
 }
