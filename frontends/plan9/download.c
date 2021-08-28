@@ -119,7 +119,10 @@ nserror download_data(struct gui_download_window *dw, const char *data, unsigned
 
 	if (dw->page) {
 		if (dw->r+size > dw->s) {
-			dw->s *= 2;
+			if(dw->s * 2 < size)
+				dw->s = dw->r + size + 1024;
+			else
+				dw->s *= 2;
 			dw->data = realloc(dw->data, dw->s*sizeof(char));
 		}
 		memmove(dw->data+dw->r, data, size);
