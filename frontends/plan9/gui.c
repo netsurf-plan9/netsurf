@@ -779,6 +779,7 @@ void visit_url(struct gui_window *gw, char *text)
 		mode = SEARCH_WEB_OMNI_NONE;
 	error = search_web_omni(text, mode, &url);
 	if (error == NSERROR_OK) {
+		esetcursor(&waitcursor);
 		browser_window_navigate(gw->bw, url, NULL, BW_NAVIGATE_HISTORY,
 			NULL, NULL, NULL);
 		nsurl_unref(url);
