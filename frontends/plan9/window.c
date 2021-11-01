@@ -55,6 +55,10 @@ window_create(struct browser_window *bw,
 			  struct gui_window *existing,
 			  gui_window_create_flags flags)
 {
+	if(flags == GW_CREATE_CLONE) {
+		existing->bw = bw;
+		return existing;
+	}
 	return gui_window_create(bw);
 }
 
