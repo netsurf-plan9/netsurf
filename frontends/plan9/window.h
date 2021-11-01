@@ -13,6 +13,8 @@ struct gui_window
 	struct gui_window *prev;
 };
 
+void gui_window_resize(struct gui_window *gw);
+
 extern struct gui_window_table *plan9_window_table;
 
 #endif

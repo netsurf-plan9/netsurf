@@ -62,10 +62,12 @@ static void url_entry_activated(char*, void*);
 static void scrollbar_mouse_event(Mouse, void*);
 static void browser_mouse_event(Mouse, void*);
 static void browser_keyboard_event(int, void*);
+void visit_url(struct gui_window *gw, char *text);
 
 char **respaths;
 static struct gui_window *current = NULL;
 static bool unhide_on_plumb;
+static bool altmode;
 
 static bool nslog_stream_configure(FILE *fptr)
 {
@@ -320,7 +322,7 @@ static void drawui_run(void)
 					if(!plumbed_to_page(pm->data)) {
 						if(unhide_on_plumb)
 							gui_window_unhide();
-						url_entry_activated(strdup(pm->data), current);
+						visit_url(current, strdup(pm->data));
 					}
 				}
 				plumbfree(pm);
@@ -377,6 +379,8 @@ struct gui_window* gui_window_create(struct browser_window *bw)
 	current = gw;
 	gw->bw = bw;
 	gw->dw = dwindow_create(screen->r);
+	if(altmode)
+		dwindow_toggle_altdisplay(gw->dw);
 	dwindow_set_back_button_mouse_callback(gw->dw, back_button_mouse_event, gw);
 	dwindow_set_forward_button_mouse_callback(gw->dw, fwd_button_mouse_event, gw);
 	dwindow_set_stop_button_mouse_callback(gw->dw, stop_button_mouse_event, gw);
@@ -581,6 +585,7 @@ void browser_keyboard_event(int k, void *data)
 {
 	struct gui_window *gw = data;
 	Rectangle r;
+	char buf[1024] = {0};
 
 	if (browser_window_key_press(gw->bw, getnskey(k))) {
 		return;
@@ -588,6 +593,12 @@ void browser_keyboard_event(int k, void *data)
 
 	r = dwindow_get_view_rect(gw->dw);
 	switch(k) {
+	case 'g':
+		if(dwindow_is_altdisplay(gw->dw) == 0)
+			break;
+		if(eenter("Go to:", buf, sizeof(buf), &gw->m))
+			visit_url(gw, strdup(buf));
+		break;
 	case Kpgup:
 		gui_window_scroll(gw, 0, 0, 0, -Dy(r));
 		break;
@@ -617,6 +628,8 @@ void browser_keyboard_event(int k, void *data)
 		search_reset(gw);
 		break;
 	case Kstx:
+		if(dwindow_is_altdisplay(gw->dw) == 1)
+			break;
 		dwindow_focus_url_bar(gw->dw);
 		break;
 	}
@@ -751,7 +764,7 @@ bool is_url(char *text)
 		strncmp(text, "resource:", 9) == 0;
 }
 
-void url_entry_activated(char *text, void *data)
+void visit_url(struct gui_window *gw, char *text)
 {
 	nserror error;
 	nsurl *url;
@@ -766,11 +779,19 @@ void url_entry_activated(char *text, void *data)
 		mode = SEARCH_WEB_OMNI_NONE;
 	error = search_web_omni(text, mode, &url);
 	if (error == NSERROR_OK) {
-		browser_window_navigate(current->bw, url, NULL, BW_NAVIGATE_HISTORY,
+		browser_window_navigate(gw->bw, url, NULL, BW_NAVIGATE_HISTORY,
 			NULL, NULL, NULL);
 		nsurl_unref(url);
 		free(text);
 	}
+}
+
+void url_entry_activated(char *text, void *data)
+{
+	struct gui_window *gw;
+
+	gw = data;
+	visit_url(gw, text);
 }
 
 static nserror launch_url(const nsurl *url)
@@ -817,6 +838,9 @@ main(int argc, char *argv[])
 	unhide_on_plumb = false;
 	verbose = false;
 	ARGBEGIN {
+	case 'a':
+		altmode = true;
+		break;
 	case 'c':
 		cachedir = "/tmp/nscache";
 		break;
@@ -830,7 +854,7 @@ main(int argc, char *argv[])
 		verbose = true;
 		break;
 	default:
-		fprintf(stderr, "usage: %s [-cudv] [url]\n", argv0);
+		fprintf(stderr, "usage: %s [-acudv] [url]\n", argv0);
 		exit(1);
 	} ARGEND
 

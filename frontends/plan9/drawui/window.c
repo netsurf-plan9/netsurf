@@ -18,6 +18,7 @@ typedef struct dwindow dwindow;
 struct dwindow
 {
 	Rectangle r;
+	bool altmode;
 	Rectangle iconr;
 	Image *icon;
 	Rectangle titler;
@@ -41,6 +42,7 @@ struct dwindow *dwindow_create(Rectangle initialr)
 	if(win == NULL) {
 		return NULL;
 	}
+	win->altmode = false;
 	win->toolbar = dtoolbar_create();
 	if(win->toolbar == NULL) {
 		return NULL;
@@ -63,7 +65,7 @@ void dwindow_destroy(struct dwindow *window)
 void dwindow_resize(struct dwindow *window, Rectangle newr)
 {
 	Rectangle r;
-	int w, h, x, y, ix, iy;
+	int w, h, x, y, ix, iy, ym;
 
 	window->r = newr;
 	w = Dx(window->r);
@@ -92,10 +94,15 @@ void dwindow_resize(struct dwindow *window, Rectangle newr)
 	r = Rect(x, window->r.max.y - h, x + w, window->r.max.y);
 	window->statusr = r;
 
-	r = Rect(x + SCROLL_WIDTH, y + 1, x + w, window->statusr.min.y);
+	ym = window->statusr.min.y;
+	if(window->altmode) {
+		y = window->r.min.y - 1;
+		ym = window->r.max.y;
+	}
+	r = Rect(x + SCROLL_WIDTH, y + 1, x + w, ym);
 	window->viewr = r;
-
-	r = Rect(x, y + 1, x + SCROLL_WIDTH + 1, window->statusr.min.y);
+
+	r = Rect(x, y + 1, x + SCROLL_WIDTH + 1, ym);
 	dscrollbar_set_rect(window->scrollbar, r);
 	dscrollbar_set_view_size(window->scrollbar, Dx(window->viewr), Dy(window->viewr));
 }
@@ -135,17 +142,19 @@ static void draw_status(dwindow *window)
 
 void dwindow_draw(struct dwindow *window)
 {
-	draw_title(window);
-	draw_icon(window);
-	dtoolbar_draw(window->toolbar);
+	if(window->altmode == false) {
+		draw_title(window);
+		draw_icon(window);
+		dtoolbar_draw(window->toolbar);
+		draw_status(window);
+	}
 	dscrollbar_draw(window->scrollbar);
-	draw_status(window);
 }
 
 void dwindow_mouse_event(struct dwindow *window, Event e)
 {
 	if(dscrollbar_mouse_event(window->scrollbar, e) == 0 ||
-	   dtoolbar_mouse_event(window->toolbar, e) == 0) {
+	   (window->altmode == false && dtoolbar_mouse_event(window->toolbar, e) == 0)) {
 		return;
 	}
 	if(ptinrect(e.mouse.xy, window->viewr) && window->view_mouse_cb != NULL) {
@@ -155,7 +164,8 @@ void dwindow_mouse_event(struct dwindow *window, Event e)
 
 void dwindow_keyboard_event(struct dwindow *window, Event e)
 {
-	dtoolbar_keyboard_event(window->toolbar, e);
+	if(window->altmode == false)
+		dtoolbar_keyboard_event(window->toolbar, e);
 	if(!dentry_has_focus(window->toolbar->url_entry) && window->view_keyboard_cb != NULL) {
 		window->view_keyboard_cb(e.kbdc, window->view_keyboard_cb_data);
 	}
@@ -219,7 +229,8 @@ void dwindow_set_icon(struct dwindow *window, Image *icon)
 		window->icon = allocimage(display, icon->r, icon->chan, 0, DWhite);
 		draw(window->icon, icon->r, icon, nil, ZP);
 	}
-	draw_icon(window);
+	if(window->altmode == false)
+		draw_icon(window);
 }
 
 void dwindow_set_title(struct dwindow *window, const char *text)
@@ -239,12 +250,15 @@ void dwindow_set_title(struct dwindow *window, const char *text)
 		fprintf(fp, window->title);
 		fclose(fp);
 	}
-	draw_title(window);
+	if(window->altmode == false)
+		draw_title(window);
 }
 
 void dwindow_set_url(struct dwindow *window, const char *text)
 {
 	dentry_set_text(window->toolbar->url_entry, text);
+	if(window->altmode == false)
+		dentry_draw(window->toolbar->url_entry);
 }
 
 void dwindow_set_status(struct dwindow *window, const char *text)
@@ -253,7 +267,8 @@ void dwindow_set_status(struct dwindow *window, const char *text)
 		free(window->status);
 	}
 	window->status = strdup(text);
-	draw_status(window);
+	if(window->altmode == false)
+		draw_status(window);
 }
 
 void dwindow_set_back_button_mouse_callback(struct dwindow *window, mouse_callback cb, void *data)
@@ -301,4 +316,14 @@ void dwindow_set_browser_keyboard_callback(struct dwindow *window, keyboard_call
 void dwindow_focus_url_bar(struct dwindow *window)
 {
 	dentry_set_focused(window->toolbar->url_entry, true);
+}
+
+void dwindow_toggle_altdisplay(struct dwindow *window)
+{
+	window->altmode = !window->altmode;
+}
+
+int dwindow_is_altdisplay(struct dwindow *window)
+{
+	return window->altmode;
 }

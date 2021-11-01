@@ -37,5 +37,7 @@ void      dwindow_draw(struct dwindow *window);
 void      dwindow_mouse_event(struct dwindow *window, Event e);
 void      dwindow_keyboard_event(struct dwindow *window, Event e);
 void	  dwindow_focus_url_bar(struct dwindow *dwindow);
+void	  dwindow_toggle_altdisplay(struct dwindow *dwindow);
+int		  dwindow_is_altdisplay(struct dwindow *dwindow);
 
 #endif

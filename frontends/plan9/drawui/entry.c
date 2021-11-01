@@ -91,7 +91,6 @@ void dentry_set_text(dentry *entry, const char *text)
 	entry->pos = entry->len;
 	entry->pos2 = entry->pos;
 	entry->tick_x = stringnwidth(font, entry->text, entry->len);
-	dentry_draw(entry);
 }
 
 void dentry_set_activated_callback(dentry *entry, void(*activated_cb)(char*, void*), void *data)

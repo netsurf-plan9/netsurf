@@ -102,6 +102,7 @@ enum
 
 static char *menu3str[] =
 {
+	"alt. display",
 	"back",
 	"forward",
 	"stop",
@@ -117,6 +118,7 @@ static char *menu3str[] =
 
 enum
 {
+	Maltdisplay,
 	Mback,
 	Mforward,
 	Mstop,
@@ -352,6 +354,10 @@ void menu3hit(struct gui_window *gw, Mouse *m)
 
 	n = emenuhit(3, m, &menu3);
 	switch (n) {
+	case Maltdisplay:
+		dwindow_toggle_altdisplay(gw->dw);
+		gui_window_resize(gw);
+		break;
 	case Mback:
 		if (browser_window_back_available(gw->bw)) {
 			browser_window_history_back(gw->bw);
