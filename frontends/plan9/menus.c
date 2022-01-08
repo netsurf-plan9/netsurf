@@ -102,7 +102,6 @@ enum
 
 static char *menu3str[] =
 {
-	"alt. display",
 	"back",
 	"forward",
 	"stop",
@@ -112,13 +111,13 @@ static char *menu3str[] =
 	"bookmark",
 	"bookmarks",
 	"js",
+	"alt. display",
 	"exit",
 	0
 };
 
 enum
 {
-	Maltdisplay,
 	Mback,
 	Mforward,
 	Mstop,
@@ -128,6 +127,7 @@ enum
 	Maddbookmark,
 	Mbookmarks,
 	Mjavascript,
+	Maltdisplay,
 	Mexit,
 };
 
