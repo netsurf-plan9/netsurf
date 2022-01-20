@@ -176,7 +176,7 @@ static void plumb_url(struct nsurl *url)
 
 static char* menu2gen(int index)
 {
-	char buf[1025] = {0};
+	static char buf[1025] = {0};
 
 	if (index == Msearchnext) {
 		if (search_has_next() == false && search_should_wrap() == false)
