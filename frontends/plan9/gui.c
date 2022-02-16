@@ -249,7 +249,14 @@ static nserror drawui_init(int argc, char *argv[])
 				free(path);
 			}
 		} else {
-			addr = argv[0];
+			if(is_url(argv[0]))
+				addr = argv[0];
+			else{
+				len = SLEN("http://") + strlen(argv[0]) + 1;
+				addr = malloc(len*sizeof(char));
+				if(addr != NULL)
+					snprintf(addr, len, "http://%s", argv[0]);
+			}
 		}
 	}
 	if (addr != NULL) {
