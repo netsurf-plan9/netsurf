@@ -8,6 +8,7 @@ Building NetSurf
 ----------------
 
 Read the [Quick Start](docs/quick-start.md) document for instructions.
+**NB**: For plan9, refer to the README in the [nsport](https://github.com/netsurf-plan9/nsport) repository.
 
 
 Creating a new port
