@@ -39,6 +39,7 @@
 
 int ro_plot_origin_x = 0;
 int ro_plot_origin_y = 0;
+struct rect ro_plot_clip_rect;
 
 /** One version of the A9home OS is incapable of drawing patterned lines */
 bool ro_plot_patterned_lines = true;
@@ -110,12 +111,25 @@ ro_plot_clip(const struct redraw_context *ctx, const struct rect *clip)
 	os_error *error;
 	char buf[12];
 
-	int clip_x0 = ro_plot_origin_x + clip->x0 * 2;
-	int clip_y0 = ro_plot_origin_y - clip->y0 * 2 - 1;
-	int clip_x1 = ro_plot_origin_x + clip->x1 * 2 - 1;
-	int clip_y1 = ro_plot_origin_y - clip->y1 * 2;
+	int clip_x0 = clip->x0 * 2;
+	int clip_y0 = clip->y1 * 2;
+	int clip_x1 = clip->x1 * 2;
+	int clip_y1 = clip->y0 * 2;
 
-	if (clip_x1 < clip_x0 || clip_y0 < clip_y1) {
+	/* Avoid artefacts due to clip rectangle offsetting in EX0 EY0 modes.
+	 * The area the WIMP asked us to draw might have dimensions that are
+	 * not a multiple of 2. */
+	if (clip_x0 < ro_plot_clip_rect.x0) clip_x0 = ro_plot_clip_rect.x0;
+	if (clip_x1 > ro_plot_clip_rect.x1) clip_x1 = ro_plot_clip_rect.x1;
+	if (clip_y0 > ro_plot_clip_rect.y0) clip_y0 = ro_plot_clip_rect.y0;
+	if (clip_y1 < ro_plot_clip_rect.y1) clip_y1 = ro_plot_clip_rect.y1;
+
+	clip_x0 = ro_plot_origin_x + clip_x0;
+	clip_y0 = ro_plot_origin_y - clip_y0;
+	clip_x1 = ro_plot_origin_x + clip_x1 - 1;
+	clip_y1 = ro_plot_origin_y - clip_y1 - 1;
+
+	if (clip_x1 < clip_x0 || clip_y1 < clip_y0) {
 		NSLOG(netsurf, INFO, "bad clip rectangle %i %i %i %i",
 		      clip_x0, clip_y0, clip_x1, clip_y1);
 		return NSERROR_BAD_SIZE;
@@ -124,12 +138,12 @@ ro_plot_clip(const struct redraw_context *ctx, const struct rect *clip)
 	buf[0] = os_VDU_SET_GRAPHICS_WINDOW;
 	buf[1] = clip_x0;
 	buf[2] = clip_x0 >> 8;
-	buf[3] = clip_y1;
-	buf[4] = clip_y1 >> 8;
+	buf[3] = clip_y0;
+	buf[4] = clip_y0 >> 8;
 	buf[5] = clip_x1;
 	buf[6] = clip_x1 >> 8;
-	buf[7] = clip_y0;
-	buf[8] = clip_y0 >> 8;
+	buf[7] = clip_y1;
+	buf[8] = clip_y1 >> 8;
 
 	error = xos_writen(buf, 9);
 	if (error) {
@@ -365,7 +379,7 @@ ro_plot_rectangle(const struct redraw_context *ctx,
 
 		error = xos_plot(os_MOVE_TO,
 				 ro_plot_origin_x + rect->x0 * 2,
-				 ro_plot_origin_y - rect->y0 * 2 - 1);
+				 ro_plot_origin_y - rect->y1 * 2);
 		if (error) {
 			NSLOG(netsurf, INFO, "xos_plot: 0x%x: %s",
 			      error->errnum, error->errmess);
@@ -374,7 +388,7 @@ ro_plot_rectangle(const struct redraw_context *ctx,
 
 		error = xos_plot(os_PLOT_RECTANGLE | os_PLOT_TO,
 				 ro_plot_origin_x + rect->x1 * 2 - 1,
-				 ro_plot_origin_y - rect->y1 * 2);
+				 ro_plot_origin_y - rect->y0 * 2 - 1);
 		if (error) {
 			NSLOG(netsurf, INFO, "xos_plot: 0x%x: %s",
 			      error->errnum, error->errmess);

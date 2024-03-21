@@ -211,7 +211,7 @@ static size_t html_selection_drag_end(struct html_content *html,
 	if (box) {
 		plot_font_style_t fstyle;
 
-		font_plot_style_from_css(&html->len_ctx, box->style, &fstyle);
+		font_plot_style_from_css(&html->unit_len_ctx, box->style, &fstyle);
 
 		guit->layout->position(&fstyle, box->text, box->length,
 				       dx, &idx, &pixel_offset);
@@ -424,7 +424,7 @@ mouse_action_drag_selection(html_content *html,
 
 	box = box_pick_text_box(html, x, y, dir, &dx, &dy);
 	if (box != NULL) {
-		font_plot_style_from_css(&html->len_ctx, box->style, &fstyle);
+		font_plot_style_from_css(&html->unit_len_ctx, box->style, &fstyle);
 
 		guit->layout->position(&fstyle,
 				       box->text,
@@ -805,7 +805,7 @@ get_mouse_action_node(html_content *html,
 
 	next_box:
 		/* iterate to next box */
-		box = box_at_point(&html->len_ctx, box, x, y, &box_x, &box_y);
+		box = box_at_point(&html->unit_len_ctx, box, x, y, &box_x, &box_y);
 	} while (box != NULL);
 
 	/* use of box_x, box_y, or content below this point is probably a
@@ -899,7 +899,7 @@ gadget_mouse_action(html_content *html,
 			}
 			free(oldcoords);
 		}
-		/* Fall through */
+		fallthrough;
 
 	case GADGET_SUBMIT:
 		if (mas->gadget.control->form) {
@@ -1209,7 +1209,7 @@ default_mouse_action(html_content *html,
 			size_t idx;
 			plot_font_style_t fstyle;
 
-			font_plot_style_from_css(&html->len_ctx,
+			font_plot_style_from_css(&html->unit_len_ctx,
 						 mas->text.box->style,
 						 &fstyle);
 
@@ -1465,7 +1465,7 @@ html_mouse_action(struct content *c,
 		  int x, int y)
 {
 	html_content *html = (html_content *)c;
-	nserror res;
+	nserror res = NSERROR_OK;
 
 	/* handle open select menu */
 	if (html->visible_select_menu != NULL) {
@@ -1493,7 +1493,7 @@ html_mouse_action(struct content *c,
 		break;
 
 	case HTML_DRAG_NONE:
-		res =  mouse_action_drag_none(html, bw, mouse, x, y);
+		res = mouse_action_drag_none(html, bw, mouse, x, y);
 		break;
 
 	default:
@@ -1669,7 +1669,7 @@ void html_set_drag_type(html_content *html, html_drag_type drag_type,
 
 	case HTML_DRAG_SELECTION:
 		assert(drag_owner.no_owner == true);
-		/* Fall through */
+		fallthrough;
 	case HTML_DRAG_TEXTAREA_SELECTION:
 	case HTML_DRAG_CONTENT_SELECTION:
 		msg_data.drag.type = CONTENT_DRAG_SELECTION;
@@ -1800,7 +1800,7 @@ void html_set_selection(html_content *html, html_selection_type selection_type,
 		break;
 	case HTML_SELECTION_SELF:
 		assert(selection_owner.none == false);
-		/* fall through */
+		fallthrough;
 	case HTML_SELECTION_TEXTAREA:
 	case HTML_SELECTION_CONTENT:
 		msg_data.selection.selection = true;

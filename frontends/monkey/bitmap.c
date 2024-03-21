@@ -31,26 +31,26 @@ struct bitmap {
 	size_t rowstride;
 	int width;
 	int height;
-	unsigned int state;
+	bool opaque;
 };
 
-static void *bitmap_create(int width, int height, unsigned int state)
+static void *bitmap_create(int width, int height, enum gui_bitmap_flags flags)
 {
 	struct bitmap *ret = calloc(sizeof(*ret), 1);
 	if (ret == NULL)
 		return NULL;
-  
+
 	ret->width = width;
 	ret->height = height;
-	ret->state = state;
-  
+	ret->opaque = (flags & BITMAP_OPAQUE) == BITMAP_OPAQUE;
+
 	ret->ptr = calloc(width, height * 4);
-  
+
 	if (ret->ptr == NULL) {
 		free(ret);
 		return NULL;
 	}
-  
+
 	return ret;
 }
 
@@ -64,23 +64,15 @@ static void bitmap_destroy(void *bitmap)
 static void bitmap_set_opaque(void *bitmap, bool opaque)
 {
 	struct bitmap *bmap = bitmap;
-  
-	if (opaque)
-		bmap->state |= (BITMAP_OPAQUE);
-	else
-		bmap->state &= ~(BITMAP_OPAQUE);
-}
 
-static bool bitmap_test_opaque(void *bitmap)
-{
-	return false;
+	bmap->opaque = opaque;
 }
 
 static bool bitmap_get_opaque(void *bitmap)
 {
 	struct bitmap *bmap = bitmap;
-  
-	return (bmap->state & BITMAP_OPAQUE) == BITMAP_OPAQUE;
+
+	return bmap->opaque;
 }
 
 static unsigned char *bitmap_get_buffer(void *bitmap)
@@ -96,21 +88,9 @@ static size_t bitmap_get_rowstride(void *bitmap)
 	return bmap->width * 4;
 }
 
-static size_t bitmap_get_bpp(void *bitmap)
-{
-	/* OMG?! */
-	return 4;
-}
-
-static bool bitmap_save(void *bitmap, const char *path, unsigned flags)
-{
-	return true;
-}
-
 static void bitmap_modified(void *bitmap)
 {
-	struct bitmap *bmap = bitmap;
-	bmap->state |= BITMAP_MODIFIED;
+	return;
 }
 
 static int bitmap_get_width(void *bitmap)
@@ -137,13 +117,10 @@ static struct gui_bitmap_table bitmap_table = {
 	.destroy = bitmap_destroy,
 	.set_opaque = bitmap_set_opaque,
 	.get_opaque = bitmap_get_opaque,
-	.test_opaque = bitmap_test_opaque,
 	.get_buffer = bitmap_get_buffer,
 	.get_rowstride = bitmap_get_rowstride,
 	.get_width = bitmap_get_width,
 	.get_height = bitmap_get_height,
-	.get_bpp = bitmap_get_bpp,
-	.save = bitmap_save,
 	.modified = bitmap_modified,
 	.render = bitmap_render,
 };

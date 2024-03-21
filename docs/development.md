@@ -107,6 +107,12 @@ infrastructrure and executes it.
     PASS
 
 
+# New frontend development
+
+[Implementing a new frotend](docs/implementing-new-frontend.md) for a
+toolkit can be challenging and this guide provides an overview and
+worked example.
+
 # Documented API
 
 The NetSurf code makes use of Doxygen for code documentation.

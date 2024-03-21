@@ -47,19 +47,16 @@
  * \param  state   a flag word indicating the initial state
  * \return an opaque struct bitmap, or NULL on memory exhaustion
  */
-static void *bitmap_create(int width, int height, unsigned int state)
+static void *bitmap_create(int width, int height, enum gui_bitmap_flags flags)
 {
-        nsfb_t *bm;
-
-        NSLOG(netsurf, INFO, "width %d, height %d, state %u", width, height,
-              state);
+	nsfb_t *bm;
 
 	bm = nsfb_new(NSFB_SURFACE_RAM);
 	if (bm == NULL) {
 		return NULL;
 	}
 
-	if ((state & BITMAP_OPAQUE) == 0) {
+	if ((flags & BITMAP_OPAQUE) == 0) {
 		nsfb_set_geometry(bm, width, height, NSFB_FMT_ABGR8888);
 	} else {
 		nsfb_set_geometry(bm, width, height, NSFB_FMT_XBGR8888);
@@ -70,9 +67,7 @@ static void *bitmap_create(int width, int height, unsigned int state)
 		return NULL;
 	}
 
-        NSLOG(netsurf, INFO, "bitmap %p", bm);
-
-        return bm;
+	return bm;
 }
 
 
@@ -133,20 +128,6 @@ static void bitmap_destroy(void *bitmap)
 
 
 /**
- * Save a bitmap in the platform's native format.
- *
- * \param  bitmap  a bitmap, as returned by bitmap_create()
- * \param  path    pathname for file
- * \param flags flags controlling how the bitmap is saved.
- * \return true on success, false on error and error reported
- */
-static bool bitmap_save(void *bitmap, const char *path, unsigned flags)
-{
-	return true;
-}
-
-
-/**
  * The bitmap image has changed, so flush any persistant cache.
  *
  * \param  bitmap  a bitmap, as returned by bitmap_create()
@@ -171,39 +152,6 @@ static void bitmap_set_opaque(void *bitmap, bool opaque)
 	} else {
 		nsfb_set_geometry(bm, 0, 0, NSFB_FMT_ABGR8888);
 	}
-}
-
-
-/**
- * Tests whether a bitmap has an opaque alpha channel
- *
- * \param  bitmap  a bitmap, as returned by bitmap_create()
- * \return whether the bitmap is opaque
- */
-static bool bitmap_test_opaque(void *bitmap)
-{
-        int tst;
-	nsfb_t *bm = bitmap;
-	unsigned char *bmpptr;
-	int width;
-	int height;
-
-	assert(bm != NULL);
-
-	nsfb_get_buffer(bm, &bmpptr, NULL);
-
-	nsfb_get_geometry(bm, &width, &height, NULL);
-
-        tst = width * height;
-
-        while (tst-- > 0) {
-                if (bmpptr[(tst << 2) + 3] != 0xff) {
-                        NSLOG(netsurf, INFO, "bitmap %p has transparency", bm);
-                        return false;
-                }
-        }
-        NSLOG(netsurf, INFO, "bitmap %p is opaque", bm);
-	return true;
 }
 
 
@@ -249,12 +197,6 @@ static int bitmap_get_height(void *bitmap)
 	nsfb_get_geometry(bm, NULL, &height, NULL);
 
 	return(height);
-}
-
-/* get bytes per pixel */
-static size_t bitmap_get_bpp(void *bitmap)
-{
-	return 4;
 }
 
 /**
@@ -332,13 +274,10 @@ static struct gui_bitmap_table bitmap_table = {
 	.destroy = bitmap_destroy,
 	.set_opaque = bitmap_set_opaque,
 	.get_opaque = framebuffer_bitmap_get_opaque,
-	.test_opaque = bitmap_test_opaque,
 	.get_buffer = bitmap_get_buffer,
 	.get_rowstride = bitmap_get_rowstride,
 	.get_width = bitmap_get_width,
 	.get_height = bitmap_get_height,
-	.get_bpp = bitmap_get_bpp,
-	.save = bitmap_save,
 	.modified = bitmap_modified,
 	.render = bitmap_render,
 };

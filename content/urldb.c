@@ -115,11 +115,6 @@
 #include "content/content.h"
 #include "content/urldb.h"
 
-#ifdef WITH_AMISSL
-/* AmiSSL needs everything to be using bsdsocket directly to avoid conflicts */
-#include <proto/bsdsocket.h>
-#endif
-
 /**
  * cookie entry.
  *
@@ -1526,7 +1521,10 @@ static void urldb_dump_search(struct search_node *parent, int depth)
 	for (h = parent->data; h; h = h->parent) {
 		if (h->part) {
 			r = snprintf(&s[i], sl - i, "%s", h->part);
-			if ((i + r) > sl) {
+			if (r < 0) {
+				break;
+			}
+			if ((i + r) >= sl) {
 				break;
 			}
 			i += r;

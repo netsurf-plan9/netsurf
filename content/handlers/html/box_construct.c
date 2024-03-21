@@ -47,7 +47,6 @@
 #include "html/box_special.h"
 #include "html/box_normalise.h"
 #include "html/form_internal.h"
-#include "html/list_counter_style.h"
 
 /**
  * Context for box tree construction
@@ -87,28 +86,30 @@ struct box_construct_props {
 
 static const content_type image_types = CONTENT_IMAGE;
 
-/**
- * mapping from CSS display to box type this table must be in sync
- * with libcss' css_display enum
- */
+/* mapping from CSS display to box type
+ * this table must be in sync with libcss' css_display enum */
 static const box_type box_map[] = {
-	0, /* CSS_DISPLAY_INHERIT, */
-	BOX_INLINE, /* CSS_DISPLAY_INLINE, */
-	BOX_BLOCK, /* CSS_DISPLAY_BLOCK, */
-	BOX_BLOCK, /* CSS_DISPLAY_LIST_ITEM, */
-	BOX_INLINE, /* CSS_DISPLAY_RUN_IN, */
-	BOX_INLINE_BLOCK, /* CSS_DISPLAY_INLINE_BLOCK, */
-	BOX_TABLE, /* CSS_DISPLAY_TABLE, */
-	BOX_TABLE, /* CSS_DISPLAY_INLINE_TABLE, */
-	BOX_TABLE_ROW_GROUP, /* CSS_DISPLAY_TABLE_ROW_GROUP, */
-	BOX_TABLE_ROW_GROUP, /* CSS_DISPLAY_TABLE_HEADER_GROUP, */
-	BOX_TABLE_ROW_GROUP, /* CSS_DISPLAY_TABLE_FOOTER_GROUP, */
-	BOX_TABLE_ROW, /* CSS_DISPLAY_TABLE_ROW, */
-	BOX_NONE, /* CSS_DISPLAY_TABLE_COLUMN_GROUP, */
-	BOX_NONE, /* CSS_DISPLAY_TABLE_COLUMN, */
-	BOX_TABLE_CELL, /* CSS_DISPLAY_TABLE_CELL, */
-	BOX_INLINE, /* CSS_DISPLAY_TABLE_CAPTION, */
-	BOX_NONE /* CSS_DISPLAY_NONE */
+	BOX_BLOCK,           /* CSS_DISPLAY_INHERIT */
+	BOX_INLINE,          /* CSS_DISPLAY_INLINE */
+	BOX_BLOCK,           /* CSS_DISPLAY_BLOCK */
+	BOX_BLOCK,           /* CSS_DISPLAY_LIST_ITEM */
+	BOX_INLINE,          /* CSS_DISPLAY_RUN_IN */
+	BOX_INLINE_BLOCK,    /* CSS_DISPLAY_INLINE_BLOCK */
+	BOX_TABLE,           /* CSS_DISPLAY_TABLE */
+	BOX_TABLE,           /* CSS_DISPLAY_INLINE_TABLE */
+	BOX_TABLE_ROW_GROUP, /* CSS_DISPLAY_TABLE_ROW_GROUP */
+	BOX_TABLE_ROW_GROUP, /* CSS_DISPLAY_TABLE_HEADER_GROUP */
+	BOX_TABLE_ROW_GROUP, /* CSS_DISPLAY_TABLE_FOOTER_GROUP */
+	BOX_TABLE_ROW,       /* CSS_DISPLAY_TABLE_ROW */
+	BOX_NONE,            /* CSS_DISPLAY_TABLE_COLUMN_GROUP */
+	BOX_NONE,            /* CSS_DISPLAY_TABLE_COLUMN */
+	BOX_TABLE_CELL,      /* CSS_DISPLAY_TABLE_CELL */
+	BOX_INLINE,          /* CSS_DISPLAY_TABLE_CAPTION */
+	BOX_NONE,            /* CSS_DISPLAY_NONE */
+	BOX_FLEX,            /* CSS_DISPLAY_FLEX */
+	BOX_INLINE_FLEX,     /* CSS_DISPLAY_INLINE_FLEX */
+	BOX_BLOCK,           /* CSS_DISPLAY_GRID */
+	BOX_INLINE_BLOCK,    /* CSS_DISPLAY_INLINE_GRID */
 };
 
 
@@ -142,7 +143,6 @@ static inline bool box_is_root(dom_node *n)
 
 	return true;
 }
-
 
 /**
  * Extract transient construction properties
@@ -249,16 +249,19 @@ box_get_style(html_content *c,
 	      const css_computed_style *root_style,
 	      dom_node *n)
 {
-	dom_string *s;
-	dom_exception err;
+	dom_string *s = NULL;
 	css_stylesheet *inline_style = NULL;
 	css_select_results *styles;
 	nscss_select_ctx ctx;
 
 	/* Firstly, construct inline stylesheet, if any */
-	err = dom_element_get_attribute(n, corestring_dom_style, &s);
-	if (err != DOM_NO_ERR)
-		return NULL;
+	if (nsoption_bool(author_level_css)) {
+		dom_exception err;
+		err = dom_element_get_attribute(n, corestring_dom_style, &s);
+		if (err != DOM_NO_ERR) {
+			return NULL;
+		}
+	}
 
 	if (s != NULL) {
 		inline_style = nscss_create_inline_style(
@@ -283,7 +286,8 @@ box_get_style(html_content *c,
 	ctx.parent_style = parent_style;
 
 	/* Select style for element */
-	styles = nscss_get_style(&ctx, n, &c->media, inline_style);
+	styles = nscss_get_style(&ctx, n, &c->media, &c->unit_len_ctx,
+			inline_style);
 
 	/* No longer need inline style */
 	if (inline_style != NULL)
@@ -351,61 +355,6 @@ box_construct_generate(dom_node *n,
 
 
 /**
- * compute the index for a list marker
- *
- * calculates a one based index of a list item
- */
-static unsigned int compute_list_marker_index(struct box *last)
-{
-	/* Drill down into last child of parent
-	 * to find the list marker (if any)
-	 *
-	 * Floated list boxes end up as:
-	 *
-	 * parent
-	 *   BOX_INLINE_CONTAINER
-	 *     BOX_FLOAT_{LEFT,RIGHT}
-	 *       BOX_BLOCK <-- list box
-	 *        ...
-	 */
-	while ((last != NULL) && (last->list_marker == NULL)) {
-		struct box *last_inner = last;
-
-		while (last_inner != NULL) {
-			if (last_inner->list_marker != NULL) {
-				break;
-			}
-			if (last_inner->type == BOX_INLINE_CONTAINER ||
-			    last_inner->type == BOX_FLOAT_LEFT ||
-			    last_inner->type == BOX_FLOAT_RIGHT) {
-				last_inner = last_inner->last;
-			} else {
-				last_inner = NULL;
-			}
-		}
-		if (last_inner != NULL) {
-			last = last_inner;
-		} else {
-			last = last->prev;
-		}
-	}
-
-	if ((last == NULL) || (last->list_marker == NULL)) {
-		return 1;
-	}
-
-	return last->list_marker->rows + 1;
-}
-
-/**
- * initial length of a list marker buffer
- *
- * enough for 9,999,999,999,999,999,999 in decimal
- * or five characters for 4byte utf8
- */
-#define LIST_MARKER_SIZE 20
-
-/**
  * Construct a list marker box
  *
  * \param box      Box to attach marker to
@@ -423,7 +372,6 @@ box_construct_marker(struct box *box,
 	lwc_string *image_uri;
 	struct box *marker;
 	enum css_list_style_type_e list_style_type;
-	size_t counter_len;
 
 	marker = box_create(NULL, box->style, false, NULL, NULL, title,
 			NULL, ctx->bctx);
@@ -454,40 +402,13 @@ box_construct_marker(struct box *box,
 		marker->length = 3;
 		break;
 
+	default:
+		/* Numerical list counters get handled in layout. */
+		/* Fall through. */
 	case CSS_LIST_STYLE_TYPE_NONE:
 		marker->text = NULL;
 		marker->length = 0;
 		break;
-
-	default:
-		marker->rows = compute_list_marker_index(parent->last);
-
-		marker->text = talloc_array(ctx->bctx, char, LIST_MARKER_SIZE);
-		if (marker->text == NULL) {
-			return false;
-		}
-
-		counter_len = list_counter_style_value(marker->text,
-						       LIST_MARKER_SIZE,
-						       list_style_type,
-						       marker->rows);
-		if (counter_len > LIST_MARKER_SIZE) {
-			/* use computed size as marker did not fit allocation */
-			marker->text = talloc_realloc(ctx->bctx,
-						      marker->text,
-						      char,
-						      counter_len);
-			if (marker->text == NULL) {
-				return false;
-			}
-			counter_len = list_counter_style_value(marker->text,
-							       counter_len,
-							       list_style_type,
-							       marker->rows);
-		}
-		marker->length = counter_len;
-		break;
-
 	}
 
 	if (css_computed_list_style_image(box->style, &image_uri) == CSS_LIST_STYLE_IMAGE_URI &&
@@ -521,6 +442,23 @@ box_construct_marker(struct box *box,
 	return true;
 }
 
+static inline bool box__style_is_float(const struct box *box)
+{
+	return css_computed_float(box->style) == CSS_FLOAT_LEFT ||
+	       css_computed_float(box->style) == CSS_FLOAT_RIGHT;
+}
+
+static inline bool box__is_flex(const struct box *box)
+{
+	return box->type == BOX_FLEX || box->type == BOX_INLINE_FLEX;
+}
+
+static inline bool box__containing_block_is_flex(
+		const struct box_construct_props *props)
+{
+	return props->containing_block != NULL &&
+	       box__is_flex(props->containing_block);
+}
 
 /**
  * Construct the box tree for an XML element.
@@ -534,6 +472,7 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 {
 	dom_string *title0, *s;
 	lwc_string *id = NULL;
+	enum css_display_e css_display;
 	struct box *box = NULL, *old_box;
 	css_select_results *styles = NULL;
 	lwc_string *bgimage_uri;
@@ -632,16 +571,15 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		dom_string_unref(s);
 	}
 
+	css_display = ns_computed_display_static(box->style);
+
 	/* Set box type from computed display */
 	if ((css_computed_position(box->style) == CSS_POSITION_ABSOLUTE ||
-			css_computed_position(box->style) ==
-					CSS_POSITION_FIXED) &&
-			(ns_computed_display_static(box->style) ==
-					CSS_DISPLAY_INLINE ||
-			 ns_computed_display_static(box->style) ==
-					CSS_DISPLAY_INLINE_BLOCK ||
-			 ns_computed_display_static(box->style) ==
-					CSS_DISPLAY_INLINE_TABLE)) {
+	     css_computed_position(box->style) == CSS_POSITION_FIXED) &&
+			(css_display == CSS_DISPLAY_INLINE ||
+			 css_display == CSS_DISPLAY_INLINE_BLOCK ||
+			 css_display == CSS_DISPLAY_INLINE_TABLE ||
+			 css_display == CSS_DISPLAY_INLINE_FLEX)) {
 		/* Special case for absolute positioning: make absolute inlines
 		 * into inline block so that the boxes are constructed in an
 		 * inline container as if they were not absolutely positioned.
@@ -655,6 +593,21 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		/* Normal mapping */
 		box->type = box_map[ns_computed_display(box->style,
 				props.node_is_root)];
+
+		if (props.containing_block->type == BOX_FLEX ||
+		    props.containing_block->type == BOX_INLINE_FLEX) {
+			/* Blockification */
+			switch (box->type) {
+			case BOX_INLINE_FLEX:
+				box->type = BOX_FLEX;
+				break;
+			case BOX_INLINE_BLOCK:
+				box->type = BOX_BLOCK;
+				break;
+			default:
+				break;
+			}
+		}
 	}
 
 	if (convert_special_elements(ctx->n,
@@ -670,10 +623,9 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 				box->styles->styles[CSS_PSEUDO_ELEMENT_BEFORE]);
 	}
 
-	if (box->type == BOX_NONE ||
-	    (ns_computed_display(box->style,
-				 props.node_is_root) == CSS_DISPLAY_NONE &&
-	     props.node_is_root == false)) {
+	if (box->type == BOX_NONE || (ns_computed_display(box->style,
+			props.node_is_root) == CSS_DISPLAY_NONE &&
+			props.node_is_root == false)) {
 		css_select_results_destroy(styles);
 		box->styles = NULL;
 		box->style = NULL;
@@ -708,8 +660,9 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 			(box->type == BOX_INLINE ||
 			 box->type == BOX_BR ||
 			 box->type == BOX_INLINE_BLOCK ||
-			 css_computed_float(box->style) == CSS_FLOAT_LEFT ||
-			 css_computed_float(box->style) == CSS_FLOAT_RIGHT) &&
+			 box->type == BOX_INLINE_FLEX ||
+			 (box__style_is_float(box) &&
+			  !box__containing_block_is_flex(&props))) &&
 			props.node_is_root == false) {
 		/* Found an inline child of a block without a current container
 		 * (i.e. this box is the first child of its parent, or was
@@ -757,6 +710,7 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		box->flags |= CONVERT_CHILDREN;
 
 	if (box->type == BOX_INLINE || box->type == BOX_BR ||
+			box->type == BOX_INLINE_FLEX ||
 			box->type == BOX_INLINE_BLOCK) {
 		/* Inline container must exist, as we'll have
 		 * created it above if it didn't */
@@ -773,6 +727,7 @@ box_construct_element(struct box_construct_ctx *ctx, bool *convert_children)
 		}
 
 		if (props.node_is_root == false &&
+				box__containing_block_is_flex(&props) == false &&
 				(css_computed_float(box->style) ==
 				CSS_FLOAT_LEFT ||
 				css_computed_float(box->style) ==
@@ -1424,7 +1379,6 @@ struct box *box_for_node(dom_node *n)
 
 	return box;
 }
-
 
 /* exported function documented in html/box_construct.h */
 bool

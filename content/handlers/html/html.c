@@ -123,7 +123,7 @@ bool fire_generic_dom_event(dom_string *type, dom_node *target,
 		return false;
 	}
 	NSLOG(netsurf, INFO, "Dispatching '%*s' against %p",
-	      dom_string_length(type), dom_string_data(type), target);
+	      (int)dom_string_length(type), dom_string_data(type), target);
 	result = fire_dom_event(evt, target);
 	dom_event_unref(evt);
 	return result;
@@ -200,7 +200,7 @@ bool fire_dom_keyboard_event(dom_string *type, dom_node *target,
 	}
 
 	NSLOG(netsurf, INFO, "Dispatching '%*s' against %p",
-			dom_string_length(type), dom_string_data(type), target);
+			(int)dom_string_length(type), dom_string_data(type), target);
 
 	result = fire_dom_event((dom_event *) evt, target);
 	dom_event_unref(evt);
@@ -305,6 +305,9 @@ html_proceed_to_done(html_content *html)
 
 static void html_get_dimensions(html_content *htmlc)
 {
+	css_fixed device_dpi = nscss_screen_dpi;
+	unsigned f_size;
+	unsigned f_min;
 	unsigned w;
 	unsigned h;
 	union content_msg_data msg_data = {
@@ -316,13 +319,22 @@ static void html_get_dimensions(html_content *htmlc)
 
 	content_broadcast(&htmlc->base, CONTENT_MSG_GETDIMS, &msg_data);
 
-	htmlc->media.width  = nscss_pixels_physical_to_css(INTTOFIX(w));
-	htmlc->media.height = nscss_pixels_physical_to_css(INTTOFIX(h));
-	htmlc->media.client_font_size =
-			FDIV(INTTOFIX(nsoption_int(font_size)), F_10);
-	htmlc->media.client_line_height =
-			FMUL(nscss_len2px(NULL, htmlc->media.client_font_size,
-					CSS_UNIT_PT, NULL), FLTTOFIX(1.33));
+
+	w = css_unit_device2css_px(INTTOFIX(w), device_dpi);
+	h = css_unit_device2css_px(INTTOFIX(h), device_dpi);
+
+	htmlc->media.width  = w;
+	htmlc->media.height = h;
+	htmlc->unit_len_ctx.viewport_width  = w;
+	htmlc->unit_len_ctx.viewport_height = h;
+	htmlc->unit_len_ctx.device_dpi = device_dpi;
+
+	/** \todo Change nsoption font sizes to px. */
+	f_size = FDIV(FMUL(F_96, FDIV(INTTOFIX(nsoption_int(font_size)), F_10)), F_72);
+	f_min  = FDIV(FMUL(F_96, FDIV(INTTOFIX(nsoption_int(font_min_size)), F_10)), F_72);
+
+	htmlc->unit_len_ctx.font_size_default = f_size;
+	htmlc->unit_len_ctx.font_size_minimum = f_min;
 }
 
 /* exported function documented in html/html_internal.h */
@@ -446,6 +458,8 @@ html_create_html_data(html_content *c, const http_parameter *params)
 	dom_hubbub_error error;
 	dom_exception err;
 	void *old_node_data;
+	const char *prefer_color_mode = (nsoption_bool(prefer_dark_mode)) ?
+			"dark" : "light";
 
 	c->parser = NULL;
 	c->parse_completed = false;
@@ -493,6 +507,13 @@ html_create_html_data(html_content *c, const http_parameter *params)
 		return NSERROR_NOMEM;
 	}
 
+	if (lwc_intern_string(prefer_color_mode, strlen(prefer_color_mode),
+			&c->media.prefers_color_scheme) != lwc_error_ok) {
+		lwc_string_unref(c->universal);
+		c->universal = NULL;
+		return NSERROR_NOMEM;
+	}
+
 	c->sel = selection_create((struct content *)c);
 
 	nerror = http_parameter_list_find_item(params, corestring_lwc_charset, &charset);
@@ -504,6 +525,8 @@ html_create_html_data(html_content *c, const http_parameter *params)
 		if (c->encoding == NULL) {
 			lwc_string_unref(c->universal);
 			c->universal = NULL;
+			lwc_string_unref(c->media.prefers_color_scheme);
+			c->media.prefers_color_scheme = NULL;
 			return NSERROR_NOMEM;
 
 		}
@@ -540,6 +563,8 @@ html_create_html_data(html_content *c, const http_parameter *params)
 
 		lwc_string_unref(c->universal);
 		c->universal = NULL;
+		lwc_string_unref(c->media.prefers_color_scheme);
+		c->media.prefers_color_scheme = NULL;
 
 		return libdom_hubbub_error_to_nserror(error);
 	}
@@ -556,6 +581,8 @@ html_create_html_data(html_content *c, const http_parameter *params)
 
 		lwc_string_unref(c->universal);
 		c->universal = NULL;
+		lwc_string_unref(c->media.prefers_color_scheme);
+		c->media.prefers_color_scheme = NULL;
 
 		NSLOG(netsurf, INFO, "Unable to set user data.");
 		return NSERROR_DOM;
@@ -1035,9 +1062,11 @@ static void html_reformat(struct content *c, int width, int height)
 
 	htmlc->reflowing = true;
 
-	htmlc->len_ctx.vw = nscss_pixels_physical_to_css(INTTOFIX(width));
-	htmlc->len_ctx.vh = nscss_pixels_physical_to_css(INTTOFIX(height));
-	htmlc->len_ctx.root_style = htmlc->layout->style;
+	htmlc->unit_len_ctx.viewport_width = css_unit_device2css_px(
+			INTTOFIX(width), htmlc->unit_len_ctx.device_dpi);
+	htmlc->unit_len_ctx.viewport_height = css_unit_device2css_px(
+			INTTOFIX(height), htmlc->unit_len_ctx.device_dpi);
+	htmlc->unit_len_ctx.root_style = htmlc->layout->style;
 
 	layout_document(htmlc, width, height);
 	layout = htmlc->layout;
@@ -1260,6 +1289,11 @@ static void html_destroy(struct content *c)
 		html->universal = NULL;
 	}
 
+	if (html->media.prefers_color_scheme != NULL) {
+		lwc_string_unref(html->media.prefers_color_scheme);
+		html->media.prefers_color_scheme = NULL;
+	}
+
 	/* Free stylesheets */
 	html_css_free_stylesheets(html);
 
@@ -1427,7 +1461,7 @@ html_get_contextual_content(struct content *c, int x, int y,
 	struct box *next;
 	int box_x = 0, box_y = 0;
 
-	while ((next = box_at_point(&html->len_ctx, box, x, y,
+	while ((next = box_at_point(&html->unit_len_ctx, box, x, y,
 			&box_x, &box_y)) != NULL) {
 		box = next;
 
@@ -1508,7 +1542,7 @@ html_scroll_at_point(struct content *c, int x, int y, int scrx, int scry)
 
 	/* TODO: invert order; visit deepest box first */
 
-	while ((next = box_at_point(&html->len_ctx, box, x, y,
+	while ((next = box_at_point(&html->unit_len_ctx, box, x, y,
 			&box_x, &box_y)) != NULL) {
 		box = next;
 
@@ -1656,7 +1690,7 @@ static bool html_drop_file_at_point(struct content *c, int x, int y, char *file)
 	int box_x = 0, box_y = 0;
 
 	/* Scan box tree for boxes that can handle drop */
-	while ((next = box_at_point(&html->len_ctx, box, x, y,
+	while ((next = box_at_point(&html->unit_len_ctx, box, x, y,
 			&box_x, &box_y)) != NULL) {
 		box = next;
 

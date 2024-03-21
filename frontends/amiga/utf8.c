@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2020 Chris Young <chris@unsatisfactorysoftware.co.uk>
+ * Copyright 2008-2021 Chris Young <chris@unsatisfactorysoftware.co.uk>
  *
  * This file is part of NetSurf, http://www.netsurf-browser.org/
  *
@@ -35,11 +35,11 @@
 static nserror ami_utf8_codesets(const char *string, size_t len, char **result, bool to_local)
 {
 	char *out;
-	ULONG utf8_tag, local_tag;
+	ULONG utf8_tag = CSA_SourceCodeset, local_tag = CSA_DestCodeset, len_tag = CSA_SourceLen;
 	static struct codeset *utf8_cs = NULL;
 	static struct codeset *local_cs = NULL;
 
-	if(local_cs == NULL) CodesetsFind(NULL,
+	if(local_cs == NULL) local_cs = CodesetsFind(NULL,
 #ifdef __amigaos4__
 						CSA_MIBenum, nsoption_int(local_codeset),
 #else
@@ -47,20 +47,19 @@ static nserror ami_utf8_codesets(const char *string, size_t len, char **result, 
 #endif
 					TAG_DONE);
 
-     if(utf8_cs == NULL) CodesetsFind(NULL,
+     if(utf8_cs == NULL) utf8_cs = CodesetsFind(NULL,
                            CSA_MIBenum, CS_MIBENUM_UTF_8,
                            TAG_DONE);
 
 	if(to_local == false) {
 		local_tag = CSA_SourceCodeset;
 		utf8_tag = CSA_DestCodeset;
-	} else {
-		utf8_tag = CSA_SourceCodeset;
-		local_tag = CSA_DestCodeset;
 	}
 
+	if(len == 0) len_tag = TAG_IGNORE;
+
 	out = CodesetsConvertStr(CSA_Source, string,
-						CSA_SourceLen, len,
+						len_tag, len,
 #ifdef __amigaos4__
 						local_tag, local_cs,
 #endif

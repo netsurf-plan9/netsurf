@@ -41,6 +41,7 @@
 #include "utils/utf8.h"
 #include "utils/ascii.h"
 #include "netsurf/browser_window.h"
+#include "netsurf/inttypes.h"
 #include "netsurf/mouse.h"
 #include "netsurf/plotters.h"
 #include "netsurf/misc.h"
@@ -486,7 +487,7 @@ form_dom_to_data_select(dom_html_select_element *select_element,
 						       &option_element);
 		if (exp != DOM_NO_ERR) {
 			NSLOG(netsurf, INFO,
-			      "Could not get options item %d", option_index);
+			      "Could not get options item %"PRId32, option_index);
 			res = NSERROR_DOM;
 		} else {
 			res = form_dom_to_data_select_option(
@@ -1100,7 +1101,7 @@ form_dom_to_data(struct form *form,
 		exp = dom_html_collection_item(elements, element_idx, &element);
 		if (exp != DOM_NO_ERR) {
 			NSLOG(netsurf, INFO,
-			      "retrieving form element %d failed with %d",
+			      "retrieving form element %"PRIu32" failed with %d",
 			      element_idx, exp);
 			res = NSERROR_DOM;
 			goto form_dom_to_data_error;
@@ -1110,7 +1111,7 @@ form_dom_to_data(struct form *form,
 		exp = dom_node_get_node_name(element, &nodename);
 		if (exp != DOM_NO_ERR) {
 			NSLOG(netsurf, INFO,
-			      "getting element node name %d failed with %d",
+			      "getting element node name %"PRIu32" failed with %d",
 			      element_idx, exp);
 			dom_node_unref(element);
 			res = NSERROR_DOM;
@@ -1594,12 +1595,12 @@ form_open_select_menu(void *client_data,
 			box->border[RIGHT].width + box->padding[RIGHT] +
 			box->border[LEFT].width + box->padding[LEFT];
 
-		font_plot_style_from_css(&html->len_ctx, control->box->style,
-				&fstyle);
+		font_plot_style_from_css(&html->unit_len_ctx,
+				control->box->style, &fstyle);
 		menu->f_size = fstyle.size;
 
 		menu->line_height = FIXTOINT(FDIV((FMUL(FLTTOFIX(1.2),
-				FMUL(nscss_screen_dpi,
+				FMUL(html->unit_len_ctx.device_dpi,
 				INTTOFIX(fstyle.size / PLOT_STYLE_SCALE)))),
 				F_72));
 
@@ -2001,15 +2002,33 @@ void form_radio_set(struct form_control *radio)
 	if (radio->selected)
 		return;
 
-	for (control = radio->form->controls; control;
-			control = control->next) {
+	/* Clear selected state for other controls in
+	 * the same radio button group */
+	for (control = radio->form->controls;
+	     control != NULL;
+	     control = control->next) {
+		/* Only interested in radio inputs */
 		if (control->type != GADGET_RADIO)
 			continue;
+
+		/* Ignore ourself */
 		if (control == radio)
 			continue;
-		if (strcmp(control->name, radio->name) != 0)
+
+		/* Ignore inputs where:
+		 *   a) this or the other control have no name attribute
+		 *   b) this or the other control have an empty name attribute
+		 *   c) the control names do not match
+		 */
+		if ((control->name == NULL) ||
+		    (radio->name == NULL) ||
+		    (control->name[0] == '\0') ||
+		    (radio->name[0] == '\0') ||
+		    strcmp(control->name, radio->name) != 0)
 			continue;
 
+		/* Other control is in the same radio button group: clear its
+		 * selected state */
 		if (control->selected) {
 			control->selected = false;
 			dom_html_input_element_set_checked(control->node, false);

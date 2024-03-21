@@ -96,17 +96,6 @@ static struct gui_drag {
 } gui_drag;
 
 
-extern void ram_register_surface(void);
-extern void plan9_register_surface(void);
-
-void
-init_libs(void)
-{
-	ram_register_surface();
-	plan9_register_surface();	
-}
-
-
 /**
  * Cause an abnormal program termination.
  *
@@ -489,13 +478,14 @@ process_cmdline(int argc, char** argv)
 {
 	int opt;
 	int option_index;
-//	static struct option long_options[] = {
-//		{0, 0, 0,  0 }
-//	}; /* no long options */
+	static struct option long_options[] = {
+		{0, 0, 0,  0 }
+	}; /* no long options */
 
 	NSLOG(netsurf, INFO, "argc %d, argv %p", argc, argv);
 
-	fename = "plan9";
+	nsfb_enumerate_surface_types(framebuffer_pick_default_fename, NULL);
+
 	febpp = 32;
 
 	fewidth = nsoption_int(window_width);
@@ -513,7 +503,7 @@ process_cmdline(int argc, char** argv)
 	} else {
 		feurl = NETSURF_HOMEPAGE;
 	}
-/*
+
 	while((opt = getopt_long(argc, argv, "f:b:w:h:",
 				 long_options, &option_index)) != -1) {
 		switch (opt) {
@@ -543,10 +533,6 @@ process_cmdline(int argc, char** argv)
 
 	if (optind < argc) {
 		feurl = argv[optind];
-	}
-*/
-	if (argc > 1) {
-		feurl = argv[1];
 	}
 
 	if (nsfb_type_from_name(fename) == NSFB_SURFACE_NONE) {
@@ -1014,7 +1000,7 @@ fb_browser_window_input(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 				break;
 			}
 			/* Z or Y pressed but not undo or redo; */
-			/* Fall through */
+			fallthrough;
 
 		default:
 			ucs4 = fbtk_keycode_to_ucs4(cbi->event->value.keycode,
@@ -2208,8 +2194,6 @@ main(int argc, char** argv)
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
 	};
-
-	init_libs(); /* simulate ELF binary format automatic library initialisation */
 
         ret = netsurf_register(&framebuffer_table);
         if (ret != NSERROR_OK) {

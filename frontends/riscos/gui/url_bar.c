@@ -351,8 +351,11 @@ static bool ro_gui_url_bar_icon_update(struct url_bar *url_bar)
 		if (url_bar->display) {
 			icon.icon.flags |= (wimp_BUTTON_NEVER <<
 					    wimp_ICON_BUTTON_TYPE_SHIFT);
-		} else {
+		} else if (!ns_wimp_has_text_selection()) {
 			icon.icon.flags |= (wimp_BUTTON_WRITE_CLICK_DRAG <<
+					    wimp_ICON_BUTTON_TYPE_SHIFT);
+		} else {
+			icon.icon.flags |= (wimp_BUTTON_WRITABLE <<
 					    wimp_ICON_BUTTON_TYPE_SHIFT);
 		}
 		error = xwimp_create_icon(&icon, &url_bar->text.icon);
@@ -1506,7 +1509,7 @@ ro_gui_url_bar_set_content_favicon(struct url_bar *url_bar,
 				   struct gui_window *g)
 {
 	int type = 0;
-	char sprite[URLBAR_FAVICON_NAME_LENGTH];
+	char sprite[URLBAR_FAVICON_NAME_LENGTH-1];
 	struct hlcache_handle *h;
 
 	if (url_bar == NULL ||

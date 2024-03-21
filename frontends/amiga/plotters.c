@@ -126,11 +126,34 @@ struct gui_globals *ami_plot_ra_alloc(ULONG width, ULONG height, bool force32bit
 	if(depth < 16) {
 		gg->palette_mapped = true;
 		if(force32bit == false) palette_mapped = true;
+		
+		bitmap_set_format(&(bitmap_fmt_t) {
+			.layout = BITMAP_LAYOUT_ARGB8888,
+			.pma = true,
+		});
+   	
+		NSLOG(netsurf, INFO, "Set bitmap format to 0xAARRGGBB (native endian) (PMA)");
+		
 	} else {
 		gg->palette_mapped = false;
-		if(force32bit == false) palette_mapped = false;
+		
+		bitmap_set_format(&(bitmap_fmt_t) {
+			.layout = BITMAP_LAYOUT_ARGB8888,
+			.pma = false,
+		});
+   	
+		NSLOG(netsurf, INFO, "Set bitmap format to 0xAARRGGBB (native endian)");
+
 	}
 #else
+ 	bitmap_set_format(&(bitmap_fmt_t) {
+		.layout = BITMAP_LAYOUT_ARGB8888,
+		.pma = true,
+	});
+   	
+ 	NSLOG(netsurf, INFO, "Set bitmap format to 0xAARRGGBB (native endian) (PMA)");
+
+
 	/* Friend BitMaps are weird.
 	 * For OS4, we shouldn't use a friend BitMap here (see below).
 	 * For OS3 AGA, we get no display blitted if we use a friend BitMap,
@@ -144,16 +167,12 @@ struct gui_globals *ami_plot_ra_alloc(ULONG width, ULONG height, bool force32bit
 		if((depth > 8) && (force32bit == false)) friend = scrn->RastPort.BitMap;
 	}
 
-	/* OS3 is locked to using palette-mapped display even on RTG.
-	 * To change this, comment out the below and build with the similar OS4 lines above.
-	 * Various bits of RTG code are OS4-only and OS3 versions will need to be written,
-	 * however a brief test reveals a negative performance benefit, so this lock to a
-	 * palette-mapped display is most likely permanent.
-	 */
-#warning OS3 locked to palette-mapped modes
-	gg->palette_mapped = true;
-	palette_mapped = true;
-	if(depth > 8) depth = 8;
+	if(depth < 16) {
+		gg->palette_mapped = true;
+		if(force32bit == false) palette_mapped = true;
+	} else {
+		gg->palette_mapped = false;
+	}
 #endif
 
 	/* Probably need to fix this next line */
@@ -257,11 +276,7 @@ void ami_plot_ra_free(struct gui_globals *gg)
 	ami_memory_chip_free(gg->tmprasbuf);
 	free(gg->areabuf);
 	DisposeLayerInfo(gg->layerinfo);
-	if(gg->palette_mapped == false) {
-		if(gg->bm) ami_rtg_freebitmap(gg->bm);
-	} else {
-		if(gg->bm) FreeBitMap(gg->bm);
-	}
+	if(gg->bm) ami_rtg_freebitmap(gg->bm);
 
 	if(gg->managed_pen_list == true) {
 		ami_plot_release_pens(gg->shared_pens);

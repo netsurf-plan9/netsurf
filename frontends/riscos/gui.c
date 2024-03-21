@@ -26,8 +26,10 @@
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
+#include <unistd.h>
 #include <unixlib/local.h>
 #include <fpu_control.h>
+#include <swis.h>
 #include <oslib/help.h>
 #include <oslib/uri.h>
 #include <oslib/inetsuite.h>
@@ -38,6 +40,7 @@
 #include <oslib/osbyte.h>
 #include <oslib/osmodule.h>
 #include <oslib/osfscontrol.h>
+#include <oslib/socket.h>
 
 #include "utils/utils.h"
 #include "utils/nsoption.h"
@@ -57,6 +60,7 @@
 #include "desktop/save_complete.h"
 #include "desktop/hotlist.h"
 #include "content/backing_store.h"
+#include "content/fetch.h"
 
 #include "riscos/gui.h"
 #include "riscos/bitmap.h"
@@ -94,6 +98,7 @@ bool riscos_done = false;
 extern bool ro_plot_patterned_lines;
 
 int os_version = 0;
+bool os_alpha_sprite_supported = false;
 
 const char * const __dynamic_da_name = "NetSurf";	/**< For UnixLib. */
 int __dynamic_da_max_size = 128 * 1024 * 1024;	/**< For UnixLib. */
@@ -112,10 +117,13 @@ static const char *task_name = "NetSurf";
 
 ro_gui_drag_type gui_current_drag_type;
 wimp_t task_handle; /**< RISC OS wimp task handle. */
-static clock_t gui_last_poll; /**< Time of last wimp_poll. */
 osspriteop_area *gui_sprites; /**< Sprite area containing pointer and hotlist sprites */
 
 #define DIR_SEP ('.')
+
+static void *pollword;
+static int *sockets_active;
+static size_t sockets_active_size;
 
 /**
  * Accepted wimp user messages.
@@ -143,27 +151,6 @@ static ns_wimp_message_list task_messages = {
 		message_URI_PROCESS,
 		message_URI_RETURN_RESULT,
 		message_INET_SUITE_OPEN_URL,
-#ifdef WITH_PLUGIN
-		message_PLUG_IN_OPENING,
-		message_PLUG_IN_CLOSED,
-		message_PLUG_IN_RESHAPE_REQUEST,
-		message_PLUG_IN_FOCUS,
-		message_PLUG_IN_URL_ACCESS,
-		message_PLUG_IN_STATUS,
-		message_PLUG_IN_BUSY,
-		message_PLUG_IN_STREAM_NEW,
-		message_PLUG_IN_STREAM_WRITE,
-		message_PLUG_IN_STREAM_WRITTEN,
-		message_PLUG_IN_STREAM_DESTROY,
-		message_PLUG_IN_OPEN,
-		message_PLUG_IN_CLOSE,
-		message_PLUG_IN_RESHAPE,
-		message_PLUG_IN_STREAM_AS_FILE,
-		message_PLUG_IN_NOTIFY,
-		message_PLUG_IN_ABORT,
-		message_PLUG_IN_ACTION,
-		/* message_PLUG_IN_INFORMED, (not provided by oslib) */
-#endif
 		message_PRINT_SAVE,
 		message_PRINT_ERROR,
 		message_PRINT_TYPE_ODD,
@@ -305,7 +292,7 @@ set_colour_from_wimp(struct nsoption_s *opts,
 static nserror set_defaults(struct nsoption_s *defaults)
 {
 	/* Set defaults for absent option strings */
-	nsoption_setnull_charp(ca_bundle, strdup("NetSurf:Resources.ca-bundle"));
+	nsoption_setnull_charp(ca_bundle, strdup("<NetSurf$CABundle>"));
 	nsoption_setnull_charp(cookie_file, strdup("NetSurf:Cookies"));
 	nsoption_setnull_charp(cookie_jar, strdup(CHOICES_PREFIX "Cookies"));
 
@@ -408,6 +395,19 @@ static void ro_gui_cleanup(void)
 	xhourglass_off();
 	/* Uninstall NetSurf-specific fonts */
 	xos_cli("FontRemove NetSurf:Resources.Fonts.");
+	if (pollword != NULL) {
+		size_t i;
+		/* Deregister any remaining sockets from SocketWatch */
+		for (i = 0; i < sockets_active_size; i++) {
+			if (sockets_active[i] != -1) {
+				/* SocketWatch_Deregister */
+				(void) _swix(0x52281, _INR(0,1),
+						sockets_active[i], pollword);
+				sockets_active[i] = -1;
+			}
+		}
+		xosmodule_free(pollword);
+	}
 }
 
 
@@ -827,6 +827,7 @@ static void ro_msg_dataload(wimp_message *message)
 		case osfile_TYPE_TEXT:
 		case FILETYPE_ARTWORKS:
 		case FILETYPE_SVG:
+		case FILETYPE_WEBP:
 			/* display the actual file */
 			error = netsurf_path_to_nsurl(message->data.data_xfer.file_name, &url);
 			break;
@@ -929,7 +930,8 @@ static void ro_msg_datasave(wimp_message *message)
 		case osfile_TYPE_SPRITE:
 		case osfile_TYPE_TEXT:
 		case FILETYPE_ARTWORKS:
-		case FILETYPE_SVG: {
+		case FILETYPE_SVG:
+		case FILETYPE_WEBP: {
 			os_error *error;
 
 			dataxfer->your_ref = dataxfer->my_ref;
@@ -1108,6 +1110,123 @@ static void ro_gui_check_resolvers(void)
 	}
 }
 
+/**
+ * Determine whether the OS version supports alpha channels.
+ *
+ * \return true iff alpha channels are supported, false otherwise.
+ */
+static bool ro_gui__os_alpha_sprites_supported(void)
+{
+	os_error *error;
+	int var_val;
+	bits psr;
+
+	psr = 0;
+	error = xos_read_mode_variable(alpha_SPRITE_MODE,
+			os_MODEVAR_MODE_FLAGS, &var_val, &psr);
+	if (error) {
+		NSLOG(netsurf, ERROR, "xos_read_mode_variable: 0x%x: %s",
+				error->errnum, error->errmess);
+		return false;
+	}
+
+	return (var_val == (1 << 15));
+}
+
+static int ro_gui_socket_open(int domain, int type, int protocol)
+{
+	int sock = socket(domain, type, protocol);
+	if (sock != -1) {
+		size_t i;
+		int rosock;
+		_kernel_oserror *error;
+
+		rosock = __get_ro_socket(sock);
+		if (rosock == -1) {
+			close(sock);
+			errno = ENOMEM;
+			return -1;
+		}
+
+		/* SocketWatch_Register */
+		error = _swix(0x52280, _INR(0,2), pollword, 0x1, rosock);
+		if (error != NULL) {
+			close(sock);
+			errno = ENOMEM;
+			return -1;
+		}
+
+		/* Insert RISC OS socket handle into sockets_active */
+		for (i = 0; i < sockets_active_size; i++) {
+			if (sockets_active[i] == -1) {
+				sockets_active[i] = rosock;
+				break;
+			}
+		}
+		if (i == sockets_active_size) {
+			/* No free slots: expand table */
+			int *tmp = realloc(sockets_active,
+					sockets_active_size * 2 * sizeof(int));
+			if (tmp == NULL) {
+				/* SocketWatch_Deregister */
+				(void) _swix(0x52281, _INR(0,1), rosock, pollword);
+				close(sock);
+				errno = ENOMEM;
+				return -1;
+			}
+			memset(sockets_active + sockets_active_size, 0xff,
+					sockets_active_size * sizeof(int));
+			sockets_active_size *= 2;
+			sockets_active[i] = rosock;
+		}
+	}
+	return sock;
+}
+
+static int ro_gui_socket_close(int socket)
+{
+	int rosock;
+
+	rosock = __get_ro_socket(socket);
+	if (rosock != -1) {
+		size_t i;
+		/* Invalidate active sockets entry */
+		for (i = 0; i < sockets_active_size; i++) {
+			if (sockets_active[i] == rosock) {
+				sockets_active[i] = -1;
+				break;
+			}
+		}
+		/* SocketWatch_Deregister */
+		(void) _swix(0x52281, _INR(0,1), rosock, pollword);
+	}
+
+	return close(socket);
+}
+
+/**
+ * Set up internet event handling
+ */
+static os_error *ro_gui_init_internet_event(void)
+{
+	static os_error nomem = { 1, "No memory"};
+	os_error *error;
+
+	sockets_active = malloc(32 * sizeof(int));
+	if (sockets_active == NULL) {
+		return &nomem;
+	}
+	memset(sockets_active, 0xff, 32 * sizeof(int));
+	sockets_active_size = 32;
+
+	error = xosmodule_alloc(4, &pollword);
+	if (error != NULL) {
+		return error;
+	}
+
+	*((uint32_t*) pollword) = 0;
+	return NULL;
+}
 
 /**
  * Initialise the RISC OS specific GUI.
@@ -1149,6 +1268,10 @@ static nserror gui_init(int argc, char** argv)
 	 * (remember that it's preferable to check for specific features
 	 * being present) */
 	xos_byte(osbyte_IN_KEY, 0, 0xff, &os_version, NULL);
+
+	os_alpha_sprite_supported = ro_gui__os_alpha_sprites_supported();
+	NSLOG(netsurf, INFO, "OS supports alpha sprites: %s",
+			os_alpha_sprite_supported ? "yes" : "no");
 
 	/* the first release version of the A9home OS is incapable of
 	   plotting patterned lines (presumably a fault in the hw acceleration) */
@@ -1202,16 +1325,17 @@ static nserror gui_init(int argc, char** argv)
 	/* Initialise save complete functionality */
 	save_complete_init();
 
-	/* Initialise the font subsystem */
-	nsfont_init();
-
-	/* Load in visited URLs, Cookies, and hostlist */
+	/* Load in visited URLs and Cookies */
 	urldb_load(nsoption_charp(url_path));
 	urldb_load_cookies(nsoption_charp(cookie_file));
-	hotlist_init(nsoption_charp(hotlist_path),
-			nsoption_bool(external_hotlists) ?
-					NULL :
-					nsoption_charp(hotlist_save));
+
+	/* Setup Internet event handling (must be after atexit) */
+	error = ro_gui_init_internet_event();
+	if (error != NULL) {
+		NSLOG(netsurf, INFO, "init_internet_event: 0x%x: %s",
+		      error->errnum, error->errmess);
+		die(error->errmess);
+	}
 
 	/* Initialise with the wimp */
 	error = xwimp_initialise(wimp_VERSION_RO38, task_name,
@@ -1241,6 +1365,15 @@ static nserror gui_init(int argc, char** argv)
 			ro_gui_selection_drag_claim);
 	ro_message_register_route(message_WINDOW_INFO,
 			ro_msg_window_info);
+
+	/* Initialise the font subsystem (must be after Wimp_Initialise) */
+	nsfont_init();
+
+	/* Initialise the hotlist (must be after fonts) */
+	hotlist_init(nsoption_charp(hotlist_path),
+			nsoption_bool(external_hotlists) ?
+					NULL :
+					nsoption_charp(hotlist_save));
 
 	/* Initialise global information */
 	ro_gui_get_screen_properties();
@@ -1748,51 +1881,6 @@ static void ro_gui_user_message(wimp_event_no event, wimp_message *message)
 				ro_url_message_received(message);
 			}
 			break;
-#ifdef WITH_PLUGIN
-		case message_PLUG_IN_OPENING:
-			plugin_opening(message);
-			break;
-		case message_PLUG_IN_CLOSED:
-			plugin_closed(message);
-			break;
-		case message_PLUG_IN_RESHAPE_REQUEST:
-			plugin_reshape_request(message);
-			break;
-		case message_PLUG_IN_FOCUS:
-			break;
-		case message_PLUG_IN_URL_ACCESS:
-			plugin_url_access(message);
-			break;
-		case message_PLUG_IN_STATUS:
-			plugin_status(message);
-			break;
-		case message_PLUG_IN_BUSY:
-			break;
-		case message_PLUG_IN_STREAM_NEW:
-			plugin_stream_new(message);
-			break;
-		case message_PLUG_IN_STREAM_WRITE:
-			break;
-		case message_PLUG_IN_STREAM_WRITTEN:
-			plugin_stream_written(message);
-			break;
-		case message_PLUG_IN_STREAM_DESTROY:
-			break;
-		case message_PLUG_IN_OPEN:
-			if (event == wimp_USER_MESSAGE_ACKNOWLEDGE)
-				plugin_open_msg(message);
-			break;
-		case message_PLUG_IN_CLOSE:
-			if (event == wimp_USER_MESSAGE_ACKNOWLEDGE)
-				plugin_close_msg(message);
-			break;
-		case message_PLUG_IN_RESHAPE:
-		case message_PLUG_IN_STREAM_AS_FILE:
-		case message_PLUG_IN_NOTIFY:
-		case message_PLUG_IN_ABORT:
-		case message_PLUG_IN_ACTION:
-			break;
-#endif
 		case message_PRINT_SAVE:
 			if (event == wimp_USER_MESSAGE_ACKNOWLEDGE)
 				ro_print_save_bounce(message);
@@ -1872,6 +1960,14 @@ static void ro_gui_handle_event(wimp_event_no event, wimp_block *block)
 				ro_gui_scroll(&(block->scroll));
 			break;
 
+		case wimp_POLLWORD_NON_ZERO:
+			/* simply reset pollword */
+			if (pollword != NULL) {
+				/* SocketWatch_AtomicReset */
+				_swix(0x52282, _INR(0,1), pollword, 0);
+			}
+			break;
+
 		case wimp_USER_MESSAGE:
 		case wimp_USER_MESSAGE_RECORDED:
 		case wimp_USER_MESSAGE_ACKNOWLEDGE:
@@ -1888,44 +1984,54 @@ static void riscos_poll(void)
 {
 	wimp_event_no event;
 	wimp_block block;
-	const wimp_poll_flags mask = wimp_MASK_LOSE | wimp_MASK_GAIN | wimp_SAVE_FP;
-	os_t track_poll_offset;
+	const wimp_poll_flags mask = wimp_MASK_LOSE | wimp_MASK_GAIN |
+		wimp_GIVEN_POLLWORD | wimp_SAVE_FP;
+	os_t t, track_poll_offset;
 
-	/* Poll wimp. */
-	xhourglass_off();
-	track_poll_offset = ro_mouse_poll_interval();
-	if (sched_active || (track_poll_offset > 0)) {
-		os_t t = os_read_monotonic_time();
+	/* Drain pending non-pollword events until the first NULL event */
+	do {
+		xhourglass_off();
+		event = wimp_poll(wimp_MASK_POLLWORD | mask, &block, pollword);
+		xhourglass_on();
 
-		if (track_poll_offset > 0) {
-			t += track_poll_offset;
-		} else {
-			t += 10;
-		}
+		ro_gui_handle_event(event, &block);
+	} while (event != wimp_NULL_REASON_CODE);
 
-		if (sched_active && (sched_time - t) < 0) {
-			t = sched_time;
-		}
+	/* Redraw window contents */
+	ro_gui_window_update_boxes();
 
-		event = wimp_poll_idle(mask, &block, t, 0);
-	} else {
-		event = wimp_poll(wimp_MASK_NULL | mask, &block, 0);
+	/* Run scheduled callbacks, if any */
+	schedule_run();
+
+	/* Drive any active fetches. */
+	{
+		fd_set read_fd_set, write_fd_set, exc_fd_set;
+		int max_fd;
+
+		fetch_fdset(&read_fd_set, &write_fd_set, &exc_fd_set, &max_fd);
 	}
+
+	/* Poll wimp in the ordinary way. */
+	xhourglass_off();
+	t = os_read_monotonic_time();
+	track_poll_offset = ro_mouse_poll_interval();
+	/* Work out how long we're prepared to wait for an event */
+	if (track_poll_offset > 0) {
+		t += track_poll_offset;
+	} else if (sched_active) {
+		t += 10;
+	} else {
+		t += 100;
+	}
+	/* And then clamp that to min(sched_time, t) */
+	if (sched_active && (sched_time - t) < 0) {
+		t = sched_time;
+	}
+
+	event = wimp_poll_idle(mask, &block, t, pollword);
 
 	xhourglass_on();
-	gui_last_poll = clock();
 	ro_gui_handle_event(event, &block);
-
-	/* Only run scheduled callbacks on a null poll
-	 * We cannot do this in the null event handler, as that may be called
-	 * from gui_multitask(). Scheduled callbacks must only be run from the
-	 * top-level.
-	 */
-	if (event == wimp_NULL_REASON_CODE) {
-		schedule_run();
-	}
-
-	ro_gui_window_update_boxes();
 }
 
 
@@ -2424,6 +2530,8 @@ static struct gui_fetch_table riscos_fetch_table = {
 
 	.get_resource_url = gui_get_resource_url,
 	.mimetype = fetch_mimetype,
+	.socket_open = ro_gui_socket_open,
+	.socket_close = ro_gui_socket_close,
 };
 
 static struct gui_misc_table riscos_misc_table = {

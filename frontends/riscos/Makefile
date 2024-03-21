@@ -22,6 +22,9 @@ RESOURCES = $(TPD_RISCOS)
 
 CFLAGS += -Driscos -std=c99 -D_BSD_SOURCE -D_POSIX_C_SOURCE \
 	    -mpoke-function-name -fno-strict-aliasing
+ifeq ($(findstring -elfeabi,$(SUBTARGET)),-elfeabi)
+  CFLAGS += -funwind-tables
+endif
 
 CFLAGS += -I$(GCCSDK_INSTALL_ENV)/include
 ifeq ($(HOST),riscos)
@@ -33,7 +36,7 @@ ifeq ($(HOST),riscos)
   LDFLAGS += -LOSLib: -lOSLib32
 else
   LDFLAGS += -lOSLib32
-  ifeq ($(SUBTARGET),-elf)
+  ifeq ($(findstring -elf,$(SUBTARGET)),-elf)
     # Go for static builds & AIF binary at the moment:
     CFLAGS += -static
     LDFLAGS += -static
@@ -111,6 +114,9 @@ MESSAGES_FILTER=ro
 $(FRONTEND_SOURCE_DIR)/appdir/!Run$(RUNEXT): $(FRONTEND_SOURCE_DIR)/scripts/Run $(EXETARGET)
 	$(VQ)echo " MAKERUN: $@"
 	$(Q)$(MAKERUN) $(EXETARGET) $< $@
+ifeq ($(findstring -elfeabi,$(SUBTARGET)),-elfeabi)
+	$(Q)$(SED) -i -e 's/^|\(RMEnsure ARMEABISupport\)/\1/' -e 's/SharedUnixLibrary 1\.07/SharedUnixLibrary 1.16/g' $@
+endif
 
 $(FRONTEND_SOURCE_DIR)/appdir/!Help$(RUNEXT): $(FRONTEND_SOURCE_DIR)/scripts/Help
 	$(VQ)echo "      CP: $@"
@@ -174,7 +180,7 @@ install-riscos:
 
 package-riscos: netsurf.zip
 
-netsurf.zip: $(EXETARGET)
+netsurf.zip: $(EXETARGET) $(POSTEXES)
 	$(eval $@_TMPDIR := $(shell mktemp -d))
 	$(Q) $(RM) $@
 	$(Q) cp -rLvp $(FRONTEND_SOURCE_DIR)/appdir $($@_TMPDIR)/!NetSurf
@@ -184,5 +190,5 @@ netsurf.zip: $(EXETARGET)
 	$(Q) rsync --archive --verbose $(FRONTEND_SOURCE_DIR)/distribution/3rdParty $($@_TMPDIR)
 	$(Q) cp $(FRONTEND_SOURCE_DIR)/distribution/ReadMe $($@_TMPDIR)
 	$(Q) cp $(FRONTEND_SOURCE_DIR)/distribution/LeesMij $($@_TMPDIR)
-	$(Q) cd $($@_TMPDIR) && /opt/netsurf/arm-unknown-riscos/env/bin/zip -9vr\, $(CURDIR)/$@ *
+	$(Q) cd $($@_TMPDIR) && $(ZIP) -9vr\, $(CURDIR)/$@ *
 	$(Q) $(RM) -rf $($@_TMPDIR)

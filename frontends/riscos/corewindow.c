@@ -52,6 +52,8 @@
 #define wimp_KEY_END wimp_KEY_COPY
 #endif
 
+static struct ro_corewindow *ro_cw_drag_cw;
+
 /**
  * Update a windows scrollbars.
  *
@@ -120,10 +122,15 @@ static void ro_cw_redraw(wimp_draw *redraw)
 		origin_x = redraw->box.x0 - redraw->xscroll;
 		origin_y = redraw->box.y1 + ro_cw->origin_y - redraw->yscroll;
 
-		r.x0 = (redraw->clip.x0 - origin_x) / 2;
-		r.y0 = (origin_y - redraw->clip.y1) / 2;
-		r.x1 = r.x0 + ((redraw->clip.x1 - redraw->clip.x0) / 2);
-		r.y1 = r.y0 + ((redraw->clip.y1 - redraw->clip.y0) / 2);
+		ro_plot_clip_rect.x0 = redraw->clip.x0 - origin_x;
+		ro_plot_clip_rect.y0 = origin_y - redraw->clip.y0;
+		ro_plot_clip_rect.x1 = redraw->clip.x1 - origin_x;
+		ro_plot_clip_rect.y1 = origin_y - redraw->clip.y1;
+
+		r.x0 = (ro_plot_clip_rect.x0    ) / 2; /* left   */
+		r.y0 = (ro_plot_clip_rect.y1    ) / 2; /* top    */
+		r.x1 = (ro_plot_clip_rect.x1 + 1) / 2; /* right  */
+		r.y1 = (ro_plot_clip_rect.y0 + 1) / 2; /* bottom */
 
 		/* call the draw callback */
 		ro_cw->draw(ro_cw, origin_x, origin_y, &r);
@@ -248,6 +255,11 @@ static void ro_cw_mouse_at(wimp_pointer *pointer, void *data)
 	if (ro_cw == NULL) {
 		NSLOG(netsurf, INFO, "no corewindow conext for window: 0x%x",
 		      (unsigned int)pointer->w);
+		return;
+	}
+	if (ro_cw != ro_cw_drag_cw) {
+		NSLOG(netsurf, DEEPDEBUG, "Called without drag window: %p",
+				ro_cw);
 		return;
 	}
 	NSLOG(netsurf, INFO, "RO corewindow context %p", ro_cw);
@@ -386,6 +398,7 @@ ro_cw_drag_start(struct ro_corewindow *ro_cw,
 			ro_warn_user("WimpError", error->errmess);
 		}
 
+		ro_cw_drag_cw = ro_cw;
 		ro_mouse_drag_start(ro_cw_drag_end, ro_cw_mouse_at, NULL, NULL);
 	}
 }
@@ -1041,6 +1054,8 @@ ro_corewindow_init(struct ro_corewindow *ro_cw,
 	}
 
 	/* setup context for event handlers */
+	NSLOG(netsurf, INFO, "Setting corewindow %p for window handle %p",
+			ro_cw, ro_cw->wh);
 	ro_gui_wimp_event_set_user_data(ro_cw->wh, ro_cw);
 
 	/* register wimp events. */

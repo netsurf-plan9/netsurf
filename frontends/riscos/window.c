@@ -833,6 +833,7 @@ ro_gui_window_toolbar_click(void *data,
 	if (action_type == TOOLBAR_ACTION_URL) {
 		switch (action.url) {
 		case TOOLBAR_URL_DRAG_URL:
+		case TOOLBAR_URL_DRAG_FAVICON:
 		{
 			gui_save_type save_type;
 			nserror err;
@@ -1312,7 +1313,7 @@ ro_gui_window_handle_local_keypress(struct gui_window *g,
 	case IS_WIMP_KEY + wimp_KEY_F1:	/* Help. */
 	{
 		nserror error = nsurl_create(
-				"http://www.netsurf-browser.org/documentation/",
+				"https://www.netsurf-browser.org/documentation/",
 				&url);
 		if (error == NSERROR_OK) {
 			error = browser_window_create(BW_CREATE_HISTORY,
@@ -1639,6 +1640,57 @@ static void ro_gui_window_close(wimp_w w)
 	}
 }
 
+/**
+ * Wrapper for calls to browser_window_redraw for a wimp_draw rectangle.
+ *
+ * \param[in] gui_win     Window to render.
+ * \param[in] wimp_rect   The area of gui_win to render into.
+ * \param[in] use_buffer  Whether to use buffered rendering.
+ */
+static inline void ro_gui_window__redraw_rect(
+		const struct gui_window *gui_win,
+		const wimp_draw *wimp_rect,
+		bool use_buffer)
+{
+	struct redraw_context ctx = {
+		.interactive = true,
+		.background_images = true,
+		.plot = &ro_plotters
+	};
+	struct rect clip;
+
+	/* OS's redraw request coordinates are in screen coordinates,
+	 * with an origin at the bottom left of the screen.
+	 * Find the coordinate of the top left of the document in terms
+	 * of OS screen coordinates.
+	 * NOTE: OS units are 2 per px. */
+	ro_plot_origin_x = wimp_rect->box.x0 - wimp_rect->xscroll;
+	ro_plot_origin_y = wimp_rect->box.y1 - wimp_rect->yscroll;
+
+	/* Adjust clip rect for origin. */
+	ro_plot_clip_rect.x0 = wimp_rect->clip.x0 - ro_plot_origin_x;
+	ro_plot_clip_rect.y0 = ro_plot_origin_y - wimp_rect->clip.y0;
+	ro_plot_clip_rect.x1 = wimp_rect->clip.x1 - ro_plot_origin_x;
+	ro_plot_clip_rect.y1 = ro_plot_origin_y - wimp_rect->clip.y1;
+
+	/* Convert OS redraw rectangle request coordinates into NetSurf
+	 * coordinates. NetSurf coordinates have origin at top left of
+	 * document and units are in px. */
+	clip.x0 = (ro_plot_clip_rect.x0    ) / 2; /* left   */
+	clip.y0 = (ro_plot_clip_rect.y1    ) / 2; /* top    */
+	clip.x1 = (ro_plot_clip_rect.x1 + 1) / 2; /* right  */
+	clip.y1 = (ro_plot_clip_rect.y0 + 1) / 2; /* bottom */
+
+	if (use_buffer) {
+		ro_gui_buffer_open(wimp_rect);
+	}
+
+	browser_window_redraw(gui_win->bw, 0, 0, &clip, &ctx);
+
+	if (use_buffer) {
+		ro_gui_buffer_close();
+	}
+}
 
 /**
  * Handle a Redraw_Window_Request for a browser window.
@@ -1650,11 +1702,6 @@ static void ro_gui_window_redraw(wimp_draw *redraw)
 	osbool more;
 	struct gui_window *g;
 	os_error *error;
-	struct redraw_context ctx = {
-		.interactive = true,
-		.background_images = true,
-		.plot = &ro_plotters
-	};
 
 	g = (struct gui_window *)ro_gui_wimp_event_get_user_data(redraw->w);
 
@@ -1675,31 +1722,8 @@ static void ro_gui_window_redraw(wimp_draw *redraw)
 		return;
 	}
 	while (more) {
-		struct rect clip;
-
-		/* OS's redraw request coordinates are in screen coordinates,
-		 * with an origin at the bottom left of the screen.
-		 * Find the coordinate of the top left of the document in terms
-		 * of OS screen coordinates.
-		 * NOTE: OS units are 2 per px. */
-		ro_plot_origin_x = redraw->box.x0 - redraw->xscroll;
-		ro_plot_origin_y = redraw->box.y1 - redraw->yscroll;
-
-		/* Convert OS redraw rectangle request coordinates into NetSurf
-		 * coordinates. NetSurf coordinates have origin at top left of
-		 * document and units are in px. */
-		clip.x0 = (redraw->clip.x0 - ro_plot_origin_x) / 2; /* left   */
-		clip.y0 = (ro_plot_origin_y - redraw->clip.y1) / 2; /* top    */
-		clip.x1 = (redraw->clip.x1 - ro_plot_origin_x) / 2; /* right  */
-		clip.y1 = (ro_plot_origin_y - redraw->clip.y0) / 2; /* bottom */
-
-		if (ro_gui_current_redraw_gui->option.buffer_everything)
-			ro_gui_buffer_open(redraw);
-
-		browser_window_redraw(g->bw, 0, 0, &clip, &ctx);
-
-		if (ro_gui_current_redraw_gui->option.buffer_everything)
-			ro_gui_buffer_close();
+		ro_gui_window__redraw_rect(g, redraw,
+			ro_gui_current_redraw_gui->option.buffer_everything);
 
 		/* Check to see if there are more rectangles to draw and
 		 * get next one */
@@ -2551,7 +2575,7 @@ ro_gui_window_menu_select(wimp_w w,
 
 		/* help actions */
 	case HELP_OPEN_CONTENTS:
-		error = nsurl_create("http://www.netsurf-browser.org/documentation/", &url);
+		error = nsurl_create("https://www.netsurf-browser.org/documentation/", &url);
 		if (error == NSERROR_OK) {
 			error = browser_window_create(BW_CREATE_HISTORY,
 						      url,
@@ -2563,7 +2587,7 @@ ro_gui_window_menu_select(wimp_w w,
 		break;
 
 	case HELP_OPEN_GUIDE:
-		error = nsurl_create("http://www.netsurf-browser.org/documentation/guide", &url);
+		error = nsurl_create("https://www.netsurf-browser.org/documentation/guide", &url);
 		if (error == NSERROR_OK) {
 			error = browser_window_create(BW_CREATE_HISTORY,
 						      url,
@@ -2575,7 +2599,7 @@ ro_gui_window_menu_select(wimp_w w,
 		break;
 
 	case HELP_OPEN_INFORMATION:
-		error = nsurl_create("http://www.netsurf-browser.org/documentation/info", &url);
+		error = nsurl_create("https://www.netsurf-browser.org/documentation/info", &url);
 		if (error == NSERROR_OK) {
 			error = browser_window_create(BW_CREATE_HISTORY,
 						      url,
@@ -3571,7 +3595,8 @@ static void gui_window_set_title(struct gui_window *g, const char *title)
 					title, scale_disp);
 		}
 	} else {
-		strncpy(g->title, title, sizeof(g->title));
+		strncpy(g->title, title, sizeof(g->title) - 1);
+		g->title[sizeof(g->title)-1] = 0;
 	}
 
 	ro_gui_set_window_title(g->window, g->title);
@@ -4545,7 +4570,7 @@ ro_gui_window_iconise(struct gui_window *g, wimp_full_message_window_info *wi)
 
 	/* create the thumbnail sprite */
 	bitmap = riscos_bitmap_create(width, height,
-			BITMAP_NEW | BITMAP_OPAQUE | BITMAP_CLEAR_MEMORY);
+			BITMAP_OPAQUE | BITMAP_CLEAR);
 	if (!bitmap) {
 		NSLOG(netsurf, INFO, "Thumbnail initialisation failed.");
 		return;
@@ -4670,22 +4695,15 @@ void ro_gui_window_redraw_all(void)
 	}
 }
 
-
 /* exported interface documented in riscos/window.h */
 void ro_gui_window_update_boxes(void)
 {
 	osbool more;
 	bool use_buffer;
 	wimp_draw update;
-	struct rect clip;
 	os_error *error;
 	struct update_box *cur;
 	struct gui_window *g;
-	struct redraw_context ctx = {
-		.interactive = true,
-		.background_images = true,
-		.plot = &ro_plotters
-	};
 
 	for (cur = pending_updates; cur != NULL; cur = cur->next) {
 		g = cur->g;
@@ -4711,22 +4729,8 @@ void ro_gui_window_update_boxes(void)
 		/* Set the current redraw gui_window to get options from */
 		ro_gui_current_redraw_gui = g;
 
-		ro_plot_origin_x = update.box.x0 - update.xscroll;
-		ro_plot_origin_y = update.box.y1 - update.yscroll;
-
 		while (more) {
-			clip.x0 = (update.clip.x0 - ro_plot_origin_x) / 2;
-			clip.y0 = (ro_plot_origin_y - update.clip.y1) / 2;
-			clip.x1 = (update.clip.x1 - ro_plot_origin_x) / 2;
-			clip.y1 = (ro_plot_origin_y - update.clip.y0) / 2;
-
-			if (use_buffer)
-				ro_gui_buffer_open(&update);
-
-			browser_window_redraw(g->bw, 0, 0, &clip, &ctx);
-
-			if (use_buffer)
-				ro_gui_buffer_close();
+			ro_gui_window__redraw_rect(g, &update, use_buffer);
 
 			error = xwimp_get_rectangle(&update, &more);
 			/* RISC OS 3.7 returns an error here if enough buffer

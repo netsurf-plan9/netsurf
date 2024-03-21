@@ -63,7 +63,7 @@ OBJ=\
 	content/handlers/css/hints.$O\
 	content/handlers/css/internal.$O\
 	content/handlers/css/select.$O\
-	content/handlers/css/utils.$O\
+#	content/handlers/css/utils.$O\
 	content/handlers/html/box_construct.$O\
 	content/handlers/html/box_inspect.$O\
 	content/handlers/html/box_manipulate.$O\
@@ -80,7 +80,8 @@ OBJ=\
 	content/handlers/html/imagemap.$O\
 	content/handlers/html/interaction.$O\
 	content/handlers/html/layout.$O\
-	content/handlers/html/list_counter_style.$O\
+	content/handlers/html/layout_flex.$O\
+#	content/handlers/html/list_counter_style.$O\
 	content/handlers/html/object.$O\
 	content/handlers/html/redraw.$O\
 	content/handlers/html/redraw_border.$O\
@@ -93,9 +94,11 @@ OBJ=\
 	content/handlers/image/image.$O\
 	content/handlers/image/image_cache.$O\
 	content/handlers/image/jpeg.$O\
+#	content/handlers/image/jpegxl.$O\
 #	content/handlers/image/nssprite.$O\
 	content/handlers/image/png.$O\
 #	content/handlers/image/rsvg.$O\
+#	content/handlers/image/rsvg246.$O\
 	content/handlers/image/svg.$O\
 #	content/handlers/image/video.$O\
 #	content/handlers/image/webp.$O\
@@ -110,6 +113,7 @@ OBJ=\
 	content/textsearch.$O\
 	content/no_backing_store.$O\
 	content/urldb.$O\
+	desktop/bitmap.$O\
 	desktop/browser.$O\
 	desktop/browser_history.$O\
 	desktop/browser_window.$O\

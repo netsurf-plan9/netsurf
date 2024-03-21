@@ -41,6 +41,7 @@
 
 #include "desktop/gui_internal.h"
 #include "desktop/browser_private.h"
+#include "desktop/local_history_private.h"
 #include "desktop/browser_history.h"
 
 /**
@@ -105,7 +106,7 @@ browser_window_history__clone_entry(struct history *history,
 		new_entry->page.bitmap = guit->bitmap->create(
 				LOCAL_HISTORY_WIDTH,
 				LOCAL_HISTORY_HEIGHT,
-				BITMAP_NEW | BITMAP_OPAQUE);
+				BITMAP_OPAQUE);
 
 		if (new_entry->page.bitmap != NULL) {
 			bmsrc_data = guit->bitmap->get_buffer(entry->page.bitmap);
@@ -387,7 +388,7 @@ browser_window_history_add(struct browser_window *bw,
 
 	entry->page.bitmap = guit->bitmap->create(
 			LOCAL_HISTORY_WIDTH, LOCAL_HISTORY_HEIGHT,
-			BITMAP_NEW | BITMAP_CLEAR_MEMORY | BITMAP_OPAQUE);
+			BITMAP_CLEAR | BITMAP_OPAQUE);
 	if (entry->page.bitmap != NULL) {
 //		ret = guit->bitmap->render(entry->page.bitmap, content);
 		if (ret != NSERROR_OK) {
@@ -434,9 +435,7 @@ nserror browser_window_history_update(struct browser_window *bw,
 
 	history = bw->history;
 
-	if (!history ||
-	    !history->current ||
-	    !history->current->page.bitmap) {
+	if ((history == NULL) || (history->current == NULL)) {
 		return NSERROR_INVALID;
 	}
 
@@ -455,7 +454,7 @@ nserror browser_window_history_update(struct browser_window *bw,
 //		guit->bitmap->render(history->current->page.bitmap, content);
 	}
 
-	if (bw->window != NULL &&
+	if ((bw->window != NULL) &&
 	    guit->window->get_scroll(bw->window, &sx, &sy)) {
 		int content_height = content_get_height(content);
 		int content_width = content_get_width(content);
@@ -489,9 +488,7 @@ browser_window_history_get_scroll(struct browser_window *bw,
 
 	history = bw->history;
 
-	if (!history ||
-	    !history->current ||
-	    !history->current->page.bitmap) {
+	if ((history== NULL) || (history->current == NULL)) {
 		return NSERROR_INVALID;
 	}
 

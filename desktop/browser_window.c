@@ -62,6 +62,11 @@
 #include "desktop/hotlist.h"
 #include "desktop/knockout.h"
 #include "desktop/browser_history.h"
+#include "desktop/theme.h"
+
+#ifdef WITH_THEME_INSTALL
+#include "desktop/theme.h"
+#endif
 
 /**
  * smallest scale that can be applied to a browser window

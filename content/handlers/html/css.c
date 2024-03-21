@@ -33,6 +33,7 @@
 #include "utils/nsoption.h"
 #include "utils/corestrings.h"
 #include "utils/log.h"
+#include "netsurf/inttypes.h"
 #include "netsurf/misc.h"
 #include "netsurf/content.h"
 #include "content/hlcache.h"
@@ -173,7 +174,7 @@ html_stylesheet_from_domnode(html_content *c,
 
 	dom_string_unref(style);
 
-	snprintf(urlbuf, sizeof(urlbuf), "x-ns-css:%u", key);
+	snprintf(urlbuf, sizeof(urlbuf), "x-ns-css:%"PRIu32"", key);
 
 	error = nsurl_create(urlbuf, &url);
 	if (error != NSERROR_OK) {
@@ -395,15 +396,19 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	if (exc != DOM_NO_ERR || rel == NULL)
 		return true;
 
-	if (strcasestr(dom_string_data(rel), "stylesheet") == 0) {
+	if (strcasestr(dom_string_data(rel), "stylesheet") == NULL) {
 		dom_string_unref(rel);
 		return true;
-	} else if (strcasestr(dom_string_data(rel), "alternate") != 0) {
+	} else if (strcasestr(dom_string_data(rel), "alternate") != NULL) {
 		/* Ignore alternate stylesheets */
 		dom_string_unref(rel);
 		return true;
 	}
 	dom_string_unref(rel);
+
+	if (nsoption_bool(author_level_css) == false) {
+		return true;
+	}
 
 	/* type='text/css' or not present */
 	exc = dom_element_get_attribute(node, corestring_dom_type, &type_attr);

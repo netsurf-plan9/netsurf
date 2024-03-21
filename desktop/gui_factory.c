@@ -20,10 +20,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "utils/config.h"
 #include "utils/errors.h"
 #include "utils/file.h"
+#include "utils/inet.h"
 #include "netsurf/bitmap.h"
 #include "content/hlcache.h"
 #include "content/backing_store.h"
@@ -472,6 +474,16 @@ static char *gui_default_mimetype(const char *path)
 	return strdup(guit->fetch->filetype(path));
 }
 
+static int gui_default_socket_open(int domain, int type, int protocol)
+{
+	return (int) socket(domain, type, protocol);
+}
+
+static int gui_default_socket_close(int fd)
+{
+	return (int) ns_close_socket(fd);
+}
+
 /** verify fetch table is valid */
 static nserror verify_fetch_register(struct gui_fetch_table *gft)
 {
@@ -497,6 +509,12 @@ static nserror verify_fetch_register(struct gui_fetch_table *gft)
 	}
 	if (gft->mimetype == NULL) {
 		gft->mimetype = gui_default_mimetype;
+	}
+	if (gft->socket_open == NULL) {
+		gft->socket_open = gui_default_socket_open;
+	}
+	if (gft->socket_close == NULL) {
+		gft->socket_close = gui_default_socket_close;
 	}
 
 	return NSERROR_OK;
@@ -560,10 +578,6 @@ static nserror verify_bitmap_register(struct gui_bitmap_table *gbt)
 		return NSERROR_BAD_PARAMETER;
 	}
 
-	if (gbt->test_opaque == NULL) {
-		return NSERROR_BAD_PARAMETER;
-	}
-
 	if (gbt->get_buffer == NULL) {
 		return NSERROR_BAD_PARAMETER;
 	}
@@ -577,14 +591,6 @@ static nserror verify_bitmap_register(struct gui_bitmap_table *gbt)
 	}
 
 	if (gbt->get_height == NULL) {
-		return NSERROR_BAD_PARAMETER;
-	}
-
-	if (gbt->get_bpp == NULL) {
-		return NSERROR_BAD_PARAMETER;
-	}
-
-	if (gbt->save == NULL) {
 		return NSERROR_BAD_PARAMETER;
 	}
 

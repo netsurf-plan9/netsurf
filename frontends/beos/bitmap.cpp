@@ -114,28 +114,28 @@ static inline void nsbeos_rgba_to_bgra(void *src,
  * Create a bitmap.
  *
  * \param  width   width of image in pixels
- * \param  height  width of image in pixels
- * \param  state   a flag word indicating the initial state
+ * \param  height  height of image in pixels
+ * \param  bflags  flags for bitmap creation
  * \return an opaque struct bitmap, or NULL on memory exhaustion
  */
-static void *bitmap_create(int width, int height, unsigned int state)
+static void *bitmap_create(int width, int height, enum gui_bitmap_flags flags)
 {
         struct bitmap *bmp = (struct bitmap *)malloc(sizeof(struct bitmap));
         if (bmp == NULL)
                 return NULL;
 
-        int32 flags = 0;
-        if (state & BITMAP_CLEAR_MEMORY)
-                flags |= B_BITMAP_CLEAR_TO_WHITE;
+        int32 Bflags = 0;
+        if (flags & BITMAP_CLEAR)
+                Bflags |= B_BITMAP_CLEAR_TO_WHITE;
 
         BRect frame(0, 0, width - 1, height - 1);
         //XXX: bytes per row ?
-        bmp->primary = new BBitmap(frame, flags, B_RGBA32);
-        bmp->shadow = new BBitmap(frame, flags, B_RGBA32);
+        bmp->primary = new BBitmap(frame, Bflags, B_RGBA32);
+        bmp->shadow = new BBitmap(frame, Bflags, B_RGBA32);
 
         bmp->pretile_x = bmp->pretile_y = bmp->pretile_xy = NULL;
 
-        bmp->opaque = (state & BITMAP_OPAQUE) != 0;
+        bmp->opaque = (flags & BITMAP_OPAQUE) != 0;
 
         return bmp;
 }
@@ -152,21 +152,6 @@ static void bitmap_set_opaque(void *vbitmap, bool opaque)
         struct bitmap *bitmap = (struct bitmap *)vbitmap;
         assert(bitmap);
         bitmap->opaque = opaque;
-}
-
-
-/**
- * Tests whether a bitmap has an opaque alpha channel
- *
- * \param  vbitmap  a bitmap, as returned by bitmap_create()
- * \return whether  the bitmap is opaque
- */
-static bool bitmap_test_opaque(void *vbitmap)
-{
-        struct bitmap *bitmap = (struct bitmap *)vbitmap;
-        assert(bitmap);
-        /* todo: test if bitmap is opaque */
-        return false;
 }
 
 
@@ -216,20 +201,6 @@ static size_t bitmap_get_rowstride(void *vbitmap)
 
 
 /**
- * Find the bytes per pixels of a bitmap.
- *
- * \param  vbitmap  a bitmap, as returned by bitmap_create()
- * \return bytes per pixels of the bitmap
- */
-static size_t bitmap_get_bpp(void *vbitmap)
-{
-        struct bitmap *bitmap = (struct bitmap *)vbitmap;
-        assert(bitmap);
-        return 4;
-}
-
-
-/**
  * Free pretiles of a bitmap.
  *
  * \param bitmap The bitmap to free the pretiles of.
@@ -257,32 +228,6 @@ static void bitmap_destroy(void *vbitmap)
         delete bitmap->primary;
         delete bitmap->shadow;
         free(bitmap);
-}
-
-
-/**
- * Save a bitmap in the platform's native format.
- *
- * \param  vbitmap  a bitmap, as returned by bitmap_create()
- * \param  path     pathname for file
- * \param  flags    modify the behaviour of the save
- * \return true on success, false on error and error reported
- */
-static bool bitmap_save(void *vbitmap, const char *path, unsigned flags)
-{
-        struct bitmap *bitmap = (struct bitmap *)vbitmap;
-        BTranslatorRoster *roster = BTranslatorRoster::Default();
-        BBitmapStream stream(bitmap->primary);
-        BFile file(path, B_WRITE_ONLY | B_CREATE_FILE);
-        uint32 type = B_PNG_FORMAT;
-
-        if (file.InitCheck() < B_OK)
-                return false;
-
-        if (roster->Translate(&stream, NULL, NULL, &file, type) < B_OK)
-                return false;
-
-        return true;
 }
 
 
@@ -543,13 +488,10 @@ static struct gui_bitmap_table bitmap_table = {
         /*.destroy =*/ bitmap_destroy,
         /*.set_opaque =*/ bitmap_set_opaque,
         /*.get_opaque =*/ bitmap_get_opaque,
-        /*.test_opaque =*/ bitmap_test_opaque,
         /*.get_buffer =*/ bitmap_get_buffer,
         /*.get_rowstride =*/ bitmap_get_rowstride,
         /*.get_width =*/ bitmap_get_width,
         /*.get_height =*/ bitmap_get_height,
-        /*.get_bpp =*/ bitmap_get_bpp,
-        /*.save =*/ bitmap_save,
         /*.modified =*/ bitmap_modified,
         /*.render =*/ bitmap_render,
 };

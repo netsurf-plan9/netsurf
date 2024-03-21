@@ -51,6 +51,10 @@ NETSURF_USE_GIF := AUTO
 # Valid options: YES, NO				  (highly recommended)
 NETSURF_USE_JPEG := YES
 
+# Enable NetSurf's use of libjxl for displaying JPEGXLs
+# Valid options: YES, NO, AUTO				  (highly recommended)
+NETSURF_USE_JPEGXL := AUTO
+
 # Enable NetSurf's use of libpng for displaying PNGs.
 # Valid options: YES, NO, AUTO	                          (highly recommended)
 NETSURF_USE_PNG := AUTO
@@ -101,10 +105,11 @@ NETSURF_USE_UTF8PROC := YES
 # Valid options: YES, NO
 NETSURF_STRIP_BINARY := NO
 
-# Template used for constructing the User Agent: string.  The first two
-# replacements are major/minor version, next is OS.
-# Please don't be tempted to mention Mozilla here!  Let's let that lie die.
-NETSURF_UA_FORMAT_STRING := "NetSurf/%d.%d (%s)"
+# Template used for constructing the User Agent: string.  The first
+# replacement is OS, the next two are major/minor version.
+# Note that the "Mozilla/5.0" prefix is a requirement to enable modern
+# web standards on many websites. It should not be removed or modified.
+NETSURF_UA_FORMAT_STRING := "Mozilla/5.0 (%s) NetSurf/%d.%d"
 
 # Default home page, if one is not defined by the user.  Note that this
 # option does not apply to the RISC OS version, as it has its own local

@@ -40,8 +40,10 @@
 #include "utils/config.h"
 #include "utils/log.h"
 #include "utils/messages.h"
-#include "utils/utf8.h"
+#include "utils/nsoption.h"
 #include "utils/nsurl.h"
+#include "utils/utf8.h"
+#include "utils/utils.h"
 #include "netsurf/browser_window.h"
 #include "netsurf/window.h"
 #include "netsurf/bitmap.h"
@@ -60,7 +62,6 @@
 #include "riscos/menus.h"
 #include "riscos/message.h"
 #include "riscos/mouse.h"
-#include "utils/nsoption.h"
 #include "riscos/query.h"
 #include "riscos/save.h"
 #include "riscos/save_draw.h"
@@ -243,7 +244,7 @@ ro_gui_save_create_thumbnail(struct hlcache_handle *h, const char *name)
 	struct bitmap *bitmap;
 	osspriteop_area *area;
 
-	bitmap = riscos_bitmap_create(34, 34, BITMAP_NEW | BITMAP_OPAQUE | BITMAP_CLEAR_MEMORY);
+	bitmap = riscos_bitmap_create(34, 34, BITMAP_OPAQUE | BITMAP_CLEAR);
 	if (!bitmap) {
 		NSLOG(netsurf, INFO, "Thumbnail initialisation failed.");
 		return false;
@@ -257,7 +258,8 @@ ro_gui_save_create_thumbnail(struct hlcache_handle *h, const char *name)
 	}
 
 	sprite_header = (osspriteop_header *)(area + 1);
-	strncpy(sprite_header->name, name, 12);
+	memset(sprite_header->name, 0, 12);
+	memcpy(sprite_header->name, name, min(strlen(name), 12));
 
 
 	/* we can't resize the saveas sprite area because it may move
@@ -1018,7 +1020,7 @@ ro_gui_save_content(struct hlcache_handle *h, char *path, bool force_overwrite)
 			}
 			else
 				gui_save_current_type = GUI_SAVE_OBJECT_ORIG; /** \todo do this earlier? */
-			/* no break */
+			fallthrough;
 		case GUI_SAVE_SOURCE:
 		case GUI_SAVE_OBJECT_ORIG:
 			source_data = content_get_source_data(h, &source_size);

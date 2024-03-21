@@ -41,19 +41,19 @@
  * Create a bitmap.
  *
  * \param  width   width of image in pixels
- * \param  height  width of image in pixels
- * \param  state   a flag word indicating the initial state
+ * \param  height  height of image in pixels
+ * \param  state   flags   flags for bitmap creation
  * \return an opaque struct bitmap, or NULL on memory exhaustion
  */
-void *win32_bitmap_create(int width, int height, unsigned int state)
+static void *win32_bitmap_create(int width, int height, enum gui_bitmap_flags flags)
 {
 	struct bitmap *bitmap;
 	BITMAPV5HEADER *pbmi;
 	HBITMAP windib;
 	uint8_t *pixdata;
 
-	NSLOG(netsurf, INFO, "width %d, height %d, state %u", width, height,
-	      state);
+	NSLOG(netsurf, INFO, "width %d, height %d, flags %u", width, height,
+	      (unsigned)flags);
 
 	pbmi = calloc(1, sizeof(BITMAPV5HEADER));
 	if (pbmi == NULL) {
@@ -91,7 +91,7 @@ void *win32_bitmap_create(int width, int height, unsigned int state)
 	bitmap->windib = windib;
 	bitmap->pbmi = pbmi;
 	bitmap->pixdata = pixdata;
-	if ((state & BITMAP_OPAQUE) != 0) {
+	if ((flags & BITMAP_OPAQUE) != 0) {
 		bitmap->opaque = true;
 	} else {
 		bitmap->opaque = false;
@@ -164,20 +164,6 @@ void win32_bitmap_destroy(void *bitmap)
 
 
 /**
- * Save a bitmap in the platform's native format.
- *
- * \param bitmap a bitmap, as returned by bitmap_create()
- * \param path pathname for file
- * \param flags flags controlling how the bitmap is saved.
- * \return true on success, false on error and error reported
- */
-static bool bitmap_save(void *bitmap, const char *path, unsigned flags)
-{
-	return true;
-}
-
-
-/**
  * The bitmap image has changed, so flush any persistant cache.
  *
  * \param  bitmap  a bitmap, as returned by bitmap_create()
@@ -203,35 +189,6 @@ static void bitmap_set_opaque(void *bitmap, bool opaque)
 	NSLOG(netsurf, INFO, "setting bitmap %p to %s", bm,
 	      opaque ? "opaque" : "transparent");
 	bm->opaque = opaque;
-}
-
-
-/**
- * Tests whether a bitmap has an opaque alpha channel
- *
- * \param  bitmap  a bitmap, as returned by bitmap_create()
- * \return whether the bitmap is opaque
- */
-static bool bitmap_test_opaque(void *bitmap)
-{
-	int tst;
-	struct bitmap *bm = bitmap;
-
-	if (bitmap == NULL) {
-		NSLOG(netsurf, INFO, "NULL bitmap!");
-		return false;
-	}
-
-	tst = bm->width * bm->height;
-
-	while (tst-- > 0) {
-		if (bm->pixdata[(tst << 2) + 3] != 0xff) {
-			NSLOG(netsurf, INFO, "bitmap %p has transparency", bm);
-			return false;
-		}
-	}
-	NSLOG(netsurf, INFO, "bitmap %p is opaque", bm);
-	return true;
 }
 
 
@@ -274,11 +231,6 @@ static int bitmap_get_height(void *bitmap)
 	}
 
 	return(bm->height);
-}
-
-static size_t bitmap_get_bpp(void *bitmap)
-{
-	return 4;
 }
 
 struct bitmap *bitmap_scale(struct bitmap *prescale, int width, int height)
@@ -346,7 +298,7 @@ bitmap_render(struct bitmap *bitmap, struct hlcache_handle *content)
 	}
 
 	/* create a full size bitmap and plot into it */
-	fsbitmap = win32_bitmap_create(width, height, BITMAP_NEW | BITMAP_CLEAR_MEMORY | BITMAP_OPAQUE);
+	fsbitmap = win32_bitmap_create(width, height, BITMAP_CLEAR | BITMAP_OPAQUE);
 
 	SelectObject(bufferdc, fsbitmap->windib);
 
@@ -375,13 +327,10 @@ static struct gui_bitmap_table bitmap_table = {
 	.destroy = win32_bitmap_destroy,
 	.set_opaque = bitmap_set_opaque,
 	.get_opaque = bitmap_get_opaque,
-	.test_opaque = bitmap_test_opaque,
 	.get_buffer = bitmap_get_buffer,
 	.get_rowstride = bitmap_get_rowstride,
 	.get_width = bitmap_get_width,
 	.get_height = bitmap_get_height,
-	.get_bpp = bitmap_get_bpp,
-	.save = bitmap_save,
 	.modified = bitmap_modified,
 	.render = bitmap_render,
 };

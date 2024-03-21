@@ -134,26 +134,29 @@ static nserror free_ns_cert_info(struct ns_cert_info *cinfo)
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 
-/* OpenSSL 1.0.x, 1.0.2, 1.1.0 and 1.1.1 API all changed
- * LibreSSL declares its OpenSSL version as 2.1 but only supports 1.0.x API
- */
-#if (defined(LIBRESSL_VERSION_NUMBER) || (OPENSSL_VERSION_NUMBER < 0x1010000fL))
-/* 1.0.x */
+#if (OPENSSL_VERSION_NUMBER < 0x30000000L)
+/* OpenSSL 1.1.1 or LibreSSL */
 
-#if (defined(LIBRESSL_VERSION_NUMBER) || (OPENSSL_VERSION_NUMBER < 0x1000200fL))
-/* pre 1.0.2 */
+# if defined(LIBRESSL_VERSION_NUMBER)
+  /* LibreSSL */
+#  if (LIBRESSL_VERSION_NUMBER < 0x3050000fL)
+   /* LibreSSL <3.5.0 */
+
+#   if (LIBRESSL_VERSION_NUMBER < 0x2070000fL)
+    /* LibreSSL <2.7.0 */
 static int ns_X509_get_signature_nid(X509 *cert)
 {
 	return OBJ_obj2nid(cert->cert_info->key->algor->algorithm);
 }
-#else
-#define ns_X509_get_signature_nid X509_get_signature_nid
-#endif
 
 static const unsigned char *ns_ASN1_STRING_get0_data(ASN1_STRING *asn1str)
 {
 	return (const unsigned char *)ASN1_STRING_data(asn1str);
 }
+#   else
+#    define ns_X509_get_signature_nid X509_get_signature_nid
+#    define ns_ASN1_STRING_get0_data ASN1_STRING_get0_data
+#   endif
 
 static const BIGNUM *ns_RSA_get0_n(const RSA *d)
 {
@@ -164,58 +167,161 @@ static const BIGNUM *ns_RSA_get0_e(const RSA *d)
 {
 	return d->e;
 }
+#  else
+   /* LibreSSL >= 3.5.0 */
+#   define ns_X509_get_signature_nid X509_get_signature_nid
+#   define ns_ASN1_STRING_get0_data ASN1_STRING_get0_data
+#   define ns_RSA_get0_n RSA_get0_n
+#   define ns_RSA_get0_e RSA_get0_e
+#  endif
+# else
+  /* OpenSSL 1.1.1 */
+#  define ns_X509_get_signature_nid X509_get_signature_nid
+#  define ns_ASN1_STRING_get0_data ASN1_STRING_get0_data
+#  define ns_RSA_get0_n RSA_get0_n
+#  define ns_RSA_get0_e RSA_get0_e
+# endif
 
-static int ns_RSA_bits(const RSA *rsa)
-{
-	return RSA_size(rsa) * 8;
+static int ns_EVP_PKEY_get_bn_param(const EVP_PKEY *pkey,
+		const char *key_name, BIGNUM **bn) {
+	RSA *rsa;
+	BIGNUM *result = NULL;
+
+	/* Check parameters: only support allocation-form *bn */
+	if (pkey == NULL || key_name == NULL || bn == NULL || *bn != NULL)
+		return 0;
+
+	/* Only support RSA keys */
+	if (EVP_PKEY_base_id(pkey) != EVP_PKEY_RSA)
+		return 0;
+
+	rsa = EVP_PKEY_get1_RSA((EVP_PKEY *) pkey);
+	if (rsa == NULL)
+		return 0;
+
+	if (strcmp(key_name, "n") == 0) {
+		const BIGNUM *n = ns_RSA_get0_n(rsa);
+		if (n != NULL)
+			result = BN_dup(n);
+	} else if (strcmp(key_name, "e") == 0) {
+		const BIGNUM *e = ns_RSA_get0_e(rsa);
+		if (e != NULL)
+			result = BN_dup(e);
+	}
+
+	RSA_free(rsa);
+
+	*bn = result;
+
+	return (result != NULL) ? 1 : 0;
 }
 
-static int ns_DSA_bits(const DSA *dsa)
+static int ns_EVP_PKEY_get_utf8_string_param(const EVP_PKEY *pkey,
+		const char *key_name, char *str, size_t max_len,
+		size_t *out_len)
 {
-	return DSA_size(dsa) * 8;
+	const EC_GROUP *ecgroup;
+	const char *group;
+	EC_KEY *ec;
+	int ret = 0;
+
+	if (pkey == NULL || key_name == NULL)
+		return 0;
+
+	/* Only support EC keys */
+	if (EVP_PKEY_base_id(pkey) != EVP_PKEY_EC)
+		return 0;
+
+	/* Only support fetching the group */
+	if (strcmp(key_name, "group") != 0)
+		return 0;
+
+	ec = EVP_PKEY_get1_EC_KEY((EVP_PKEY *) pkey);
+
+	ecgroup = EC_KEY_get0_group(ec);
+	if (ecgroup == NULL) {
+		group = "";
+	} else {
+		group = OBJ_nid2ln(EC_GROUP_get_curve_name(ecgroup));
+	}
+
+	if (str != NULL && max_len > strlen(group)) {
+		strcpy(str, group);
+		str[strlen(group)] = '\0';
+		ret = 1;
+	}
+	if (out_len != NULL)
+		*out_len = strlen(group);
+
+	EC_KEY_free(ec);
+
+	return ret;
 }
 
-static int ns_DH_bits(const DH *dh)
+static int ns_EVP_PKEY_get_octet_string_param(const EVP_PKEY *pkey,
+		const char *key_name, unsigned char *buf, size_t max_len,
+		size_t *out_len)
 {
-	return DH_size(dh) * 8;
+	const EC_GROUP *ecgroup;
+	const EC_POINT *ecpoint;
+	size_t len;
+	BN_CTX *bnctx;
+	EC_KEY *ec;
+	int ret = 0;
+
+	if (pkey == NULL || key_name == NULL)
+		return 0;
+
+	/* Only support EC keys */
+	if (EVP_PKEY_base_id(pkey) != EVP_PKEY_EC)
+		return 0;
+
+	if (strcmp(key_name, "encoded-pub-key") != 0)
+		return 0;
+
+	ec = EVP_PKEY_get1_EC_KEY((EVP_PKEY *) pkey);
+	if (ec == NULL)
+		return 0;
+
+	ecgroup = EC_KEY_get0_group(ec);
+	if (ecgroup != NULL) {
+		ecpoint = EC_KEY_get0_public_key(ec);
+		if (ecpoint != NULL) {
+			bnctx = BN_CTX_new();
+			len = EC_POINT_point2oct(ecgroup,
+						 ecpoint,
+						 POINT_CONVERSION_UNCOMPRESSED,
+						 NULL,
+						 0,
+						 bnctx);
+			if (len != 0 && len <= max_len) {
+				if (EC_POINT_point2oct(ecgroup,
+						       ecpoint,
+						       POINT_CONVERSION_UNCOMPRESSED,
+						       buf,
+						       len,
+						       bnctx) == len)
+					ret = 1;
+			}
+			if (out_len != NULL)
+				*out_len = len;
+			BN_CTX_free(bnctx);
+		}
+	}
+
+	EC_KEY_free(ec);
+
+	return ret;
 }
-
-#elif (OPENSSL_VERSION_NUMBER < 0x1010100fL)
-/* 1.1.0 */
-#define ns_X509_get_signature_nid X509_get_signature_nid
-#define ns_ASN1_STRING_get0_data ASN1_STRING_get0_data
-
-static const BIGNUM *ns_RSA_get0_n(const RSA *r)
-{
-	const BIGNUM *n;
-	const BIGNUM *e;
-	const BIGNUM *d;
-	RSA_get0_key(r, &n, &e, &d);
-	return n;
-}
-
-static const BIGNUM *ns_RSA_get0_e(const RSA *r)
-{
-	const BIGNUM *n;
-	const BIGNUM *e;
-	const BIGNUM *d;
-	RSA_get0_key(r, &n, &e, &d);
-	return e;
-}
-
-#define ns_RSA_bits RSA_bits
-#define ns_DSA_bits DSA_bits
-#define ns_DH_bits DH_bits
-
 #else
-/* 1.1.1 and later */
+/* OpenSSL 3.x and later */
 #define ns_X509_get_signature_nid X509_get_signature_nid
 #define ns_ASN1_STRING_get0_data ASN1_STRING_get0_data
 #define ns_RSA_get0_n RSA_get0_n
 #define ns_RSA_get0_e RSA_get0_e
-#define ns_RSA_bits RSA_bits
-#define ns_DSA_bits DSA_bits
-#define ns_DH_bits DH_bits
+#define ns_EVP_PKEY_get_bn_param EVP_PKEY_get_bn_param
+#define ns_EVP_PKEY_get_octet_string_param EVP_PKEY_get_octet_string_param
+#define ns_EVP_PKEY_get_utf8_string_param EVP_PKEY_get_utf8_string_param
 #endif
 
 /**
@@ -365,36 +471,43 @@ static char *bindup(unsigned char *bin, unsigned int binlen)
 /**
  * extract RSA key information to info structure
  *
- * \param rsa The RSA key to examine. The reference is dropped on return
+ * \param pkey The RSA key to examine.
  * \param ikey The public key info structure to fill
  * \rerun NSERROR_OK on success else error code.
  */
 static nserror
-rsa_to_info(RSA *rsa, struct ns_cert_pkey *ikey)
+rsa_to_info(EVP_PKEY *pkey, struct ns_cert_pkey *ikey)
 {
+	BIGNUM *n = NULL, *e = NULL;
 	char *tmp;
 
-	if (rsa == NULL) {
+	if (ns_EVP_PKEY_get_bn_param(pkey, "n", &n) != 1) {
+		return NSERROR_BAD_PARAMETER;
+	}
+
+	if (ns_EVP_PKEY_get_bn_param(pkey, "e", &e) != 1) {
+		BN_free(n);
 		return NSERROR_BAD_PARAMETER;
 	}
 
 	ikey->algor = strdup("RSA");
 
-	ikey->size = ns_RSA_bits(rsa);
+	ikey->size = EVP_PKEY_bits(pkey);
 
-	tmp = BN_bn2hex(ns_RSA_get0_n(rsa));
+	tmp = BN_bn2hex(n);
 	if (tmp != NULL) {
 		ikey->modulus = hexdup(tmp);
 		OPENSSL_free(tmp);
 	}
 
-	tmp = BN_bn2dec(ns_RSA_get0_e(rsa));
+	tmp = BN_bn2dec(e);
 	if (tmp != NULL) {
 		ikey->exponent = strdup(tmp);
 		OPENSSL_free(tmp);
 	}
 
-	RSA_free(rsa);
+	BN_free(e);
+	BN_free(n);
 
 	return NSERROR_OK;
 }
@@ -403,22 +516,16 @@ rsa_to_info(RSA *rsa, struct ns_cert_pkey *ikey)
 /**
  * extract DSA key information to info structure
  *
- * \param dsa The RSA key to examine. The reference is dropped on return
+ * \param pkey The DSA key to examine.
  * \param ikey The public key info structure to fill
  * \rerun NSERROR_OK on success else error code.
  */
 static nserror
-dsa_to_info(DSA *dsa, struct ns_cert_pkey *ikey)
+dsa_to_info(EVP_PKEY *pkey, struct ns_cert_pkey *ikey)
 {
-	if (dsa == NULL) {
-		return NSERROR_BAD_PARAMETER;
-	}
-
 	ikey->algor = strdup("DSA");
 
-	ikey->size = ns_DSA_bits(dsa);
-
-	DSA_free(dsa);
+	ikey->size = EVP_PKEY_bits(pkey);
 
 	return NSERROR_OK;
 }
@@ -427,22 +534,16 @@ dsa_to_info(DSA *dsa, struct ns_cert_pkey *ikey)
 /**
  * extract DH key information to info structure
  *
- * \param dsa The RSA key to examine. The reference is dropped on return
+ * \param pkey The DH key to examine.
  * \param ikey The public key info structure to fill
  * \rerun NSERROR_OK on success else error code.
  */
 static nserror
-dh_to_info(DH *dh, struct ns_cert_pkey *ikey)
+dh_to_info(EVP_PKEY *pkey, struct ns_cert_pkey *ikey)
 {
-	if (dh == NULL) {
-		return NSERROR_BAD_PARAMETER;
-	}
-
 	ikey->algor = strdup("Diffie Hellman");
 
-	ikey->size = ns_DH_bits(dh);
-
-	DH_free(dh);
+	ikey->size = EVP_PKEY_bits(pkey);
 
 	return NSERROR_OK;
 }
@@ -451,48 +552,49 @@ dh_to_info(DH *dh, struct ns_cert_pkey *ikey)
 /**
  * extract EC key information to info structure
  *
- * \param ec The EC key to examine. The reference is dropped on return
+ * \param pkey The EC key to examine.
  * \param ikey The public key info structure to fill
  * \rerun NSERROR_OK on success else error code.
  */
 static nserror
-ec_to_info(EC_KEY *ec, struct ns_cert_pkey *ikey)
+ec_to_info(EVP_PKEY *pkey, struct ns_cert_pkey *ikey)
 {
-	const EC_GROUP *ecgroup;
-	const EC_POINT *ecpoint;
-	BN_CTX *bnctx;
-	char *ecpoint_hex;
-
-	if (ec == NULL) {
-		return NSERROR_BAD_PARAMETER;
-	}
+	size_t len;
 
 	ikey->algor = strdup("Elliptic Curve");
 
-	ecgroup = EC_KEY_get0_group(ec);
+	ikey->size = EVP_PKEY_bits(pkey);
 
-	if (ecgroup != NULL) {
-		ikey->size = EC_GROUP_get_degree(ecgroup);
-
-		ikey->curve = strdup(OBJ_nid2ln(EC_GROUP_get_curve_name(ecgroup)));
-
-		ecpoint = EC_KEY_get0_public_key(ec);
-		if (ecpoint != NULL) {
-			bnctx = BN_CTX_new();
-			ecpoint_hex = EC_POINT_point2hex(ecgroup,
-							 ecpoint,
-							 POINT_CONVERSION_UNCOMPRESSED,
-							 bnctx);
-			ikey->public = hexdup(ecpoint_hex);
-			OPENSSL_free(ecpoint_hex);
-			BN_CTX_free(bnctx);
+	len = 0;
+	ns_EVP_PKEY_get_utf8_string_param(pkey, "group", NULL, 0, &len);
+	if (len != 0) {
+		ikey->curve = malloc(len + 1);
+		if (ikey->curve != NULL) {
+			if (ns_EVP_PKEY_get_utf8_string_param(pkey, "group",
+					ikey->curve, len + 1, NULL) == 0) {
+				free(ikey->curve);
+				ikey->curve = NULL;
+			}
 		}
 	}
-	EC_KEY_free(ec);
+
+	len = 0;
+	ns_EVP_PKEY_get_octet_string_param(pkey, "encoded-pub-key",
+			NULL, 0, &len);
+	if (len != 0) {
+		unsigned char *point = malloc(len);
+		if (point != NULL) {
+			if (ns_EVP_PKEY_get_octet_string_param(pkey,
+					"encoded-pub-key", point, len,
+					NULL) == 1) {
+				ikey->public = bindup(point, len);
+			}
+			free(point);
+		}
+	}
 
 	return NSERROR_OK;
 }
-
 
 /**
  * extract public key information to info structure
@@ -512,19 +614,19 @@ pkey_to_info(EVP_PKEY *pkey, struct ns_cert_pkey *ikey)
 
 	switch (EVP_PKEY_base_id(pkey)) {
 	case EVP_PKEY_RSA:
-		res = rsa_to_info(EVP_PKEY_get1_RSA(pkey), ikey);
+		res = rsa_to_info(pkey, ikey);
 		break;
 
 	case EVP_PKEY_DSA:
-		res = dsa_to_info(EVP_PKEY_get1_DSA(pkey), ikey);
+		res = dsa_to_info(pkey, ikey);
 		break;
 
 	case EVP_PKEY_DH:
-		res = dh_to_info(EVP_PKEY_get1_DH(pkey), ikey);
+		res = dh_to_info(pkey, ikey);
 		break;
 
 	case EVP_PKEY_EC:
-		res = ec_to_info(EVP_PKEY_get1_EC_KEY(pkey), ikey);
+		res = ec_to_info(pkey, ikey);
 		break;
 
 	default:

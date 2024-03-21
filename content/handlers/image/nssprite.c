@@ -23,6 +23,8 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
+
 #include <librosprite.h>
 
 #include "utils/utils.h"
@@ -35,6 +37,7 @@
 #include "content/content_protected.h"
 #include "content/content_factory.h"
 #include "desktop/gui_internal.h"
+#include "desktop/bitmap.h"
 
 #include "image/nssprite.h"
 
@@ -116,31 +119,19 @@ static bool nssprite_convert(struct content *c)
 
 	struct rosprite* sprite = sprite_area->sprites[0];
 
-	nssprite->bitmap = guit->bitmap->create(sprite->width, sprite->height, BITMAP_NEW);
+	nssprite->bitmap = guit->bitmap->create(sprite->width, sprite->height, BITMAP_NONE);
 	if (!nssprite->bitmap) {
 		content_broadcast_error(c, NSERROR_NOMEM, NULL);
 		return false;
 	}
-	uint32_t* imagebuf = (uint32_t *)guit->bitmap->get_buffer(nssprite->bitmap);
+	uint32_t* imagebuf = (uint32_t *)(void *)guit->bitmap->get_buffer(nssprite->bitmap);
 	if (!imagebuf) {
 		content_broadcast_error(c, NSERROR_NOMEM, NULL);
 		return false;
 	}
 	unsigned char *spritebuf = (unsigned char *)sprite->image;
 
-	/* reverse byte order of each word */
-	for (uint32_t y = 0; y < sprite->height; y++) {
-		for (uint32_t x = 0; x < sprite->width; x++) {
-			int offset = 4 * (y * sprite->width + x);
-
-			*imagebuf = (spritebuf[offset] << 24) |
-					(spritebuf[offset + 1] << 16) |
-					(spritebuf[offset + 2] << 8) |
-					(spritebuf[offset + 3]);
-
-			imagebuf++;
-		}
-	}
+	memcpy(imagebuf, spritebuf, sprite->width * sprite->height * 4);
 
 	c->width = sprite->width;
 	c->height = sprite->height;
@@ -154,6 +145,9 @@ static bool nssprite_convert(struct content *c)
 		free(title);
 	}
 
+	bitmap_format_to_client(nssprite->bitmap, &(bitmap_fmt_t) {
+		.layout = BITMAP_LAYOUT_A8B8G8R8,
+	});
 	guit->bitmap->modified(nssprite->bitmap);
 
 	content_set_ready(c);

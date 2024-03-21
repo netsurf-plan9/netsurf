@@ -60,7 +60,7 @@ static char *boxvector2[] = {"normal", "positioned"};
 /**
  * Determine if a point lies within a box.
  *
- * \param[in]  len_ctx     CSS length conversion context to use.
+ * \param[in]  unit_len_ctx     CSS length conversion context to use.
  * \param[in]  box         Box to consider
  * \param[in]  x           Coordinate relative to box
  * \param[in]  y           Coordinate relative to box
@@ -75,7 +75,7 @@ static char *boxvector2[] = {"normal", "positioned"};
  * This is a helper function for box_at_point().
  */
 static bool
-box_contains_point(const nscss_len_ctx *len_ctx,
+box_contains_point(const css_unit_ctx *unit_len_ctx,
 		   const struct box *box,
 		   int x,
 		   int y,
@@ -105,30 +105,34 @@ box_contains_point(const nscss_len_ctx *len_ctx,
 
 		/* Adjust rect to css clip region */
 		if (css_rect.left_auto == false) {
-			r.x0 += FIXTOINT(nscss_len2px(len_ctx,
-						      css_rect.left,
-						      css_rect.lunit,
-						      box->style));
+			r.x0 += FIXTOINT(css_unit_len2device_px(
+						box->style,
+						unit_len_ctx,
+						css_rect.left,
+						css_rect.lunit));
 		}
 		if (css_rect.top_auto == false) {
-			r.y0 += FIXTOINT(nscss_len2px(len_ctx,
-						      css_rect.top,
-						      css_rect.tunit,
-						      box->style));
+			r.y0 += FIXTOINT(css_unit_len2device_px(
+						box->style,
+						unit_len_ctx,
+						css_rect.top,
+						css_rect.tunit));
 		}
 		if (css_rect.right_auto == false) {
 			r.x1 = box->border[LEFT].width +
-				FIXTOINT(nscss_len2px(len_ctx,
-						      css_rect.right,
-						      css_rect.runit,
-						      box->style));
+				FIXTOINT(css_unit_len2device_px(
+						box->style,
+						unit_len_ctx,
+						css_rect.right,
+						css_rect.runit));
 		}
 		if (css_rect.bottom_auto == false) {
 			r.y1 = box->border[TOP].width +
-				FIXTOINT(nscss_len2px(len_ctx,
-						      css_rect.bottom,
-						      css_rect.bunit,
-						      box->style));
+				FIXTOINT(css_unit_len2device_px(
+						box->style,
+						unit_len_ctx,
+						css_rect.bottom,
+						css_rect.bunit));
 		}
 
 		/* Test if point is in clipped box */
@@ -579,7 +583,7 @@ void box_bounds(struct box *box, struct rect *r)
 
 /* Exported function documented in html/box.h */
 struct box *
-box_at_point(const nscss_len_ctx *len_ctx,
+box_at_point(const css_unit_ctx *unit_len_ctx,
 	     struct box *box,
 	     const int x, const int y,
 	     int *box_x, int *box_y)
@@ -591,7 +595,7 @@ box_at_point(const nscss_len_ctx *len_ctx,
 
 	skip_children = false;
 	while ((box = box_next_xy(box, box_x, box_y, skip_children))) {
-		if (box_contains_point(len_ctx, box, x - *box_x, y - *box_y,
+		if (box_contains_point(unit_len_ctx, box, x - *box_x, y - *box_y,
 				       &physically)) {
 			*box_x -= scrollbar_get_offset(box->scroll_x);
 			*box_y -= scrollbar_get_offset(box->scroll_y);
@@ -660,7 +664,7 @@ void box_dump(FILE *stream, struct box *box, unsigned int depth, bool style)
 	if (box->max_width != UNKNOWN_MAX_WIDTH) {
 		fprintf(stream, "min%i max%i ", box->min_width, box->max_width);
 	}
-	fprintf(stream, "(%i %i %i %i) ",
+	fprintf(stream, "desc(%i %i %i %i) ",
 		box->descendant_x0, box->descendant_y0,
 		box->descendant_x1, box->descendant_y1);
 
@@ -722,6 +726,14 @@ void box_dump(FILE *stream, struct box *box, unsigned int depth, bool style)
 
 	case BOX_TEXT:
 		fprintf(stream, "TEXT ");
+		break;
+
+	case BOX_FLEX:
+		fprintf(stream, "FLEX ");
+		break;
+
+	case BOX_INLINE_FLEX:
+		fprintf(stream, "INLINE_FLEX ");
 		break;
 
 	default:

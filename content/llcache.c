@@ -47,6 +47,7 @@
 #include "utils/utils.h"
 #include "utils/time.h"
 #include "utils/http.h"
+#include "utils/nsoption.h"
 #include "netsurf/misc.h"
 #include "desktop/gui_internal.h"
 
@@ -115,7 +116,7 @@ typedef struct {
 
 	bool tried_with_auth;		/**< Whether we've tried with auth */
 
-	bool tried_with_tls_downgrade;	/**< Whether we've tried TLS <= 1.0 */
+	bool tried_with_tls_downgrade;	/**< Whether we've tried TLS 1.2 */
 
 	bool tainted_tls;		/**< Whether the TLS transport is tainted */
 } llcache_fetch_ctx;
@@ -752,6 +753,7 @@ static nserror llcache_fetch_process_header(llcache_object *object,
 	/** \todo Properly parse the response line */
 	if (strncmp((const char *) data, "HTTP/", SLEN("HTTP/")) == 0) {
 		time_t req_time = object->cache.req_time;
+
 		llcache_invalidate_cache_control_data(object);
 
 		/* Restore request time, so we compute object's age correctly */
@@ -785,6 +787,7 @@ static nserror llcache_fetch_process_header(llcache_object *object,
 		free(value);
 		return res;
 	}
+
 	/* Append header data to the object's headers array */
 	temp = realloc(object->headers,
 		       (object->num_headers + 1) * sizeof(llcache_header));
@@ -802,6 +805,87 @@ static nserror llcache_fetch_process_header(llcache_object *object,
 	object->num_headers++;
 
 	return NSERROR_OK;
+}
+
+/**
+ * construct a Referer header appropriate for the request
+ *
+ * \param url The url being navigated to
+ * \param referer The referring url
+ * \param header_out A pointer to receive the header. The buffer must
+ *                    be freed by the caller.
+ * \return NSERROR_OK and \a header_out updated on success else error code
+ */
+static nserror get_referer_header(nsurl *url, nsurl *referer, char **header_out)
+{
+	nserror res = NSERROR_INVALID;
+	lwc_string *ref_scheme;
+	lwc_string *scheme;
+	bool match;
+	bool match1;
+	bool match2;
+	char *header;
+
+	/* Determine whether to send the Referer header */
+	if (!nsoption_bool(send_referer)) {
+		return NSERROR_INVALID;
+	}
+
+	scheme = nsurl_get_component(url, NSURL_SCHEME);
+	if (scheme == NULL) {
+		return NSERROR_BAD_URL;
+	}
+
+	ref_scheme = nsurl_get_component(referer, NSURL_SCHEME);
+	if (ref_scheme == NULL) {
+		/* referer has no scheme so no header */
+		lwc_string_unref(scheme);
+		return NSERROR_INVALID;
+	}
+
+	/* User permits us to send the header
+	 * Only send it if:
+	 *    1) The fetch and referer schemes match
+	 * or 2) The fetch is https and the referer is http
+	 *
+	 * This ensures that referer information is only sent
+	 * across schemes in the special case of an https
+	 * request from a page served over http. The inverse
+	 * (https -> http) should not send the referer (15.1.3)
+	 */
+	if (lwc_string_isequal(scheme, ref_scheme,
+			       &match) != lwc_error_ok) {
+		match = false;
+	}
+	if (lwc_string_isequal(scheme, corestring_lwc_https,
+			       &match1) != lwc_error_ok) {
+		match1 = false;
+	}
+	if (lwc_string_isequal(ref_scheme, corestring_lwc_http,
+			       &match2) != lwc_error_ok) {
+		match2 = false;
+	}
+	if (match == true || (match1 == true && match2 == true)) {
+		const size_t len = SLEN("Referer: ") +
+			nsurl_length(referer) + 1;
+
+		header = malloc(len);
+		if (header == NULL) {
+			res = NSERROR_NOMEM;
+		} else {
+			snprintf(header, len, "Referer: %s",
+				 nsurl_access(referer));
+
+			*header_out = header;
+			res = NSERROR_OK;
+		}
+	}
+
+
+	lwc_string_unref(scheme);
+	lwc_string_unref(ref_scheme);
+
+	return res;
 }
 
 /**
@@ -823,6 +907,7 @@ static nserror llcache_object_refetch(llcache_object *object)
 	char **headers = NULL;
 	int header_idx = 0;
 	nserror res;
+
 	if (object->fetch.post != NULL) {
 		if (object->fetch.post->type == LLCACHE_POST_URL_ENCODED) {
 			urlenc = object->fetch.post->data.urlenc;
@@ -831,12 +916,13 @@ static nserror llcache_object_refetch(llcache_object *object)
 		}
 	}
 
-	/* Generate cache-control headers */
-	headers = malloc(3 * sizeof(char *));
+	/* Generate headers */
+	headers = malloc(4 * sizeof(char *));
 	if (headers == NULL) {
 		return NSERROR_NOMEM;
 	}
 
+	/* cache-control header for etag */
 	if (object->cache.etag != NULL) {
 		const size_t len = SLEN("If-None-Match: ") +
 				strlen(object->cache.etag) + 1;
@@ -853,6 +939,7 @@ static nserror llcache_object_refetch(llcache_object *object)
 		header_idx++;
 	}
 
+	/* cache-control header for modification time */
 	if (object->cache.last_modified != 0) {
 		/* Maximum length of an RFC 1123 date is 29 bytes */
 		const size_t len = SLEN("If-Modified-Since: ") + 29 + 1;
@@ -869,6 +956,15 @@ static nserror llcache_object_refetch(llcache_object *object)
 				rfc1123_date(object->cache.last_modified));
 
 		header_idx++;
+	}
+
+	/* Referer header */
+	if (object->fetch.referer != NULL) {
+		if (get_referer_header(object->url,
+				       object->fetch.referer,
+				       &headers[header_idx]) == NSERROR_OK) {
+			header_idx++;
+		}
 	}
 	headers[header_idx] = NULL;
 
@@ -1057,6 +1153,7 @@ llcache_object_rfc2616_remaining_lifetime(const llcache_cache_control *cd)
 	} else {
 		freshness_lifetime = 0;
 	}
+
 	NSLOG(llcache, DEBUG, "%d:%d", freshness_lifetime, current_age);
 
 	if ((cd->no_cache == LLCACHE_VALIDATE_FRESH) &&
@@ -1826,7 +1923,7 @@ llcache_object_retrieve_from_cache(nsurl *url,
 	llcache_object *obj, *newest = NULL;
 
 	NSLOG(llcache, DEBUG,
-	      "Searching cache for %s flags:%x referer:%s post:%p",
+	      "Searching cache for %s flags:%"PRIx32" referer:%s post:%p",
 	      nsurl_access(url), flags,
 	      referer==NULL?"":nsurl_access(referer),
 	      post);
@@ -2003,7 +2100,7 @@ llcache_object_retrieve(nsurl *url,
 	nsurl *defragmented_url;
 	bool uncachable = false;
 
-	NSLOG(llcache, DEBUG, "Retrieve %s (%x, %s, %p)", nsurl_access(url), flags,
+	NSLOG(llcache, DEBUG, "Retrieve %s (%"PRIx32", %s, %p)", nsurl_access(url), flags,
 		     referer==NULL?"":nsurl_access(referer), post);
 
 
@@ -2110,10 +2207,17 @@ static nserror llcache_hsts_transform_url(nsurl *url, nsurl **result,
 	scheme = nsurl_get_component(url, NSURL_SCHEME);
 	if (lwc_string_caseless_isequal(scheme, corestring_lwc_http,
 			&match) != lwc_error_ok || match == false) {
-		/* Non-HTTP fetch: ignore */
+		/* Non-HTTP fetch: no transform required */
+		if (lwc_string_caseless_isequal(scheme, corestring_lwc_https,
+				&match) == lwc_error_ok && match) {
+			/* HTTPS: ask urldb if HSTS is enabled */
+			*hsts_in_use = urldb_get_hsts_enabled(url);
+		} else {
+			/* Anything else: no HSTS */
+			*hsts_in_use = false;
+		}
 		lwc_string_unref(scheme);
 		*result = nsurl_ref(url);
-		*hsts_in_use = false;
 		return error;
 	}
 	lwc_string_unref(scheme);
@@ -2198,6 +2302,7 @@ static nserror llcache_fetch_redirect(llcache_object *object,
 	/* Abort fetch for this object */
 	fetch_abort(object->fetch.fetch);
 	object->fetch.fetch = NULL;
+
 	/* Invalidate the cache control data */
 	llcache_invalidate_cache_control_data(object);
 
@@ -2379,6 +2484,7 @@ static nserror llcache_fetch_notmodified(llcache_object *object,
 	/* Ensure fetch has stopped */
 	fetch_abort(object->fetch.fetch);
 	object->fetch.fetch = NULL;
+
 	/* Invalidate our cache-control data */
 	llcache_invalidate_cache_control_data(object);
 
@@ -2682,6 +2788,7 @@ build_candidate_list(struct llcache_object ***lst_out, int *lst_len_out)
 
 	for (object = llcache->cached_objects; object != NULL; object = next) {
 		next = object->next;
+
 		/* Only consider http(s) for the disc cache. */
 		if (!llcache__scheme_is_persistable(object->url)) {
 			continue;
@@ -2738,6 +2845,7 @@ write_backing_store(struct llcache_object *object,
 	size_t metadatasize;
 	uint64_t startms = 0;
 	uint64_t endms = 1000;
+
 	nsu_getmonotonic_ms(&startms);
 
 	/* put object data in backing store */
@@ -2865,7 +2973,7 @@ static void llcache_persist(void *p)
 		total_bandwidth = (total_written * 1000) / total_elapsed;
 
 		NSLOG(llcache, DEBUG,
-		      "Wrote %"PRIssizet" bytes in %lums bw:%lu %s",
+		      "Wrote %"PRIsizet" bytes in %lums bw:%lu %s",
 		      written, elapsed, (written * 1000) / elapsed,
 		      nsurl_access(lst[idx]->url) );
 
@@ -2933,7 +3041,7 @@ static void llcache_persist(void *p)
 	llcache->total_elapsed += total_elapsed;
 
 	NSLOG(llcache, DEBUG,
-	      "writeout size:%"PRIssizet" time:%lu bandwidth:%lubytes/s",
+	      "writeout size:%"PRIsizet" time:%lu bandwidth:%lubytes/s",
 	      total_written, total_elapsed, total_bandwidth);
 
 	NSLOG(llcache, DEBUG, "Rescheduling writeout in %dms", next);
@@ -3022,7 +3130,6 @@ static void llcache_fetch_callback(const fetch_msg *msg, void *p)
 		object->cache.fin_time = time(NULL);
 
 		(void) llcache_hsts_update_policy(object);
-
 
 		guit->misc->schedule(5000, llcache_persist, NULL);
 	}
@@ -3564,6 +3671,46 @@ total_object_size(llcache_object *object)
 	return tot;
 }
 
+/**
+ * Catch up the cache users with state changes from fetchers.
+ *
+ * \param ignored We ignore this because all our state comes from llcache.
+ */
+static void llcache_catch_up_all_users(void *ignored)
+{
+	llcache_object *object;
+
+	/* Assume after this we'll be all caught up.  If any user of a handle
+	 * defers then we'll invalidate all_caught_up and reschedule via
+	 * llcache_users_not_caught_up()
+	 */
+	llcache->all_caught_up = true;
+
+	/* Catch new users up with state of objects */
+	for (object = llcache->cached_objects; object != NULL;
+			object = object->next) {
+		llcache_object_notify_users(object);
+	}
+
+	for (object = llcache->uncached_objects; object != NULL;
+			object = object->next) {
+		llcache_object_notify_users(object);
+	}
+}
+
+/**
+ * Ask for ::llcache_catch_up_all_users to be scheduled ASAP to pump the
+ * user state machines.
+ */
+static void llcache_users_not_caught_up(void)
+{
+	if (llcache->all_caught_up) {
+		llcache->all_caught_up = false;
+		guit->misc->schedule(0, llcache_catch_up_all_users, NULL);
+	}
+}
+
+
 /******************************************************************************
  * Public API								      *
  ******************************************************************************/
@@ -3673,7 +3820,7 @@ void llcache_clean(bool purge)
 			llcache_size -=	object->source_len;
 
 			NSLOG(llcache, DEBUG,
-			      "Freeing source data for %p len:%"PRIssizet,
+			      "Freeing source data for %p len:%"PRIsizet,
 			      object, object->source_len);
 		}
 	}
@@ -3692,7 +3839,7 @@ void llcache_clean(bool purge)
 		    (object->store_state == LLCACHE_STATE_DISC) &&
 		    (object->source_data == NULL)) {
 			NSLOG(llcache, DEBUG,
-			     "discarding backed object len:%"PRIssizet" age:%ld (%p) %s",
+			     "discarding backed object len:%"PRIsizet" age:%ld (%p) %s",
 			      object->source_len,
 			      (long)(time(NULL) - object->last_used),
 			      object,
@@ -3722,7 +3869,7 @@ void llcache_clean(bool purge)
 		    (object->fetch.fetch == NULL) &&
 		    (object->store_state == LLCACHE_STATE_RAM)) {
 			NSLOG(llcache, DEBUG,
-			      "discarding fresh object len:%"PRIssizet" age:%ld (%p) %s",
+			      "discarding fresh object len:%"PRIsizet" age:%ld (%p) %s",
 			      object->source_len,
 			      (long)(time(NULL) - object->last_used),
 			      object,
@@ -3736,7 +3883,7 @@ void llcache_clean(bool purge)
 		}
 	}
 
-	NSLOG(llcache, DEBUG, "Size: %u (limit: %u)", llcache_size, limit);
+	NSLOG(llcache, DEBUG, "Size: %"PRIu32" (limit: %"PRIu32")", llcache_size, limit);
 }
 
 /* Exported interface documented in content/llcache.h */
@@ -3757,7 +3904,7 @@ llcache_initialise(const struct llcache_parameters *prm)
 	llcache->all_caught_up = true;
 
 	NSLOG(llcache, INFO,
-	      "llcache initialising with a limit of %d bytes",
+	      "llcache initialising with a limit of %"PRIu32" bytes",
 	      llcache->limit);
 
 	/* backing store initialisation */
@@ -3836,51 +3983,16 @@ void llcache_finalise(void)
 	llcache = NULL;
 }
 
-/**
- * Catch up the cache users with state changes from fetchers.
- *
- * \param ignored We ignore this because all our state comes from llcache.
- */
-static void llcache_catch_up_all_users(void *ignored)
-{
-	llcache_object *object;
-
-	/* Assume after this we'll be all caught up.  If any user of a handle
-	 * defers then we'll invalidate all_caught_up and reschedule via
-	 * llcache_users_not_caught_up()
-	 */
-	llcache->all_caught_up = true;
-
-	/* Catch new users up with state of objects */
-	for (object = llcache->cached_objects; object != NULL;
-			object = object->next) {
-		llcache_object_notify_users(object);
-	}
-
-	for (object = llcache->uncached_objects; object != NULL;
-			object = object->next) {
-		llcache_object_notify_users(object);
-	}
-}
-
-/**
- * Ask for ::llcache_catch_up_all_users to be scheduled ASAP to pump the
- * user state machines.
- */
-static void llcache_users_not_caught_up(void)
-{
-	if (llcache->all_caught_up) {
-		llcache->all_caught_up = false;
-		guit->misc->schedule(0, llcache_catch_up_all_users, NULL);
-	}
-}
 
 
 /* Exported interface documented in content/llcache.h */
-nserror llcache_handle_retrieve(nsurl *url, uint32_t flags,
-		nsurl *referer, const llcache_post_data *post,
-		llcache_handle_callback cb, void *pw,
-		llcache_handle **result)
+nserror
+llcache_handle_retrieve(nsurl *url,
+			uint32_t flags,
+			nsurl *referer,
+			const llcache_post_data *post,
+			llcache_handle_callback cb, void *pw,
+			llcache_handle **result)
 {
 	nserror error;
 	llcache_object_user *user;
@@ -3894,9 +4006,8 @@ nserror llcache_handle_retrieve(nsurl *url, uint32_t flags,
 		return error;
 	}
 
-	char *scheme = lwc_string_data(nsurl_get_component(hsts_url, NSURL_SCHEME));
 	/* Can we fetch this URL at all? */
-	if (fetch_can_fetch(hsts_url) == false && (strcmp("http", scheme) != 0 && strcmp("https", scheme) != 0)) {
+	if (fetch_can_fetch(hsts_url) == false) {
 		nsurl_unref(hsts_url);
 		return NSERROR_NO_FETCH_HANDLER;
 	}

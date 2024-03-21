@@ -66,7 +66,9 @@ typedef enum {
 	BOX_BR,
 	BOX_TEXT,
 	BOX_INLINE_END,
-	BOX_NONE
+	BOX_NONE,
+	BOX_FLEX,
+	BOX_INLINE_FLEX,
 } box_type;
 
 
@@ -404,6 +406,10 @@ struct box {
 	 */
 	struct column *col;
 
+	/**
+	 * List item value.
+	 */
+	int list_value;
 
 	/**
 	 * List marker box if this is a list-item, or NULL.

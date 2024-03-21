@@ -1359,8 +1359,8 @@ wimp_window {
     icon_esg:0
     icon_fg:wimp_COLOUR_BLACK
     icon_bg:wimp_COLOUR_VERY_LIGHT_GREY
-    text.text:"http://netsurf.sourceforge.net/netsurf.zip"
-    text.size:43
+    text.text:"https://netsurf.sourceforge.net/netsurf.zip"
+    text.size:*
     text.validation:"R2"
   }
   wimp_icon {
@@ -3090,11 +3090,11 @@ wimp_window {
   }
   wimp_icon {
     extent:32,-256,540,-212
-    icon_flags:wimp_ICON_TEXT | wimp_ICON_SPRITE | wimp_ICON_VCENTRED | wimp_ICON_INDIRECTED | wimp_ICON_DELETED | wimp_BUTTON_RADIO
+    icon_flags:wimp_ICON_TEXT | wimp_ICON_SPRITE | wimp_ICON_VCENTRED | wimp_ICON_INDIRECTED | wimp_BUTTON_RADIO
     icon_esg:0
     icon_fg:wimp_COLOUR_BLACK
     icon_bg:wimp_COLOUR_VERY_LIGHT_GREY
-    text_and_sprite.text:"Plug-ins uitschakelen"
+    text_and_sprite.text:"CSS uitschakelen"
     text_and_sprite.size:42
     text_and_sprite.validation:"Soptoff,opton"
   }

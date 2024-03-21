@@ -99,6 +99,7 @@ NSLOG_DEFINE_CATEGORY(plot, "Rendering system");
 NSLOG_DEFINE_CATEGORY(schedule, "Scheduler");
 NSLOG_DEFINE_CATEGORY(fbtk, "Framebuffer toolkit");
 NSLOG_DEFINE_CATEGORY(layout, "Layout");
+NSLOG_DEFINE_CATEGORY(flex, "Flex");
 NSLOG_DEFINE_CATEGORY(dukky, "Duktape JavaScript Binding");
 NSLOG_DEFINE_CATEGORY(jserrors, "JavaScript error messages");
 
@@ -285,7 +286,7 @@ nserror nslog_init(nslog_ensure_t *ensure, int *pargc, char **argv)
 
 /* exported interface documented in utils/log.h */
 nserror
-nslog_set_filter_by_options()
+nslog_set_filter_by_options(void)
 {
 	if (verbose_log)
 		return nslog_set_filter(nsoption_charp(verbose_filter));
@@ -295,7 +296,7 @@ nslog_set_filter_by_options()
 
 /* exported interface documented in utils/log.h */
 void
-nslog_finalise()
+nslog_finalise(void)
 {
 	NSLOG(netsurf, INFO,
 	      "Finalising logging, please report any further messages");

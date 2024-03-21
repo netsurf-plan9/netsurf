@@ -263,64 +263,81 @@ NS_GIT="git://git.netsurf-browser.org"
 # Buildsystem: everything depends on this
 NS_BUILDSYSTEM="buildsystem"
 
-# internal libraries all frontends require (order is important)
-NS_INTERNAL_LIBS="libwapcaplet libparserutils libhubbub libdom libcss libnsgif libnsbmp libutf8proc libnsutils libnspsl libnslog"
+NS_TOOLS=""
+NS_FRONTEND_LIBS=""
 
-# The browser itself
-NS_BROWSER="netsurf"
+BUILD_TARGET="${TARGET:-netsurf}"
 
+case "$BUILD_TARGET" in
+    libhubbub)
+        NS_INTERNAL_LIBS="libparserutils"
+        ;;
 
-# add target specific libraries
-case "${HOST}" in
-    i586-pc-haiku)
-        # tools required to build the browser for haiku (beos)
-        NS_TOOLS="nsgenbind"
-        # libraries required for the haiku target abi
-        NS_FRONTEND_LIBS="libsvgtiny"
+    libdom)
+        NS_INTERNAL_LIBS="libwapcaplet libparserutils libhubbub"
         ;;
-    *arwin*)
-        # tools required to build the browser for OS X
-        NS_TOOLS=""
-        # libraries required for the Darwin target abi
-        NS_FRONTEND_LIBS="libsvgtiny libnsfb"
+
+    libcss)
+        NS_INTERNAL_LIBS="libwapcaplet libparserutils"
         ;;
-    arm-unknown-riscos)
-        # tools required to build the browser for RISC OS
-        NS_TOOLS="nsgenbind"
-        # libraries required for the risc os target abi
-        NS_FRONTEND_LIBS="libsvgtiny librufl libpencil librosprite"
-        ;;
-    *-atari-mint)
-        # tools required to build the browser for atari
-        NS_TOOLS=""
-        # libraries required for the atari frontend
-        NS_FRONTEND_LIBS=""
-        ;;
-    ppc-amigaos)
-        # default tools required to build the browser
-        NS_TOOLS="nsgenbind"
-        # default additional internal libraries
-        NS_FRONTEND_LIBS="libsvgtiny"
-        ;;
-    m68k-unknown-amigaos)
-        # default tools required to build the browser
-        NS_TOOLS="nsgenbind"
-        # default additional internal libraries
-        NS_FRONTEND_LIBS="libsvgtiny"
-        ;;
-    *-unknown-freebsd*)
-        # tools required to build the browser for freebsd
-        NS_TOOLS=""
-        # libraries required for the freebsd frontend
-        NS_FRONTEND_LIBS=""
-        # select gnu make
-        MAKE=gmake
-        ;;
-    *)
-        # default tools required to build the browser
-        NS_TOOLS="nsgenbind"
-        # default additional internal libraries
-        NS_FRONTEND_LIBS="libsvgtiny libnsfb"
+
+    netsurf)
+        # internal libraries all frontends require (order is important)
+        NS_INTERNAL_LIBS="libwapcaplet libparserutils libhubbub libdom libcss libnsgif libnsbmp libutf8proc libnsutils libnspsl libnslog"
+
+        # add target specific libraries
+        case "${HOST}" in
+            i586-pc-haiku)
+                # tools required to build the browser for haiku (beos)
+                NS_TOOLS="nsgenbind"
+                # libraries required for the haiku target abi
+                NS_FRONTEND_LIBS="libsvgtiny"
+                ;;
+            *arwin*)
+                # tools required to build the browser for OS X
+                NS_TOOLS=""
+                # libraries required for the Darwin target abi
+                NS_FRONTEND_LIBS="libsvgtiny libnsfb"
+                ;;
+            arm-unknown-riscos|arm-riscos-gnueabi*)
+                # tools required to build the browser for RISC OS
+                NS_TOOLS="nsgenbind"
+                # libraries required for the risc os target abi
+                NS_FRONTEND_LIBS="libsvgtiny librufl libpencil librosprite"
+                ;;
+            *-atari-mint)
+                # tools required to build the browser for atari
+                NS_TOOLS=""
+                # libraries required for the atari frontend
+                NS_FRONTEND_LIBS=""
+                ;;
+            ppc-amigaos)
+                # default tools required to build the browser
+                NS_TOOLS="nsgenbind"
+                # default additional internal libraries
+                NS_FRONTEND_LIBS="libsvgtiny"
+                ;;
+            m68k-unknown-amigaos)
+                # default tools required to build the browser
+                NS_TOOLS="nsgenbind"
+                # default additional internal libraries
+                NS_FRONTEND_LIBS="libsvgtiny"
+                ;;
+            *-unknown-freebsd*)
+                # tools required to build the browser for freebsd
+                NS_TOOLS=""
+                # libraries required for the freebsd frontend
+                NS_FRONTEND_LIBS=""
+                # select gnu make
+                MAKE=gmake
+                ;;
+            *)
+                # default tools required to build the browser
+                NS_TOOLS="nsgenbind"
+                # default additional internal libraries
+                NS_FRONTEND_LIBS="libsvgtiny libnsfb"
+                ;;
+        esac
         ;;
 esac
 
@@ -331,7 +348,7 @@ export MAKE
 # git pull in all repos parameters are passed to git pull
 ns-pull()
 {
-    for REPO in $(echo ${NS_BUILDSYSTEM} ${NS_INTERNAL_LIBS} ${NS_FRONTEND_LIBS} ${NS_TOOLS} ${NS_BROWSER}) ; do
+    for REPO in $(echo ${NS_BUILDSYSTEM} ${NS_INTERNAL_LIBS} ${NS_FRONTEND_LIBS} ${NS_TOOLS} ${BUILD_TARGET}) ; do
         echo -n "     GIT: Pulling ${REPO}: "
         if [ -f "${TARGET_WORKSPACE}/${REPO}/.git/config" ]; then
             (cd ${TARGET_WORKSPACE}/${REPO} && git pull $*; )
@@ -344,19 +361,42 @@ ns-pull()
 # clone all repositories
 ns-clone()
 {
+    SHALLOW=""
+    SKIP=""
+    while [ $# -gt 0 ]
+    do
+        case "$1" in
+            -d | --deps-only) SKIP="${BUILD_TARGET}"
+                                shift
+                                ;;
+            -s | --shallow) SHALLOW="--depth 1"
+                            shift
+                            ;;
+            -*) echo "Error: Unknown option: $1" >&2
+                exit 1
+                ;;
+            *) # No more options
+               break
+               ;;
+        esac
+    done
+
     mkdir -p ${TARGET_WORKSPACE}
-    for REPO in $(echo ${NS_BUILDSYSTEM} ${NS_INTERNAL_LIBS} ${NS_FRONTEND_LIBS} ${NS_RISCOS_LIBS} ${NS_TOOLS} ${NS_BROWSER}) ; do
+    for REPO in $(echo ${NS_BUILDSYSTEM} ${NS_INTERNAL_LIBS} ${NS_FRONTEND_LIBS} ${NS_RISCOS_LIBS} ${NS_TOOLS} ${BUILD_TARGET}) ; do
+        [ "x${REPO}" != "x${SKIP}" ] || continue
         echo -n "     GIT: Cloning ${REPO}: "
         if [ -f ${TARGET_WORKSPACE}/${REPO}/.git/config ]; then
             echo "Repository already present"
         else
-            (cd ${TARGET_WORKSPACE} && git clone ${NS_GIT}/${REPO}.git; )
+            (cd ${TARGET_WORKSPACE} && git clone ${SHALLOW} ${NS_GIT}/${REPO}.git; )
         fi
     done
 
     # put current env.sh in place in workspace
-    if [ ! -f "${TARGET_WORKSPACE}/env.sh" -a -f ${TARGET_WORKSPACE}/${NS_BROWSER}/docs/env.sh ]; then
-        cp ${TARGET_WORKSPACE}/${NS_BROWSER}/docs/env.sh ${TARGET_WORKSPACE}/env.sh
+    if [ "x$NS_BROWSER" = "x" ]; then
+        if [ ! -f "${TARGET_WORKSPACE}/env.sh" -a -f ${TARGET_WORKSPACE}/${NS_BROWSER}/docs/env.sh ]; then
+            cp ${TARGET_WORKSPACE}/${NS_BROWSER}/docs/env.sh ${TARGET_WORKSPACE}/env.sh
+        fi
     fi
 }
 

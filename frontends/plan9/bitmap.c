@@ -22,7 +22,7 @@
  * \return A bitmap structure or NULL on error.
  */
 void*
-bitmap_create(int width, int height, unsigned int state)
+bitmap_create(int width, int height, enum gui_bitmap_flags flags)
 {
 	struct bitmap *bitmap;
 
@@ -37,7 +37,7 @@ bitmap_create(int width, int height, unsigned int state)
 	bitmap->i = NULL;
 	bitmap->width = width;
 	bitmap->height = height;
-	bitmap->opaque = (state & BITMAP_OPAQUE) ? 1 : 0;
+	bitmap->opaque = (flags & BITMAP_OPAQUE) ? 1 : 0;
 	bitmap->modified = 0;
 	return bitmap;
 }
@@ -90,27 +90,6 @@ bitmap_get_opaque(void *bitmap)
 	struct bitmap *b = bitmap;
 
 	return b->opaque;
-}
-
-/**
- * Test if a bitmap is opaque.
- *
- * \param bitmap The bitmap to examine.
- * \return The bitmap opacity.
- */
-bool
-bitmap_test_opaque(void *bitmap)
-{
-	struct bitmap *b = bitmap;
-	int i, c;
-
-	c = ((b->width * 32 + 7) / 8) * b->height;
-	for (i = 3; i < c; i += 4) {
-		if (b->data[i] != 0xFF) {
-			return false;
-		}
-	}
-	return true;
 }
 
 /**
@@ -171,31 +150,6 @@ bitmap_get_height(void *bitmap)
 }
 
 /**
- * The the *bytes* per pixel.
- *
- * \param bitmap The bitmap
- */
-size_t
-bitmap_get_bpp(void *bitmap)
-{
-	return BITMAP_BPP;
-}
-
-/**
- * Savde a bitmap to disc.
- *
- * \param bitmap The bitmap to save
- * \param path The path to save the bitmap to.
- * \param flags Flags affecting the save.
- */
-bool
-bitmap_save(void *bitmap, const char *path, unsigned flags)
-{
-	DBG("IN bitmap_save");
-	return 0;
-}
-
-/**
  * Marks a bitmap as modified.
  *
  * \param bitmap The bitmap set as modified.
@@ -251,13 +205,10 @@ static struct gui_bitmap_table bitmap_table = {
 	.destroy = bitmap_destroy,
 	.set_opaque = bitmap_set_opaque,
 	.get_opaque = bitmap_get_opaque,
-	.test_opaque = bitmap_test_opaque,
 	.get_buffer = bitmap_get_buffer,
 	.get_rowstride = bitmap_get_rowstride,
 	.get_width = bitmap_get_width,
 	.get_height = bitmap_get_height,
-	.get_bpp = bitmap_get_bpp,
-	.save = bitmap_save,
 	.modified = bitmap_modified,
 	.render = bitmap_render,
 };

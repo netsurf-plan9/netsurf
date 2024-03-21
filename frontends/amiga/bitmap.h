@@ -25,7 +25,9 @@
 #include <intuition/classusr.h>
 #include <libraries/Picasso96.h>
 
-#define AMI_BITMAP_FORMAT RGBFB_R8G8B8A8
+#include "netsurf/bitmap.h"
+
+#define AMI_BITMAP_FORMAT RGBFB_A8R8G8B8
 #define AMI_BITMAP_SCALE_ICON 0xFF
 
 extern struct gui_bitmap_table *amiga_bitmap_table;
@@ -101,10 +103,10 @@ void ami_bitmap_fini(void);
  *
  * \param  width   width of image in pixels
  * \param  height  width of image in pixels
- * \param  state   a flag word indicating the initial state
+ * \param  flags   flags for bitmap creation
  * \return an opaque struct bitmap, or NULL on memory exhaustion
  */
-void *amiga_bitmap_create(int width, int height, unsigned int state);
+void *amiga_bitmap_create(int width, int height, enum gui_bitmap_flags flags);
 
 /**
  * Return a pointer to the pixel data in a bitmap.
@@ -172,14 +174,6 @@ void amiga_bitmap_modified(void *bitmap);
  * \param  opaque  whether the bitmap should be plotted opaque
  */
 void amiga_bitmap_set_opaque(void *bitmap, bool opaque);
-
-/**
- * Tests whether a bitmap has an opaque alpha channel
- *
- * \param  bitmap  a bitmap, as returned by bitmap_create()
- * \return whether the bitmap is opaque
- */
-bool amiga_bitmap_test_opaque(void *bitmap);
 
 /**
  * Gets whether a bitmap should be plotted opaque

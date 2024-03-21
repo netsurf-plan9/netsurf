@@ -123,6 +123,9 @@ NSOPTION_BOOL(animate_images, true)
 /** Whether to execute javascript */
 NSOPTION_BOOL(enable_javascript, false)
 
+/** Whether to allow Author level CSS. */
+NSOPTION_BOOL(author_level_css, true)
+
 /** Maximum time (in seconds) to wait for a script to run */
 NSOPTION_INTEGER(script_timeout, 10)
 
@@ -254,6 +257,9 @@ NSOPTION_BOOL(enable_PDF_compression, true)
 
 /** setting a password and encoding PDF documents */
 NSOPTION_BOOL(enable_PDF_password, false)
+
+/** whether to prefer dark mode (light on dark) */
+NSOPTION_BOOL(prefer_dark_mode, false)
 
 /******** System colours ********/
 NSOPTION_COLOUR(sys_colour_ActiveBorder, 0x00d3d3d3)

@@ -26,121 +26,51 @@
 /** DPI of the screen, in fixed point units */
 extern css_fixed nscss_screen_dpi;
 
-/** Medium screen density for device viewing distance. */
-extern css_fixed nscss_baseline_pixel_density;
-
-/**
- * Length conversion context data.
- */
-typedef struct nscss_len_ctx {
-	/**
-	 * Viewport width in px.
-	 * Only used if unit is vh, vw, vi, vb, vmin, or vmax.
-	 */
-	int vw;
-	/**
-	 * Viewport height in px.
-	 * Only used if unit is vh, vw, vi, vb, vmin, or vmax.
-	 */
-	int vh;
-	/**
-	 * Computed style for the document root element.
-	 * May be NULL if unit is not rem, or rlh.
-	 */
-	const css_computed_style *root_style;
-} nscss_len_ctx;
-
-/**
- * Convert an absolute CSS length to points.
- *
- * \param[in] ctx     Length conversion context.
- * \param[in] length  Absolute CSS length.
- * \param[in] unit    Unit of the length.
- * \return length in points
- */
-css_fixed nscss_len2pt(
-		const nscss_len_ctx *ctx,
-		css_fixed length,
-		css_unit unit);
-
-/**
- * Convert a CSS length to pixels.
- *
- * \param[in] ctx     Length conversion context.
- * \param[in] length  Length to convert.
- * \param[in] unit    Corresponding unit.
- * \param[in] style   Computed style applying to length.
- *                    May be NULL if unit is not em, ex, cap, ch, or ic.
- * \return length in pixels
- */
-css_fixed nscss_len2px(
-		const nscss_len_ctx *ctx,
-		css_fixed length,
-		css_unit unit,
-		const css_computed_style *style);
-
-/**
- * Convert css pixels to physical pixels.
- *
- * \param[in] css_pixels  Length in css pixels.
- * \return length in physical pixels
- */
-static inline css_fixed nscss_pixels_css_to_physical(
-		css_fixed css_pixels)
-{
-	return FDIV(FMUL(css_pixels, nscss_screen_dpi),
-			nscss_baseline_pixel_density);
-}
-
-/**
- * Convert physical pixels to css pixels.
- *
- * \param[in] physical_pixels  Length in physical pixels.
- * \return length in css pixels
- */
-static inline css_fixed nscss_pixels_physical_to_css(
-		css_fixed physical_pixels)
-{
-	return FDIV(FMUL(physical_pixels, nscss_baseline_pixel_density),
-			nscss_screen_dpi);
-}
-
 /**
  * Temporary helper wrappers for for libcss computed style getter, while
- * we don't support flexbox related property values.
+ * we don't support all values of display.
  */
-
 static inline uint8_t ns_computed_display(
 		const css_computed_style *style, bool root)
 {
 	uint8_t value = css_computed_display(style, root);
 
-	if (value == CSS_DISPLAY_FLEX) {
+	switch (value) {
+	case CSS_DISPLAY_GRID:
 		return CSS_DISPLAY_BLOCK;
 
-	} else if (value == CSS_DISPLAY_INLINE_FLEX) {
+	case CSS_DISPLAY_INLINE_GRID:
 		return CSS_DISPLAY_INLINE_BLOCK;
+
+	default:
+		break;
 	}
 
 	return value;
 }
 
-
+/**
+ * Temporary helper wrappers for for libcss computed style getter, while
+ * we don't support all values of display.
+ */
 static inline uint8_t ns_computed_display_static(
 		const css_computed_style *style)
 {
 	uint8_t value = css_computed_display_static(style);
 
-	if (value == CSS_DISPLAY_FLEX) {
+	switch (value) {
+	case CSS_DISPLAY_GRID:
 		return CSS_DISPLAY_BLOCK;
 
-	} else if (value == CSS_DISPLAY_INLINE_FLEX) {
+	case CSS_DISPLAY_INLINE_GRID:
 		return CSS_DISPLAY_INLINE_BLOCK;
+
+	default:
+		break;
 	}
 
 	return value;
 }
-
 
 static inline uint8_t ns_computed_min_height(
 		const css_computed_style *style,

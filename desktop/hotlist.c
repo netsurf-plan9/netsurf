@@ -193,29 +193,32 @@ static nserror hotlist_create_treeview_field_visits_data(
 		struct hotlist_entry *e, const struct url_data *data)
 {
 	char buffer[16];
-	const char *last_visited;
-	char *last_visited2;
-	int len;
+	char *last_visited = NULL;
+	size_t len = 0;
 
 	/* Last visited */
 	if (data->visits != 0) {
-		last_visited = ctime(&data->last_visit);
-		last_visited2 = strdup(last_visited);
-		len = 24;
+		const size_t lvsize = 256;
+		struct tm *lvtime;
+
+		if ((lvtime = localtime(&data->last_visit)) != NULL) {
+			last_visited = malloc(lvsize);
+			if (last_visited != NULL) {
+				len = strftime(last_visited, lvsize,
+						"%a %b %e %H:%M:%S %Y",
+						lvtime);
+			}
+		}
 	} else {
-		last_visited2 = strdup("-");
+		last_visited = strdup("-");
 		len = 1;
 	}
-	if (last_visited2 == NULL) {
+	if (last_visited == NULL) {
 		return NSERROR_NOMEM;
-
-	} else if (len == 24) {
-		assert(last_visited2[24] == '\n');
-		last_visited2[24] = '\0';
 	}
 
 	e->data[HL_LAST_VISIT].field = hl_ctx.fields[HL_LAST_VISIT].field;
-	e->data[HL_LAST_VISIT].value = last_visited2;
+	e->data[HL_LAST_VISIT].value = last_visited;
 	e->data[HL_LAST_VISIT].value_len = len;
 
 	/* Visits */
@@ -968,13 +971,13 @@ static nserror hotlist_generate(void)
 		const char *url;
 		const char *msg_key;
 	} default_entries[] = {
-		{ "http://www.netsurf-browser.org/",
+		{ "https://www.netsurf-browser.org/",
 				"HotlistHomepage" },
-		{ "http://www.netsurf-browser.org/downloads/",
+		{ "https://www.netsurf-browser.org/downloads/",
 				"HotlistDownloads" },
-		{ "http://www.netsurf-browser.org/documentation",
+		{ "https://www.netsurf-browser.org/documentation",
 				"HotlistDocumentation" },
-		{ "http://www.netsurf-browser.org/contact",
+		{ "https://www.netsurf-browser.org/contact",
 				"HotlistContact" }
 	};
 	const int n_entries = sizeof(default_entries) /
@@ -1626,7 +1629,7 @@ nserror hotlist_add_entry(nsurl *url, const char *title, bool at_y, int y)
 	enum treeview_relationship rel;
 
 	if (url == NULL) {
-		err = nsurl_create("http://netsurf-browser.org/", &url);
+		err = nsurl_create("https://netsurf-browser.org/", &url);
 		if (err != NSERROR_OK) {
 			return err;
 		}

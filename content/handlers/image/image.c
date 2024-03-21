@@ -26,11 +26,13 @@
 #include "netsurf/bitmap.h"
 #include "netsurf/content.h"
 #include "desktop/gui_internal.h"
+#include "desktop/bitmap.h"
 
 #include "image/bmp.h"
 #include "image/gif.h"
 #include "image/ico.h"
 #include "image/jpeg.h"
+#include "image/jpegxl.h"
 #include "image/nssprite.h"
 #include "image/png.h"
 #include "image/rsvg.h"
@@ -67,6 +69,12 @@ nserror image_init(void)
 
 #ifdef WITH_JPEG
 	error = nsjpeg_init();
+	if (error != NSERROR_OK)
+		return error;
+#endif
+
+#ifdef WITH_JPEGXL
+	error = nsjpegxl_init();
 	if (error != NSERROR_OK)
 		return error;
 #endif
@@ -124,7 +132,7 @@ bool image_bitmap_plot(struct bitmap *bitmap,
 		if (height == 1) {
 			/* optimise 1x1 bitmap plot */
 			pixel = guit->bitmap->get_buffer(bitmap);
-			fill_style.fill_colour = pixel_to_colour(pixel);
+			fill_style.fill_colour = bitmap_pixel_to_colour(pixel);
 
 			if (guit->bitmap->get_opaque(bitmap) ||
 			    ((fill_style.fill_colour & 0xff000000) == 0xff000000)) {

@@ -19,6 +19,8 @@
 #ifndef _NETSURF_RISCOS_BITMAP_H_
 #define _NETSURF_RISCOS_BITMAP_H_
 
+#include "netsurf/bitmap.h"
+
 struct osspriteop_area;
 struct osspriteop_header;
 struct hlcache_handle;
@@ -37,7 +39,8 @@ struct bitmap {
 	int width; /**< width of bitmap */
 	int height; /**< height of bitmap */
 
-	unsigned int state; /**< The bitmap attributes (opaque/dirty etc.) */
+	bool opaque; /**< Whether the bitmap is opaque. */
+	bool clear;  /**< Whether the bitmap should be initialised to zeros. */
 
 	struct osspriteop_area *sprite_area; /**< Uncompressed data, or NULL */
 };
@@ -71,11 +74,11 @@ void riscos_bitmap_overlay_sprite(struct bitmap *bitmap, const struct osspriteop
  * Create a bitmap.
  *
  * \param  width   width of image in pixels
- * \param  height  width of image in pixels
- * \param  state the state to create the bitmap in.
+ * \param  height  height of image in pixels
+ * \param  flags   flags for bitmap creation.
  * \return an opaque struct bitmap, or NULL on memory exhaustion
  */
-void *riscos_bitmap_create(int width, int height, unsigned int state);
+void *riscos_bitmap_create(int width, int height, enum gui_bitmap_flags flags);
 
 /**
  * Free a bitmap.

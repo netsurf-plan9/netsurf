@@ -89,14 +89,6 @@
 #define BLOCK_USE_MAP_SIZE (1 << (BLOCK_ENTRY_COUNT - 3))
 
 /**
- * The type used to store index values referring to store entries. Care
- * must be taken with this type as it is used to build address to
- * entry mapping so changing the size will have large impacts on
- * memory usage.
- */
-typedef uint16_t entry_index_t;
-
-/**
  * The type used as a binary identifier for each entry derived from
  * the URL. A larger identifier will have fewer collisions but
  * requires proportionately more storage.
@@ -1614,7 +1606,7 @@ static nserror store_write_block(struct store_state *state,
 			offst);
 	if (wr != (ssize_t)bse->elem[elem_idx].size) {
 		NSLOG(netsurf, ERROR,
-		      "Write failed %"PRIssizet" of %d bytes from %p at %"PRIsizet" block %d errno %d",
+		      "Write failed %"PRIssizet" of %"PRId32" bytes from %p at %"PRIsizet" block %"PRIu16" errno %d",
 		      wr,
 		      bse->elem[elem_idx].size,
 		      bse->elem[elem_idx].data,
@@ -1661,7 +1653,7 @@ static nserror store_write_file(struct store_state *state,
 	close(fd);
 	if (wr != (ssize_t)bse->elem[elem_idx].size) {
 		NSLOG(netsurf, ERROR,
-		      "Write failed %"PRIssizet" of %d bytes from %p errno %d",
+		      "Write failed %"PRIssizet" of %"PRId32" bytes from %p errno %d",
 		      wr,
 		      bse->elem[elem_idx].size,
 		      bse->elem[elem_idx].data,
@@ -1784,7 +1776,7 @@ static nserror store_read_block(struct store_state *state,
 		       offst);
 	if (rd != (ssize_t)bse->elem[elem_idx].size) {
 		NSLOG(netsurf, ERROR,
-		      "Failed reading %"PRIssizet" of %d bytes into %p from %"PRIsizet" block %d errno %d",
+		      "Failed reading %"PRIssizet" of %"PRId32" bytes into %p from %"PRIsizet" block %"PRIu16" errno %d",
 		      rd,
 		      bse->elem[elem_idx].size,
 		      bse->elem[elem_idx].data,

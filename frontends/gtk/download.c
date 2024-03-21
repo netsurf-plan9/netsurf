@@ -432,7 +432,7 @@ static gboolean nsgtk_download_update(gboolean force_update)
 		switch (dl->status) {
 		case NSGTK_DOWNLOAD_WORKING:
 			pulse_mode = TRUE;
-			/* Fall through */
+			fallthrough;
 
 		case NSGTK_DOWNLOAD_NONE:
 			dl->speed = dl->size_downloaded /
@@ -449,12 +449,13 @@ static gboolean nsgtk_download_update(gboolean force_update)
 
 			dl_ctx.num_active++;
 			update = TRUE;
-			/* Fall through */
+			fallthrough;
 
 		case NSGTK_DOWNLOAD_COMPLETE:
 			downloaded += dl->size_downloaded;
 			total += dl->size_total;
 			dls++;
+			fallthrough;
 
 		default:
 			;//Do nothing
@@ -1022,7 +1023,7 @@ nserror nsgtk_download_init(void)
 
 
 /* exported interface documented in gtk/download.h */
-void nsgtk_download_destroy ()
+void nsgtk_download_destroy(void)
 {
 	nsgtk_download_do(nsgtk_download_store_cancel_item);
 }
