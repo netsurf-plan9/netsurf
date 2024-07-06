@@ -852,7 +852,12 @@ gadget_mouse_action(html_content *html,
 				html->visible_select_menu = NULL;
 			}
 			mas->result.pointer = BROWSER_POINTER_DEFAULT;
+#ifdef _PLAN9
+		/* Plan 9 context menus are press-select-release */
+		} else if (mouse & BROWSER_MOUSE_PRESS_1) {
+#else
 		} else if (mouse & BROWSER_MOUSE_CLICK_1) {
+#endif
 			msg_data.select_menu.gadget = mas->gadget.control;
 			content_broadcast(c,
 					  CONTENT_MSG_SELECTMENU,
